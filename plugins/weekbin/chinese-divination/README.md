@@ -1,0 +1,445 @@
+# 灵签易占 (`chinese-divination`)
+
+A Chinese classical divination Mini App. It casts hexagrams with the Plum Blossom method
+(梅花易数), reads the result through the classical 体用生克 rules, and ships a searchable
+library of all sixty-four hexagrams plus a ganzhi almanac. Everything runs locally; the app
+makes no network requests and reads nothing outside its own package.
+
+The interface is in Chinese. To get going, read the **Usage guide** below; the derivation rules
+and capability disclosures follow it.
+
+## Usage guide
+
+### Thirty seconds
+
+After installing, say "打开灵签易占" to MiniMax Code. The page opens on four tabs:
+**起卦 / 卦库 / 历法 / 卦历** (cast / library / almanac / log).
+
+To cast inside the conversation instead, just say "帮我起一卦" — see
+[casting in the conversation](#casting-in-the-conversation).
+
+### Asking properly
+
+**The first field is the one that matters.** What you type into 所问何事 decides which kind of
+matter you are asking about, and that changes what the reading emphasises:
+
+| You write | Topic recognised | 应期 points to |
+| --- | --- | --- |
+| 下个月这份 offer 该不该接 | 事业功名 (career) | 巳午, then 辰戌丑未 |
+| 这笔投资还能不能赚 | 财运 (wealth) | 申酉, then 亥子丑 |
+| 他会不会主动来找我 | 感情 (love) | 亥子, then 寅卯 |
+| 明年春天结婚日子好不好 | 婚恋 (marriage) | 寅卯, then 巳午 |
+| 父亲的手术要不要等 | 疾病 (health) | 辰戌丑未, then 申酉 |
+| 这套房该不该买 | 房产车契 (property) | 辰戌丑未, then 申酉 |
+| 下周的考试能过吗 | 学业文书 (study) | 寅卯, then 巳午 |
+
+Be specific. "Should I take this offer" gets a topic, a 类神, and a real 应期; "how's my luck
+lately" gets nothing and falls back to the 用卦. If what you wrote genuinely does not match a
+topic, the app does not force one — it says so in the reading and falls back to the 用卦.
+
+**Your question does not change the verdict.** The same hexagram asked about money and asked
+about marriage cannot flip from 凶 to 吉: 吉凶 comes from the hexagram's own 体用生克 and the
+month's vitality. What moves is the 应期 and which 取象 is emphasised. This is deliberate —
+divination should help you think, not let you buy a good answer by phrasing.
+
+### Picking a method
+
+| Your situation | Use | Changes every |
+| --- | --- | --- |
+| You have a "what is happening right now" question | **时间起卦** | 时辰 (two hours) |
+| You just want today's picture | **每日一卦** | once a day |
+| You already know what to ask and want to pick your own numbers | **数字起卦** | whenever you change the numbers |
+| You want something genuinely random | **铜钱摇卦** | every single toss |
+
+The first two derive their numbers from the clock, so casting twice inside the same 时辰 or on
+the same day gives the same hexagram. That is the method working, not a stuck program — the
+reading states its own cadence, including the hexagram the next change will produce. Use coins or
+numbers when you want variety.
+
+### Using 数字起卦
+
+1. Click 数字起卦; the number fields appear.
+2. Quietly hold the question in mind and **think of two numbers** (any two will do).
+3. Fill them in and click 起卦. First gives the upper trigram, second the lower, their sum the
+   moving line.
+4. The fields clear themselves afterwards, so clicking twice cannot look like a frozen result.
+
+「随手取数」 picks two random 1–99 numbers for you.
+
+### Using 铜钱摇卦
+
+Click 铜钱摇卦, then 掷钱 six times from the bottom line up. Each toss is shown as it lands;
+when six lines are in, click 成卦解卦. 「重来」 starts over. This is the only method that differs
+every single time.
+
+### Reading the result
+
+| Where | What |
+| --- | --- |
+| Title | your question if you wrote one, otherwise the method's name |
+| Top right | the verdict and the 体用 relation |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red |
+| Right | 体卦/用卦 elements and directions, 世应, and the month's vitality |
+| 断语 | twelve sections, thirteen when a topic was recognised |
+| 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
+| 起卦依据 | every number that went into the cast, shown rather than hidden |
+| 存入卦历 | add a one-line note and keep it on this machine |
+
+The **应期** section is the most practically useful: it names the months and days when the
+matter is likely to show itself.
+
+### 卦历 — your own log
+
+Saved castings appear newest first, with the question, hexagram, verdict, time and note, and can
+be deleted one at a time. Up to 500 entries. They live only on this machine.
+
+### Casting in the conversation (MCP)
+
+Besides opening the page, the Agent can cast for you **without the page ever opening** — it calls
+this package's registered MCP endpoint, which runs the same derivation on this machine. Both
+routes use identical logic and give identical results.
+
+#### Making sure it works
+
+1. The package must be **installed** into MiniMax Code (copied to
+   `~/.minimax/plugins/chinese-divination/`; see Install below).
+2. **Restart MiniMax Code** so the Host scans the plugin directory and registers the MCP server.
+3. Then just talk to it. No page needed.
+
+#### What to say, and what the Agent does
+
+| You say | Agent calls | Key arguments |
+| --- | --- | --- |
+| 帮我起一卦 / what's happening right now | `divination_cast` | `method: time` (the default) |
+| 今天什么日子 / today's almanac | `divination_almanac` | no arguments |
+| 谦卦什么意思 / look up 水雷屯 | `divination_hexagram_lookup` | `query: 谦` |
+| 掷铜钱 / something random | `divination_cast` | `method: coins`; the tool tosses six times for you |
+| 今天这一卦 | `divination_cast` | `method: daily` |
+| I'm thinking of 3 and 8, cast with those | `divination_cast` | `method: numbers`, `upper: 3` `lower: 8` |
+
+You do **not** have to name a method — the Agent picks from your wording. To force one, say
+「用时间起卦」「掷铜钱」「按今天的日子起」.
+
+**The one thing that matters: say what you are asking about.** The Agent puts your words into
+`question`, which is what decides the topic and the 应期. "Cast me a hexagram" with no subject
+still works, but no topic will be recognised and the timing falls back to the 用卦.
+
+#### The three tools, in detail
+
+**`divination_cast` — cast and interpret**
+
+| Argument | Type | Meaning |
+| --- | --- | --- |
+| `question` | string, ≤120 chars | What you are asking. Sets the topic and the 应期, never the verdict |
+| `method` | `time` / `daily` / `numbers` / `coins` | Defaults to `time` |
+| `upper` / `lower` | integer 1–1e9 | Only for `numbers`: the upper and lower trigram numbers |
+
+Two blocks come back: `content[0].text` is prose written for the model, and `structuredContent` is
+for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `timing` /
+`disclaimer`). A real response:
+
+```text
+【起法】数字起卦
+【所问】下个月要不要接这个offer
+所问事类：事业功名，类神五行 火。
+【卦名】山天大畜（第 26 卦，⚊⚋⚋⚊⚊⚊），上卦 艮土、下卦 乾金
+【变卦】火天大有（上卦 离、下卦 乾）
+【爻象】初爻 静爻、二爻 静爻、三爻 静爻、四爻 老阴、五爻 静爻、上爻 静爻
+【体用】体卦 艮土，用卦 乾金
+【月令旺衰】当令 金，体 休、用 旺
+【吉凶】凶 —— 凶：宜守
+【断语】
+【卦象总断】本卦山天大畜，利贞，不家食吉，利涉大川。…
+【所问之事】所问归「事业功名」，类神取火。…类神火生体卦土，所问之事对你有补益。
+【应期】事业功名类神属火，旺在巳午，相在辰戌丑未。…
+【体用关系】体卦土生用卦金，是我耗自己去成全对方。…
+(thirteen sections, then 宜/忌, the numbers used, and the disclaimer)
+```
+
+**`divination_hexagram_lookup` — search the sixty-four**
+
+| Argument | Type | Meaning |
+| --- | --- | --- |
+| `query` | string, ≤40 chars | hexagram name, trigram name, or keyword. Omit for the full table |
+| `limit` | integer 1–64, default 8 | how many to return |
+
+**This tool never casts a hexagram for you.** Ask "what does 谦 mean" and you get 谦's texts — not
+an unrelated new reading.
+
+```text
+匹配「谦」的卦共 1 个，如下：
+
+【地山谦】第 15 卦，⚋⚋⚋⚊⚋⚋，上坤下艮
+卦辞：亨，君子有终。
+象辞：地中有山，谦；君子以裒多益寡，称物平施。
+互卦 雷水解，错卦 天泽履，综卦 雷地豫
+```
+
+**`divination_almanac` — today's almanac**
+
+No arguments. Returns the four ganzhi pillars, the current solar term, the month's element, the
+current 时辰 with its pillar and auspiciousness, the lucky hours, the 建除 day, and 数九.
+
+```text
+【日期】2026-09-29
+【干支】丙午年 丁酉月 丙午日 戊子时
+【节气】白露，月建 丁酉（金）
+【当前时辰】子时（23:00 - 01:00，司命·黄道吉时）
+【黄黑道吉时】子时、寅时、卯时、午时、未时、酉时
+【建除十二神】收
+【数九】未入数九（数九只在三九、九九两段）
+```
+
+#### A full round trip
+
+> **You**: Should I take this offer next month? I'm torn.
+
+The Agent calls `divination_cast` with your words as `question` and `method: time`. Your wording
+is recognised as 事业功名 with a 火 类神, so the 应期 lands on 巳午. It explains the hexagram in
+its own words — **the interpretation is written live by the model; the hexagram is computed by this
+package**.
+
+> **You**: And if I don't take it?
+
+It can cast again (same 时辰, same hexagram — say 「掷铜钱」 if you want a different one), look up
+related hexagrams with `divination_hexagram_lookup`, or check dates with `divination_almanac`.
+
+The division of labour: **this package computes accurately; the Agent explains it in terms of
+your situation.** The package never calls a model, makes no outbound request, and holds no
+credentials.
+
+#### Troubleshooting
+
+**The Agent seems not to know this exists.**
+Almost always a missing restart. The Host scans the plugin directory — and registers the MCP
+server — only at startup. Restart MiniMax Code and ask again.
+
+**I said "cast me a hexagram" and it didn't.**
+Be explicit: 「用梅花易数起一卦」or name the plugin. The bundled
+`skills/divination/SKILL.md` already tells it when to cast versus merely look something up; when
+it cannot tell, name the method yourself.
+
+**It left out the disclaimer.**
+That should not happen — the skill requires it on every reading. Ask it to add it.
+
+**Can I use it in chat without installing?**
+No. Both the page and the MCP endpoint need this package loaded from `~/.minimax/plugins/`.
+
+### FAQ
+
+**Same 时辰, same result twice?**
+Yes. The clock is a fixed input, so the same 时辰 gives the same hexagram. Use coins or numbers
+when you want variety.
+
+**Does my question actually do anything, or is it just reframing?**
+It sets the topic and the 应期, not the verdict. In the same 时辰, "should I switch jobs" and
+"should we wait for my father's surgery" produce the same hexagram and the same 吉凶, but the 应期
+lands on 巳午 versus 辰戌丑未 and the 取象 emphasises different things. That is how Plum Blossom
+works; it is not something an AI made up.
+
+**Is it accurate?**
+That depends on you. A hexagram does not predict the future; it turns an existing question around
+so you can see your own situation and options more clearly. For medical, legal or financial
+decisions, get a professional.
+
+**Who wrote all this text?**
+The hexagrams are computed from the traditional rules by code. Organising the findings into fluent
+Chinese is the AI's job. See "A note on use" below.
+
+**Where do my questions go?**
+Nowhere. Saved castings only touch `context.dataDir` on your own machine. The app does not go
+online and reads nothing outside its package.
+
+## What it does
+
+**起卦 — four ways to cast**
+
+| Method | How it works |
+| --- | --- |
+| 每日一卦 | Deterministic from today's date, so the same day always yields the same hexagram. |
+| 时间起卦 | 年支序 + 公历月 + 日 gives the upper trigram, adding 时支序 gives the lower trigram and the moving line. Best for "right now" questions. |
+| 数字起卦 | Two numbers thought of quietly: the first gives the upper trigram, the second the lower, their sum the moving line. |
+| 铜钱摇卦 | Three coins, six tosses, from the bottom line up. 6 is 老阴, 7 少阳, 8 少阴, 9 老阳; 6 and 9 mark a moving line. |
+
+**解卦 — reading the result**
+
+The verdict comes from 体用生克: the trigram holding the moving line is the 体卦 (you), the other
+is the 用卦 (the matter at hand). 用生体 is the strongest result, 体克用 and 比和 are favourable,
+体生用 drains you and 用克体 puts you under someone else's thumb. The verdict is then adjusted by
+the body's 五行 vitality in the current month — 旺相休囚死, measured against the month branch set
+by the nearest 节.
+
+**How often each method changes**
+
+This is worth stating plainly, because the four methods do not refresh at the same rate:
+
+| Method | Refreshes | Same result again if you… |
+| --- | --- | --- |
+| 铜钱摇卦 | every toss | never — coins are random |
+| 数字起卦 | whenever you change the two numbers | reuse the same numbers |
+| 时间起卦 | every 时辰, i.e. every two hours | cast again inside the same 时辰 |
+| 每日一卦 | once a day, at midnight | cast again on the same date |
+
+That is the method working, not the app repeating itself. Every reading therefore states its own
+cadence on the card: the current basis, the next change, and — for the two time-based methods — the
+hexagram the next change will produce, so you can watch the cycle rather than guess at it.
+
+**所问何事 — the question picks the topic and the timing**
+
+The question you type above the methods is matched to a **topic**, and the topic carries a **类神
+element**. This is what lets the same hexagram read differently from one hour to the next:
+
+| Topic | 类神 element |
+| --- | --- |
+| 财运 | 金 |
+| 事业功名 | 火 |
+| 感情 | 水 |
+| 婚恋 | 木 |
+| 疾病 | 土 |
+| 学业文书 | 木 |
+| 房产车契 | 土 |
+| 官讼是非 | 金 |
+| 出行寻物 | 水 |
+
+**The 类神 changes the timing and the imagery, never the verdict.** 吉凶 stays exactly where
+体用生克 and the month's vitality put it, so the same hexagram asked about money and asked about
+marriage cannot flip from 凶 to 吉 — only the 应期 months and the 取象 emphasis move. When no topic
+is recognised, nothing is forced: the timing falls back to the 用卦 and says so.
+
+> This element-to-topic table is **this package's own convention**, not a transmitted one. Plum
+> Blossom has no 六亲 用神 the way 六爻 divination does, and this package does not do 干支入卦.
+
+**Twelve sections, every time**
+
+卦象总断, 体用关系, 应期, 旺衰应期, 互卦 for the middle course, 变卦 for the outcome, 错卦 for
+the other side, 综卦 seen from the other position, 世应, 取象 of both trigrams, 爻位 for the
+moving line's position, and 方所 for the 后天八卦 directions. A recognised topic adds one more,
+所问之事, naming the topic, its 类神, and how that element stands to the 体卦.
+
+**应期 — when it lands**
+
+Taken from the 类神 when a topic was recognised, otherwise from the 用卦. It surfaces during the
+branches where that element 当令, and resolves during the branches where it is 相. 乾金为用卦, so
+the reading looks to 申酉 months and days.
+
+**爻位之象 — what the line's position means**
+
+初爻 is a beginning with nothing yet showing, 二爻 is near you but still under authority, 三爻 is
+the threshold where things turn, 四爻 is the anxious position closest to other people, 五爻 is the
+ruler's seat and where benefactors sit, 上爻 is the ending.
+
+**方所 — directions**
+
+The 后天八卦 directions of the 体 and 用 trigrams, for lost things and for travel.
+
+Where the verdict is 吉 but the 用卦 drains the 体卦, the reading adds a caution rather than a
+clean yes: 方向可进，力气要省.
+
+**卦库 — all sixty-four hexagrams**
+
+Search by name or by upper/lower trigram, then read the 卦辞, 象辞, and the 互卦 / 错卦 / 综卦
+cross-references for any hexagram.
+
+**历法 — the almanac**
+
+Ganzhi for the year, month, day and hour; the twelve 时辰 with their 黄道/黑道 office; the
+建除十二神 day; the 二十四节气 calendar; the nine-day 数九 period; and the twelve zodiac with
+harmony and clash relations.
+
+**卦历 — your own log**
+
+Castings you save are stored on this machine, with a one-line note you can add before saving,
+newest first, up to 500 entries, and can be deleted individually. A casting you gave a question is
+titled by that question; one cast without a question is titled by its method (today / at this moment
+/ from numbers / tossed by hand).
+
+**在对话里起卦 — the MCP endpoint**
+
+This package also offers the Agent an MCP (streamable-http) endpoint at `/mcp/divination`, so it
+can cast without the page ever opening. Its three tools are `divination_cast` (cast and
+interpret), `divination_hexagram_lookup` (search the sixty-four), and `divination_almanac`
+(today's ganzhi almanac).
+
+**The package itself calls no model and makes no outbound request.** The Agent *is* the model: it
+calls this endpoint, then explains the reading in its own words. Keys, billing and context stay in
+the session; this package only has to be right.
+
+For arguments, response shapes, trigger phrases, and troubleshooting, see
+[Casting in the conversation (MCP)](#casting-in-the-conversation-mcp) above.
+
+## Install
+
+Copy this directory, including the hidden `.minimax-plugin/`, into the MiniMax Code plugins
+directory as `chinese-divination/` (`~/.minimax/plugins/chinese-divination/` by default; the root
+README's Install section explains where that directory is). Restart MiniMax Code and ask the Agent
+to "打开灵签易占".
+
+## Tested environment
+
+- MiniMax Code 3.0.73 on macOS, Node 22. Installed from this directory, opened through the Agent,
+  page rendered and all four tabs exercised.
+- The MCP endpoint's `initialize`, `tools/list`, `tools/call`, and error paths were exercised
+  locally.
+- The package's own tests (`node --test "tests/**/*.test.mjs"` from this directory) cover the
+  hexagram table, the 错卦/综卦/互卦 derivations, the ganzhi anchors, the twelve offices, the
+  建除 cycle, the nine-day period, the coin rules, the response timing table, each method's change
+  cadence, the element-to-topic matching, and store round-trips: 39 passing.
+- 算法口径: the day pillar is computed from the Julian day number and matches the traditional
+  almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
+  are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
+  approximated as February 4. There is no lunar calendar in this package, so it does not convert
+  lunar dates and does not claim to.
+- 时间起卦 uses 公历月 and 日, which is the common modern simplification; the classical form uses
+  the lunar ones. The app states this in the 起卦依据 panel rather than hiding it.
+- The cadence claims are test-backed: a test casts inside one 时辰 and across the boundary, and
+  checks the predicted next-时辰 hexagram against a real cast in that 时辰.
+
+## Data & access
+
+- Files read: only `miniapp/client/index.html` and the Node payload under this package's own
+  directory. No Host file, user document, or any path outside the package is read.
+- Files written: `readings.json` inside `context.dataDir`, the private directory the Host creates
+  for this Mini App. It holds saved castings and their notes, newest first, capped at
+  500 entries. Writes go to a temporary file in the same directory and are renamed into place, so
+  an interrupted write cannot leave a half-written file. Nothing is written anywhere else.
+- Network: **no outbound connections.** The Node process opens no outbound connections, calls no
+  model API, and the page loads no remote assets, fonts, or scripts. The MCP endpoint listens only
+  on the Host-assigned loopback address `context.listen` and accepts POST only.
+- Processes: none spawned. Coin tosses use `node:crypto.randomInt` inside the Node process.
+- Secrets: none are read or held. There are no credentials and no Host connector access.
+
+## Files
+
+```text
+.minimax-plugin/plugin.json   Plugin manifest
+package.json                  Mini App declaration
+servers.mcp.json              MCP endpoint declaration
+skills/divination/SKILL.md    Casting and interpretation rules for the Agent
+miniapp/miniapp.json          Payload roots, Node entry, page route, MCP endpoint
+miniapp/client/index.html     The page served at /divination
+miniapp/node/server.mjs       Node entry: routes, MCP mount, start(context) → { dispose }
+miniapp/node/hexagrams.mjs    Trigrams and the sixty-four hexagrams
+miniapp/node/xiang.mjs        Line positions and response timing
+miniapp/node/topics.mjs       Element-to-topic: question → topic → 类神
+miniapp/node/almanac.mjs      Ganzhi, the twelve offices, solar terms, zodiac
+miniapp/node/divination.mjs   Plum Blossom casting and interpretation
+miniapp/node/store.mjs        Reading log persistence in dataDir
+miniapp/node/mcp/divination-http.mjs  MCP protocol layer and its three tools
+miniapp/node/miniapp-api.ts   Type declarations for the runtime context
+tests/divination.test.mjs     Unit tests, outside the runtime payload
+icon.png                      Plugin icon
+```
+
+## A note on use
+
+**The text in this app is generated by AI. It is for entertainment only and has no predictive
+function.** A disclaimer saying exactly that sits at the bottom of every page.
+
+The app implements a traditional method of divination faithfully; it is a cultural and
+philosophical tool, not a forecasting service. Treat a reading as a prompt to think clearly about
+a question you already have, not as a prediction to act on. Nothing here should inform medical,
+legal, or financial decisions.
+
+## License
+
+[MIT](./LICENSE)

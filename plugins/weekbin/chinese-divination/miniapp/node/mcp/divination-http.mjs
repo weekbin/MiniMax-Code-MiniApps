@@ -1,0 +1,314 @@
+// @ts-check
+
+/**
+ * MCP（streamable-http）端点：让 Agent 在对话里主动起卦。
+ *
+ * 为什么在这里接模型：这个包自己不调任何模型、不出站。Agent 本身就是模型，
+ * 由它在对话中调用本端点，再用自己的语言把卦象讲给用户听——密钥、计费、上下文
+ * 全都留在会话里，本包只负责「算得对」和「讲得准」。
+ */
+
+import {
+  buildReading,
+  castByCoins,
+  castByNumbers,
+  castByTime,
+  castDaily,
+  tossCoins,
+} from '../divination.mjs';
+import { HEXAGRAM_LIST, hexagramSymbol, invertedHexagram, mutualHexagram, oppositeHexagram } from '../hexagrams.mjs';
+import { almanac } from '../almanac.mjs';
+
+const SERVER_INFO = Object.freeze({ name: 'chinese-divination', version: '1.0.0' });
+
+const READ_ANNOTATIONS = Object.freeze({
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+});
+
+/**
+ * @param {string} name
+ * @param {string} title
+ * @param {string} description
+ * @param {object} inputSchema
+ */
+function tool(name, title, description, inputSchema) {
+  return { name, title, description, inputSchema, annotations: READ_ANNOTATIONS };
+}
+
+const QUESTION_PROPERTY = Object.freeze({
+  question: {
+    type: 'string',
+    maxLength: 120,
+    description:
+      '所问何事，原话即可。会据此定事类与类神五行（财运取金、事业取火、感情取水、婚恋取木、疾病取土、房产车契取土、官讼取金、出行寻物取水、学业文书取木），只影响应期与取象，不改变卦体吉凶。认不出事类时按用卦算。',
+  },
+});
+
+const TOOLS = Object.freeze([
+  tool(
+    'divination_cast',
+    '起卦并解读',
+    '按梅花易数起一卦并返回完整解读：卦名、上下卦、五行、体用生克所定的吉凶、十二段断语、应期、宜忌与起卦依据。问事请尽量写清楚，写了问题与不写问题解出来的侧重不同。默认时间起卦，按当下时辰成卦，两小时一换。',
+    {
+      type: 'object',
+      properties: {
+        ...QUESTION_PROPERTY,
+        method: {
+          type: 'string',
+          enum: ['time', 'daily', 'numbers', 'coins'],
+          description:
+            '起法。time=以当下时辰成卦（两小时一换）；daily=按今日日期成卦（一天一换）；numbers=由你给两个正整数，默念所问之后自行取数，一上卦一下卦；coins=由本工具掷六次铜钱，每次皆不同。用户说「掷铜钱」或要随机时用 coins，说「今天」用 daily。',
+          default: 'time',
+        },
+        upper: { type: 'integer', minimum: 1, maximum: 1000000000, description: 'method=numbers 时的第一数，取上卦。' },
+        lower: { type: 'integer', minimum: 1, maximum: 1000000000, description: 'method=numbers 时的第二数，取下卦。' },
+      },
+      additionalProperties: false,
+    },
+  ),
+  tool(
+    'divination_hexagram_lookup',
+    '查六十四卦',
+    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、象辞与互错综三卦。用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。',
+    {
+      type: 'object',
+      properties: {
+        query: { type: 'string', maxLength: 40, description: '卦名、上下卦名或关键字，如「乾」「雷」「风」「水天」。省略则返回六十四卦全表。' },
+        limit: { type: 'integer', minimum: 1, maximum: 64, default: 8, description: '返回条数上限。' },
+      },
+      additionalProperties: false,
+    },
+  ),
+  tool(
+    'divination_almanac',
+    '查今日历法',
+    '返回今日干支纪年月日时、月建与旺衰、当前时辰、黄黑道吉时、二十四节气与生肖三合六合。用户问「今天黄历」「今天什么日子」时用这个。',
+    { type: 'object', properties: {}, additionalProperties: false },
+  ),
+]);
+
+const DISCLAIMER =
+  '本结果由传统占卜法按规则推演，所有文字由 AI 组织。卦象不构成任何建议、预测或决策依据，不应作为医疗、法律、财务等重要决定的参考。娱乐之外，请以自身判断与专业意见为准。';
+
+/** @param {string} text */
+function clampText(text, max) {
+  return typeof text === 'string' ? text.trim().slice(0, max) : '';
+}
+
+class ToolError extends Error {
+  /** @param {string} code @param {string} message @param {string} [recovery] */
+  constructor(code, message, recovery) {
+    super(message);
+    this.code = code;
+    this.recovery = recovery;
+  }
+}
+
+/** @param {unknown} value @param {number} max */
+function toInteger(value, max) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    throw new ToolError('INVALID_ARGUMENTS', '数字起卦需要两个整数。', '用两个 1 到 1000000000 的正整数重试。');
+  }
+  if (parsed < 1 || parsed > max) {
+    throw new ToolError('INVALID_ARGUMENTS', `数字需在 1 到 ${max} 之间。`, `把数字改到 1 到 ${max} 之间。`);
+  }
+  return parsed;
+}
+
+/**
+ * 把一卦压成给模型读的文本。给全量 JSON 没用，模型要的是能复述的句子。
+ * @param {ReturnType<typeof buildReading>} reading
+ */
+function readingToText(reading) {
+  const lines = reading.lines.map((line) => `${line.label} ${line.kind}`).join('、');
+  const insights = reading.insights.map((item) => `【${item.title}】${item.text}`).join('\n');
+  const basis = reading.details.map((item) => `${item.label} ${item.value}`).join('；');
+  const topic = reading.topic ? `所问事类：${reading.topic.label}，类神五行 ${reading.topic.element}。` : '所问未落到已知事类，应期按用卦推。';
+  return [
+    `【起法】${reading.method}`,
+    reading.question ? `【所问】${reading.question}` : '【所问】未填',
+    topic,
+    `【卦名】${reading.hexagram.name}（第 ${reading.hexagram.order} 卦，${reading.hexagram.symbol}），上卦 ${reading.hexagram.upper.name}${reading.hexagram.upper.element}、下卦 ${reading.hexagram.lower.name}${reading.hexagram.lower.element}`,
+    reading.changed ? `【变卦】${reading.changed.name}（上卦 ${reading.changed.upper.name}、下卦 ${reading.changed.lower.name}）` : '【变卦】六爻皆静，无变卦',
+    `【爻象】${lines}`,
+    `【体用】体卦 ${reading.structure.body.name}${reading.structure.body.element}，用卦 ${reading.structure.use.name}${reading.structure.use.element}`,
+    `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
+    `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
+    `【断语】\n${insights}`,
+    `【宜】${reading.advice.suitable.join('、')}`,
+    `【忌】${reading.advice.avoid.join('、')}`,
+    `【起卦依据】${basis}`,
+    `【提示】${DISCLAIMER}`,
+  ].join('\n');
+}
+
+/** @param {string} name @param {Record<string, unknown>} args */
+function callTool(name, args) {
+  if (name === 'divination_cast') {
+    const question = clampText(args.question, 120);
+    const method = typeof args.method === 'string' ? args.method : 'time';
+    const now = new Date();
+    /** @type {ReturnType<typeof buildReading>} */
+    let reading;
+    if (method === 'daily') {
+      reading = buildReading(castDaily(now), { question, now });
+    } else if (method === 'numbers') {
+      const upper = toInteger(args.upper, 1000000000);
+      const lower = toInteger(args.lower, 1000000000);
+      reading = buildReading(castByNumbers(upper, lower), { question, now });
+    } else if (method === 'coins') {
+      reading = buildReading(castByCoins(tossCoins()), { question, now });
+    } else if (method === 'time') {
+      reading = buildReading(castByTime(now), { question, now });
+    } else {
+      throw new ToolError('INVALID_ARGUMENTS', `未知的起法：${method}`, 'method 只能是 time、daily、numbers 或 coins。');
+    }
+    return {
+      content: [{ type: 'text', text: readingToText(reading) }],
+      structuredContent: {
+        method: reading.method,
+        question: reading.question,
+        topic: reading.topic,
+        hexagram: { name: reading.hexagram.name, order: reading.hexagram.order },
+        changed: reading.changed ? { name: reading.changed.name, order: reading.changed.order } : null,
+        verdict: { label: reading.verdict.label, key: reading.verdict.key },
+        timing: reading.timing,
+        disclaimer: DISCLAIMER,
+      },
+    };
+  }
+
+  if (name === 'divination_hexagram_lookup') {
+    const query = clampText(args.query, 40);
+    const requested = Number.isInteger(args.limit) ? /** @type {number} */ (args.limit) : 8;
+    const limit = Math.min(Math.max(requested, 1), 64);
+    const hits = query
+      ? HEXAGRAM_LIST.filter(
+          (item) =>
+            item.name.includes(query) ||
+            item.upperTrigram.name.includes(query) ||
+            item.lowerTrigram.name.includes(query) ||
+            item.upperTrigram.image.includes(query) ||
+            item.lowerTrigram.image.includes(query) ||
+            item.judgment.includes(query),
+        )
+      : HEXAGRAM_LIST;
+    const picked = hits.slice(0, limit);
+    const text = picked
+      .map((item) =>
+        [
+          `【${item.name}】第 ${item.order} 卦，${hexagramSymbol(item.key)}，上${item.upperTrigram.name}下${item.lowerTrigram.name}`,
+          `卦辞：${item.judgment}`,
+          `象辞：${item.image}`,
+          `互卦 ${mutualHexagram(item).name}，错卦 ${oppositeHexagram(item).name}，综卦 ${invertedHexagram(item).name}`,
+        ].join('\n'),
+      )
+      .join('\n\n');
+    return {
+      content: [
+        {
+          type: 'text',
+          text: picked.length === 0
+            ? `没有匹配「${query}」的卦。`
+            : `${query ? `匹配「${query}」的卦共 ${hits.length} 个，` : ''}如下：\n\n${text}\n\n${DISCLAIMER}`,
+        },
+      ],
+      structuredContent: { count: hits.length, hexagrams: picked.map((item) => ({ name: item.name, order: item.order })) },
+    };
+  }
+
+  if (name === 'divination_almanac') {
+    const snapshot = almanac(new Date());
+    // hour 只有干支序号，吉凶与时柱在 hours 的完整条目里；数九只在三九、九九两段有。
+    const current = snapshot.hours.find((item) => item.current) ?? snapshot.hour;
+    const text = [
+      `【日期】${snapshot.date}`,
+      `【干支】${snapshot.year.name}年 ${snapshot.month.name}月 ${snapshot.day.name}日 ${current.pillar}时`,
+      `【节气】${snapshot.currentTerm}，月建 ${snapshot.month.name}（${snapshot.month.element}）`,
+      `【当前时辰】${current.name}（${current.range}，${current.office}·${current.officeType}${current.verdict}）`,
+      `【黄黑道吉时】${snapshot.luckyHours.join('、')}`,
+      `【建除十二神】${snapshot.jianchu.name}`,
+      snapshot.shujiu ? `【数九】${snapshot.shujiu}` : '【数九】未入数九（数九只在三九、九九两段）',
+      DISCLAIMER,
+    ].join('\n');
+    return { content: [{ type: 'text', text }], structuredContent: snapshot };
+  }
+
+  throw new ToolError('TOOL_NOT_FOUND', `未知工具：${name}`, '先调用 tools/list，用返回的工具名重试。');
+}
+
+/**
+ * @param {unknown} message
+ * @returns {Promise<object|null>}
+ */
+async function handleMessage(message) {
+  if (!message || typeof message !== 'object' || /** @type {any} */ (message).id === undefined) {
+    return null; // 通知：Streamable HTTP 下直接 202。
+  }
+  const { id, method, params } = /** @type {any} */ (message);
+  if (method === 'initialize') {
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        protocolVersion: params?.protocolVersion ?? '2025-11-25',
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: SERVER_INFO,
+        instructions:
+          '起卦前先问清或直接采用用户的所问之事；问事决定事类与应期，不改变卦体吉凶。' +
+          '解读要连「所问」一起讲，不要只复述卦辞。' +
+          '任何一次起卦的结果都要带上免责说明：卦象由传统占卜法推演，不构成建议、预测或决策依据。',
+      },
+    };
+  }
+  if (method === 'ping') return { jsonrpc: '2.0', id, result: {} };
+  if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: TOOLS } };
+  if (method === 'tools/call') {
+    try {
+      const result = callTool(/** @type {string} */ (params?.name), params?.arguments ?? {});
+      return { jsonrpc: '2.0', id, result };
+    } catch (error) {
+      const failure = /** @type {any} */ (error);
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: failure.message ?? '起卦失败。' }],
+          isError: true,
+          ...(failure.recovery ? { _meta: { recovery: failure.recovery } } : {}),
+        },
+      };
+    }
+  }
+  return { jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } };
+}
+
+/**
+ * Streamable HTTP：POST 单条或批量 JSON-RPC；纯通知返回 202。
+ * @param {{ response: import('node:http').ServerResponse, body: unknown }} input
+ */
+export async function handleMcpRequest({ response, body }) {
+  const messages = Array.isArray(body) ? body : [body];
+  const replies = [];
+  for (const message of messages) {
+    const reply = await handleMessage(message);
+    if (reply) replies.push(reply);
+  }
+  if (replies.length === 0) {
+    response.writeHead(202, { 'content-type': 'application/json; charset=utf-8' });
+    response.end();
+    return;
+  }
+  const payload = JSON.stringify(replies.length === 1 ? replies[0] : replies);
+  response.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(payload),
+  });
+  response.end(payload);
+}
+
+export { TOOLS };
