@@ -528,26 +528,29 @@ export function buildReading(cast, options = {}) {
       return na ? na.element : body.element;
     }),
   };
-  // 暗动与日破：被日辰冲到的静爻。判定在 jingfang 层，收在这里用——
-  // 动爻逢冲是「冲散」，属动散章，不在这条线上，见 dayClashReading 注释。
+  // 日辰冲爻分三路：静爻旺相作暗动、静爻休囚作日破、动爻作冲散。判定在 jingfang 层。
   const clash = dayClashReading(jf, calendar);
   const darkPositions = clash.dark.map((line) => line.position);
+  const pressedPositions = clash.pressed.map((line) => line.position);
   // 用神那圈（元神、忌神、仇神）只在一个用神定下来时才存在：不上卦取的是伏神，
   // 伏神在卦外，元忌仇无从谈起；两亲各看各的时也无从取舍。所以只在 picked 非空时算。
-  // 排在暗动之后，是因为这一圈要报「暗动」——元神忌神究竟在明处动还是在暗处动，
-  // 正要用刚算出来的暗动爻位。
-  const circle = useGod && useGod.picked ? circleReading(jf, useGod.picked, calendar, darkPositions) : null;
+  // 排在暗动之后，是因为这一圈要报「暗动」与「动而逢冲」——元神忌神究竟在明处动、
+  // 是在暗处动、还是正被日辰冲着，正要用刚算出来的日冲爻位。
+  const circle = useGod && useGod.picked
+    ? circleReading(jf, useGod.picked, calendar, darkPositions, pressedPositions)
+    : null;
   insights.push({
     title: '用神',
     text: useGod
-      ? useGodText(topic, useGod, jf, movingPositions, calendar, circle)
+      ? useGodText(topic, useGod, jf, movingPositions, calendar, circle, darkPositions, pressedPositions)
       : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。',
   });
 
-  // 暗动紧接用神：暗动章的吉凶两路（喜、忌）判的正是元神与忌神是不是在暗中动手，
-  // 放在这里紧挨着「用神是谁、周围那圈坐着谁」讲，才接得上。
-  if (clash.dark.length > 0 || clash.dayBroken.length > 0) {
-    insights.push({ title: '暗动 · 日破', text: dayClashText(clash, circle, calendar) });
+  // 这一段紧接用神：暗动章的吉凶两路（喜、忌）判的正是元神与忌神是不是在暗中动手，
+  // 冲散章则说动爻逢日冲并不作散——都是拿日辰对着用神周围那圈讲的，
+  // 挨着「用神是谁、谁坐着」才接得上。
+  if (clash.dark.length > 0 || clash.dayBroken.length > 0 || clash.pressed.length > 0) {
+    insights.push({ title: '暗动 · 日破 · 冲散', text: dayClashText(clash, circle, calendar) });
   }
 
   // 变出之爻：本卦这一爻是「谁」，变出来的那一爻是它「往哪儿去」。前一段说完六亲，
@@ -624,14 +627,18 @@ export function buildReading(cast, options = {}) {
         tomb: v.isTomb,
         dark: darkPositions.includes(line.position),
         dayBroken: clash.dayBroken.some((one) => one.position === line.position),
+        // 冲散：动爻被日辰冲到。与暗动、日破互斥，三者不会同落一爻。
+        pressed: pressedPositions.includes(line.position),
         rescues: v.rescues,
         empties: v.empties,
       };
     }),
-    // 暗动与日破各是哪些爻。暗动约逢三卦里一卦，日破略多，两者皆无时断语里不出这一段。
+    // 日辰冲爻的三路各是哪些爻。暗动约逢三卦里一卦，日破略多，冲散（动爻逢冲）又约四卦里一卦；
+    // 三路皆空时断语里不出这一段。
     dayClash: {
       dark: darkPositions,
       dayBroken: clash.dayBroken.map((line) => line.position),
+      pressed: pressedPositions,
     },
     useGod: useGod
       ? {
@@ -827,10 +834,15 @@ function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, moving
 }
 
 /** 用神那一段。候选不止一亲时只各报所在，不替求测者择。circle 由 buildReading 算好传进来。 */
-function useGodText(topic, god, jingfang, movingPositions, calendar, circle) {
-  const moving = new Set(movingPositions);
+function useGodText(topic, god, jingfang, movingPositions, calendar, circle, darkPositions, pressedPositions) {
+  const motion = motionTiers(calendar, darkPositions, pressedPositions);
+  // 用神自己那一爻的动静与元神忌神仇神同一口径——两处分开写，早先就写岔过一次：
+  // 那一圈认四档，这里只认动静两档，于是用神自己暗动了或冲散了也看不出来。
   const where = (name) => god.all.filter((line) => line.relative === name)
-    .map((line) => `${line.label}${moving.has(line.position) ? '（动）' : ''}`)
+    .map((line) => {
+      const kind = motion(line.position);
+      return `${line.label}${kind === '静' ? '' : `（${kind}）`}`;
+    })
     .join('、');
   const head = `所问为${topic.label}，${topic.god.reason}`;
 
@@ -939,13 +951,31 @@ function transformReading(position, jingfang, changedJingfang, calendar) {
  * @param {import('./jingfang.mjs').JingfangLine} picked
  * @param {object} calendar
  */
-function circleReading(jingfang, picked, calendar, darkPositions) {
+/**
+ * 动静共四档：发动、动而逢日冲、暗动、安静。
+ *
+ * 暗动与冲散分属两章，且一个只管静爻、一个只管动爻：暗动章管静爻逢冲（旺相为暗动、
+ * 休囚为日破），动散章管动爻逢冲（冲散）。所以这里各认各的，不把暗动并进动、
+ * 也不把冲散并进静。用神自己那一爻与元神忌神仇神那几行用的是同一个口径。
+ *
+ * @param {{ movingPositions: number[] }} calendar
+ * @param {number[]} darkPositions
+ * @param {number[]} pressedPositions
+ */
+function motionTiers(calendar, darkPositions, pressedPositions) {
   const moving = new Set(calendar.movingPositions);
   const dark = new Set(darkPositions);
+  const pressed = new Set(pressedPositions);
+  return (position) => {
+    if (pressed.has(position)) return '动而逢日冲';
+    if (moving.has(position)) return '动';
+    return dark.has(position) ? '暗动' : '静';
+  };
+}
+
+function circleReading(jingfang, picked, calendar, darkPositions, pressedPositions) {
   const circle = useGodCircle(jingfang, picked);
-  // 动静有三档：发动、暗动、安静。暗动不是发动——它是静爻被日辰冲出来的，
-  // 书上与动爻分列（暗动章与动散章各管一路），所以只在这里多认一档，不并入动。
-  const motion = (position) => (moving.has(position) ? '动' : dark.has(position) ? '暗动' : '静');
+  const motion = motionTiers(calendar, darkPositions, pressedPositions);
   const say = (name, element, lines) => (lines.length === 0
     ? `${name}属${element}，本卦六爻里没有这一行`
     : `${name}属${element}，见${lines.map((line) => `${line.label}（${motion(line.position)}，于月建${vitality(line.element, calendar.monthElement).key}）`).join('、')}`);
@@ -973,7 +1003,8 @@ function circleReading(jingfang, picked, calendar, darkPositions) {
 }
 
 /**
- * 暗动与日破那一段。判语全部出自《增删卜易·暗动章第二十二》，一处自造也没有。
+ * 日辰冲爻那一段。静爻两路出自《增删卜易·暗动章第二十二》，动爻一路出自紧接的
+ * 《动散章第二十三》，判语全部逐字引自这两章，一处自造也没有。
  *
  * 本章的吉凶两路判的正是元神与忌神——「暗動者有喜有忌」。这一段是上一层用神圈的
  * 正题，所以要紧的话是「哪一爻暗动了、它是不是元神或忌神」。用神定不下来时
@@ -986,7 +1017,7 @@ function circleReading(jingfang, picked, calendar, darkPositions) {
  * 同章还有一句「忌神明動於卦中，得元神暗動而生用神」：忌神按定义是克用神的，
  * 生不了用神，这半句自相矛盾，传本与后世多本都照录未改，本包不据它另立一条。
  *
- * @param {{ dark: JingfangLine[], dayBroken: JingfangLine[] }} clash
+ * @param {{ dark: JingfangLine[], dayBroken: JingfangLine[], pressed: JingfangLine[] }} clash
  * @param {ReturnType<circleReading> | null} circle
  * @param {object} calendar
  */
@@ -1016,7 +1047,10 @@ function dayClashText(clash, circle, calendar) {
   const list = (lines) => lines
     .map((line) => `${line.label}${line.element}（于月建${vitality(line.element, calendar.monthElement).key}）`)
     .join('、');
-  const parts = [`按《增删卜易·暗动章第二十二》「靜爻旺相日辰沖之爲暗動，靜爻休囚日辰沖之爲破」：被${dayName}日冲到的静爻，旺衰分作两路。`];
+  const opener = (clash.dark.length > 0 || clash.dayBroken.length > 0)
+    ? `按《增删卜易·暗动章第二十二》「靜爻旺相日辰沖之爲暗動，靜爻休囚日辰沖之爲破」：被${dayName}日冲到的静爻，旺衰分作两路。`
+    : `按《增删卜易·动散章第二十三》「占以日辰而沖動爻，謂之沖散」：被${dayName}日冲到的，是动爻。`;
+  const parts = [opener];
 
   if (clash.dark.length > 0) {
     parts.push(`${list(clash.dark)}${clash.dark.length > 1 ? '皆为暗动' : '为暗动'}——静而不静，今日起暗中起作用。${roleClause(clash.dark)}`);
@@ -1051,9 +1085,27 @@ function dayClashText(clash, circle, calendar) {
     parts.push(`${list(clash.dayBroken)}${clash.dayBroken.length > 1 ? '皆为日破' : '为日破'}——休囚无气而逢日冲，与暗动恰是同一句话的两头。${roleClause(clash.dayBroken)}`);
   }
 
+  if (clash.pressed.length > 0) {
+    const listed = list(clash.pressed);
+    const strong = clash.pressed.filter((line) => {
+      const tone = vitality(line.element, calendar.monthElement).tone;
+      return tone === 'strong' || tone === 'good';
+    });
+    parts.push(`${listed}${clash.pressed.length > 1 ? '皆逢日冲' : '逢日冲'}，谓之冲散。`
+      + (strong.length > 0
+        ? `其中${strong.map((line) => line.label).join('、')}于月建旺相，原书直言「旺相者沖之不散」。`
+        : '')
+      + '这一章的结论恰恰是不散：「予屢試之，旺相者沖之不散，有气者沖之不散，休囚者間有沖散，'
+      + '亦千百中之一二也」，末了归到「神兆機於動，動必有因」。所以此处只报「哪一爻动而逢日冲」'
+      + '这件事实，不拿它断凶。');
+  }
+
   // 旧说与野鹤自己的驳一并摆上：只引旧说就成了拿一句被作者否掉的话断卦。
-  parts.push('「占以暗動福來而不知，禍來而不覺」是旧说，原作者在本章末尾就驳了它：'
-    + '「吉凶之應於動，有急緩之應，則緩非此論，何當不知不覺，報應亦非緩也。」暗动不必当成迟缓。');
+  // 这两句驳的是「暗动迟缓」，跟冲散不相干——只有真出了暗动才摆。
+  if (clash.dark.length > 0) {
+    parts.push('「占以暗動福來而不知，禍來而不覺」是旧说，原作者在本章末尾就驳了它：'
+      + '「吉凶之應於動，有急緩之應，則緩非此論，何當不知不覺，報應亦非緩也。」暗动不必当成迟缓。');
+  }
   return parts.join('');
 }
 

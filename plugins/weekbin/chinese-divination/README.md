@@ -78,9 +78,9 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 when a still line is clashed by the day's branch, the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
-| 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second; 【暗动 · 日破】 is inserted after 【用神】 only when a still line is actually clashed, which is about 39% of readings |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
+| 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line, which is about 46% of readings |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -136,8 +136,8 @@ still works, but no topic will be recognised and the timing falls back to the �
 
 Two blocks come back: `content[0].text` is prose written for the model, and `structuredContent` is
 for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `useGod` /
-`transforms` / `dayClash` / `timing` / `disclaimer`). `dayClash` gives the 爻 positions of any 暗动 and
-any 日破, and the header gains a 【日冲静爻】 line only when there is something to say. `useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
+`transforms` / `dayClash` / `timing` / `disclaimer`). `dayClash` gives the 爻 positions of any 暗动,
+日破 and 冲散, and the header gains a 【日冲】 line only when there is something to say. `useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
 carries the 伏神 as `hidden` — `position`, `hushen`, `feishen`, `flying` and an `emerges` verdict —
 and, when a single 用神 is settled, carries its circle as `circle` — the 爻 positions of the 元神, 忌神
 and 仇神 with their elements under `circle.elements` —
@@ -561,8 +561,9 @@ kind of movement, from 《增删卜易》卷一·暗动章第二十二:
 
 One sentence, two halves. A **still** line clashed by the day's branch is 暗动 when it is 旺 or 相,
 and 日破 when it is 休, 囚 or 死. Not an edge case: across the sixty-four hexagrams over all twelve
-months and days, roughly **39%** of readings have at least one such line, and 42% of all clashed
-lines are 暗动 rather than 日破. Until now this package treated every still line as simply still,
+months and days and every combination of moving lines, about **24%** of readings have at least one
+such line — 10% 暗动 and 14% 日破 — and 42% of all clashed still lines are 暗动 rather than 日破.
+Until now this package treated every still line as simply still,
 so 「忌神暗动克害用神」 and 「元神暗动生扶用神」 — the two things the chapter is actually about —
 could never be reported at all.
 
@@ -576,8 +577,8 @@ heading. Some secondary sites label it 025 — that is the whole-book running or
 number within the volume, and is not followed here.
 
 Only **still** lines qualify. A clashed line that is already moving is 冲散, which belongs to
-动散章第二十三; the two are kept apart, and a test pins that turning the clashed line into a moving
-one removes it from both lists.
+动散章第二十三 and is covered in the next section; the two are kept apart, and a test pins that a
+clashed line drops out of both lists the moment it starts moving.
 
 旺衰 has five states and the split is exhaustive, so there is no third case and no "cannot tell"
 fallback. Two structural facts fall out and are checked rather than assumed: the day's branch can
@@ -624,7 +625,58 @@ chapter divides 喜忌 between 元神 and 忌神 only, so it says the text does 
 暗动 is therefore not read as slow. On the diagram 暗动 is a small 暗 mark and 日破 a small 日破,
 in the same slot as 空 / 破 / 墓. 日破 takes the red of the 月破 it belongs with; 暗动 stays muted,
 because its 吉凶 depends on whether the line happens to be the 元神's or the 忌神's, and a single
-cell in the diagram does not know that.
+cell in the diagram does not know that. The 野鹤 exchange above is printed only when a 暗动 is
+actually found — it answers the saying about 暗动 being slow, so quoting it in a reading that has
+only a 冲散 would be off-topic.
+
+**冲散 — the moving line the day clashes**
+
+The very next chapter, 《增删卜易》卷一·动散章第二十三, opens with the rule in one line:
+
+> 占以日辰而沖動爻，謂之沖散。
+
+A **moving** line clashed by the day's branch is 冲散. It is the third way the day's clash lands, and
+it is commoner than the other two put together: across the same sample, **24%** of readings have one,
+against 10% 暗动 and 14% 日破. At 1.05 lines per reading, and never more than two.
+
+The three are kept strictly apart. A line is sorted by whether it is moving first and by 旺衰 second,
+so no line can ever land in two of them, and a clashed moving line is never also called 暗动 or 日破.
+暗动 and 日破 are additionally mutually exclusive on their own, for a reason already given: two lines
+sharing a 纳支 share an element, hence a 旺衰, hence the same side of the split.
+
+**The chapter's own conclusion is that it does not disperse.** 野鹤 does not simply define the term,
+he then reports testing it:
+
+> 予屢試之，旺相者沖之不散，有气者沖之不散，休囚者間有沖散，亦千百中之一二也。
+
+旺 or 相 lines survive the clash; 休 or 囚 lines mostly do. Even those only scatter "once in a
+thousand or two". He closes by pointing at where the omen actually lives: 「神兆機於動，動必有因」 —
+the mechanism sits in the movement, and movement has a cause. So the reading **reports the fact and
+does not turn it into a verdict**. Where a clashed moving line is 旺 or 相 it says so and quotes 「旺相者沖之不散」; in no case does it call the line weak today and pronounce bad news, and a test pins that — mutating the sentence into 「该爻今日无力，凶」 turns the suite red.
+
+**The exemption that came from elsewhere.** 《易冒·日冲章》 narrows the rule with four characters:
+
+> 如動爻遇日辰相沖，苟非月建，則謂之散。
+
+「苟非月建」 exempts the month's build: a moving line clashed by the **month**, not the day, is not
+冲散 — that case is 月破 and already has its own section. So 冲散 is decided by the day's branch
+alone. A test holds exactly that, and holds it in the form that could fail: across all twelve months
+under one day's branch, the set of 冲散 lines never changes, and a line clashed only by the 月建 never
+appears in it.
+
+**One part of the chapter is not implemented, deliberately.** 「有气者沖之不散」 names a third state
+— 有气 — and the chapter does not say which of the five 旺衰 states it corresponds to. 《四时旺相章》
+has a clause giving the branch clashed by the 月建 the weaker 休 or 囚 and leaving the others with
+their 余气, but it does not say where the 余气 lands. Guessing would be inventing a 通例, so only the
+旺相 and 休囚 halves are read. 爻动 clashing another 爻 is a separate judgement about which of the two
+is stronger and is likewise not attempted.
+
+On the diagram 冲散 is a small 冲散 mark in the same slot as 空 / 破 / 墓 / 暗 / 日破, and it stays
+muted with a tooltip giving the rule — no red, because the chapter's finding is that the line does
+**not** come apart. Inside the 用神 circle the state is a fourth tier, 「动而逢日冲」, sitting beside
+动, 暗动 and 静: earlier the reading only distinguished moving from still, so a 用神 that was itself
+being clashed apart was reported as simply 动. The two sections that mention it — the 用神 circle and
+the 用神 line of the 断语 — now take their wording from one shared helper, so they cannot drift apart.
 
 **六神 — what the day's stem says about the mood**
 
@@ -739,7 +791,7 @@ One reading is a judgement call, and it is flagged rather than hidden: 野鹤's 
 with vitality counts as void. This package takes the **latter**, because 旺不爲空 sits in the very
 same passage and would otherwise have nowhere to apply.
 
-Each line carries a small mark on the diagram — 空, 破, 墓, 暗, 日破 — and the right-hand panel names
+Each line carries a small mark on the diagram — 空, 破, 墓, 暗, 日破, 冲散 — and the right-hand panel names
 the 旬 and the month's broken branch outright.
 
 A line that is 月破 but not 旬空 is 真空 too, on the strength of 「月破爲空」 in the same passage. It
@@ -862,7 +914,7 @@ MCP response carrying the same thing as a field. 旬空, 月破 and 入墓 are c
 the 旬空 歌诀 against the algorithm, both worked examples from the text recovered from their day
 pillars, the twelve months of 月破, the five elements' 墓, the seasonal void, false-void rescue
 and true-void grounds, the emergence path actually reaching 「终不得出」 on void alone, the
-休囚无气 clause, 空 破 墓 暗 日破 reaching the diagram and the right-hand panel, a 月破 line
+休囚无气 clause, 空 破 墓 暗 日破 冲散 reaching the diagram and the right-hand panel, a 月破 line
 counting as 真空 even when it is not 旬空, that sentence no longer telling the reader to wait for a
 clash, and the 逢月破 ground not being said twice once the mark already names it. 六神 is checked on four
 more: the 歌诀 verbatim, all thirty-two cells of the six-row table, both 乾为天 examples, and the rule
@@ -878,17 +930,23 @@ nobody adds the label back thinking it was forgotten. The 元神 / 忌神 / 仇�
 eight more: the book's 金 example reproduced exactly, all five elements following 「余仿此」 with the
 three positions never colliding, the 仇神 proved to 反生忌神 and not 生用神, the circle withheld when
 the 用神 went to the 伏神 or when two candidates stand, each of the three reported with its line, its
-动/暗动/静 and its 旺衰, 「勿以仇神即仇人也」 kept, 回头克 read four ways — 凶 on the 用神, 不作凶论 on a
+动/暗动/静/动而逢日冲 and its 旺衰, 「勿以仇神即仇人也」 kept, 回头克 read four ways — 凶 on the 用神, 不作凶论 on a
 忌神 or 仇神, unjudged on a 元神, and not borrowed when there is no circle — and MCP carrying it.
-暗动 · 日破 is checked on eight more: the chapter's 坤之师 example reproduced line by line and pinned
-as 日破 so the definition and the example cannot drift apart unnoticed, a clashed line dropping out of
-both lists once it is moving (冲散 belongs to another chapter), all sixty-four hexagrams over twelve
-months and twelve days confirming 暗动 and 日破 never share a reading, the 用神 section reporting
-暗动 as its own state rather than folding it into 动 or 静, 元神 暗动 coming out 喜 and 忌神 暗动
+暗动 · 日破 · 冲散 is checked on fifteen more: the chapter's 坤之师 example reproduced line by line and
+pinned as 日破 so the definition and the example cannot drift apart unnoticed, a clashed line dropping out
+of both still-line lists once it is moving, all sixty-four hexagrams over twelve months and twelve days
+confirming no line ever lands in two of the three, 暗动 and 日破 never sharing a reading, the 用神 section
+reporting 暗动 as its own state rather than folding it into 动 or 静, 元神 暗动 coming out 喜 and 忌神 暗动
 coming out 忌, 仇神 and off-circle 暗动 left unjudged, no verdict attached when the 用神 is not
-settled, the 「用神休囚」 premise called out when the 用神 is 旺相, and the diagram plus MCP carrying
-both. 旺衰 is checked against all eight non-seasonal months of 《四时旺相章》 when the module loads,
-so transposing 囚 and 死 throws instead of silently reporting. 145 passing.
+settled, the 「用神休囚」 premise called out when the 用神 is 旺相, the chapter's own 风水涣 to 坎为水
+example reproduced (丑月丁酉, top line 卯木 moving and clashed by 酉), 旺相 and 元神 and 用神 cases each
+placing the 冲散 exactly, the sentence refused the right to pronounce 凶, 冲散 proven independent of the
+month's build the way the test could actually fail, the 用神 section giving 「动而逢日冲」 its own tier
+instead of folding it into 动, and the diagram and MCP both carrying it. The two MCP header tests sweep all
+sixty-four hexagrams rather than pinning one cast, because the tool runs on the real clock and a fixed cast
+would quietly stop exercising the branch it names. 旺衰 is checked against all eight non-seasonal months
+of 《四时旺相章》 when the module loads, so transposing 囚 and 死 throws instead of silently reporting.
+154 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

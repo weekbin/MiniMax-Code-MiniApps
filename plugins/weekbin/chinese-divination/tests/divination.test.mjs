@@ -2501,9 +2501,9 @@ test('MCP 把元忌仇那圈落成字段', async () => {
 
 /* ---------- 暗动与日破（《增删卜易·暗动章第二十二》） ---------- */
 
-/** 断语里「暗动 · 日破」那一段。 */
+/** 断语里「暗动 · 日破 · 冲散」那一段。 */
 const clashText = (reading) => {
-  const item = reading.insights.find((entry) => entry.title === '暗动 · 日破');
+  const item = reading.insights.find((entry) => entry.title === '暗动 · 日破 · 冲散');
   return item ? item.text : '';
 };
 
@@ -2760,33 +2760,55 @@ test('用神段把暗动单列一档，不并进动爻也不并进静爻', () =>
   assert.ok(!/三爻（静，/.test(text), '暗动被并进了静爻');
 });
 
-test('MCP 把暗动与日破落成字段，抬头那一行只在该有的时候出', async () => {
+// MCP 走的是真实时钟（new Date()），换一天就换一组干支，同一组数字出不出暗动、
+// 日破、冲散也跟着变。抬头那一行要是钉死在一组数字上，哪天一换就静悄悄空跑了。
+// 所以扫遍六十四卦，取头一个真出结果的那一卦。
+// 1..8 × 1..8 恰好覆盖六十四卦；实测全年十二个日支里出得最少的那一支也命中 4 组。
+const mcpCast = async (upper, lower) => {
   const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
-  const call = async () => {
-    let raw = '';
-    const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
-    await handleMcpRequest({
-      response,
-      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: { question: '我该不该换工作', method: 'numbers', upper: 7, lower: 7 } } },
-    });
-    return raw;
-  };
-  const raw = await call();
-  const parsed = JSON.parse(raw);
-  const sc = parsed.result.structuredContent;
-  assert.ok(sc.dayClash, 'MCP 没给 dayClash');
-  assert.ok(Array.isArray(sc.dayClash.dark));
-  assert.ok(Array.isArray(sc.dayClash.dayBroken));
-  for (const position of [...sc.dayClash.dark, ...sc.dayClash.dayBroken]) {
+  let raw = '';
+  const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+  await handleMcpRequest({
+    response,
+    body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: { question: '我该不该换工作', method: 'numbers', upper, lower } } },
+  });
+  return JSON.parse(raw);
+};
+
+const scanMcpDayClash = async (wants) => {
+  for (let upper = 1; upper <= 8; upper += 1) {
+    for (let lower = 1; lower <= 8; lower += 1) {
+      const parsed = await mcpCast(upper, lower);
+      const clash = parsed.result.structuredContent.dayClash;
+      if (clash && wants(clash)) {
+        return { clash, header: mcpHeaderLine(parsed.result.content[0].text), text: parsed.result.content[0].text };
+      }
+    }
+  }
+  return null;
+};
+
+const mcpHeaderLine = (text) => text.split('\n').find((line) => line.startsWith('【日冲】')) ?? null;
+
+test('MCP 把暗动与日破落成字段，抬头那一行该出就出、不该出不冒', async () => {
+  const hit = await scanMcpDayClash((clash) => clash.dark.length > 0 || clash.dayBroken.length > 0);
+  assert.ok(hit, '扫遍六十四卦都没撞出暗动或日破——抬头那一行等于没被验过');
+  for (const position of [...hit.clash.dark, ...hit.clash.dayBroken]) {
     assert.ok(position >= 1 && position <= 6, `爻位越界：${position}`);
   }
-  assert.equal(sc.dayClash.dark.filter((p) => sc.dayClash.dayBroken.includes(p)).length, 0,
+  assert.equal(hit.clash.dark.filter((p) => hit.clash.dayBroken.includes(p)).length, 0,
     '暗动与日破落在了同一个爻位上');
-  if (sc.dayClash.dark.length > 0 || sc.dayClash.dayBroken.length > 0) {
-    assert.match(parsed.result.content[0].text, /【日冲静爻】/, '抬头没出日冲静爻那一行');
-  } else {
-    assert.ok(!/【日冲静爻】/.test(parsed.result.content[0].text), '没有暗动日破却出了那一行');
+  assert.ok(hit.header, `该出日冲那一行却没出：${hit.text.split('\n').slice(0, 8).join(' / ')}`);
+  if (hit.clash.dark.length > 0) {
+    assert.ok(hit.header.includes(`暗动${hit.clash.dark.join('、')}爻`), `抬头没点出暗动那一爻：${hit.header}`);
   }
+  if (hit.clash.dayBroken.length > 0) {
+    assert.ok(hit.header.includes(`日破${hit.clash.dayBroken.join('、')}爻`), `抬头没点出日破那一爻：${hit.header}`);
+  }
+  // 反过来也钉住：三路皆空时那一行不许冒出来
+  const quiet = await scanMcpDayClash((c) => c.dark.length === 0 && c.dayBroken.length === 0 && c.pressed.length === 0);
+  assert.ok(quiet, '扫遍六十四卦都没撞上三路皆空的一卦，「不该出」那半边没被验过');
+  assert.equal(quiet.header, null, `一路皆空却出了日冲那一行：${quiet.header}`);
 });
 
 test('月破单独出现也作真空，且不再劝人「等逢冲」', async () => {
@@ -2827,4 +2849,214 @@ test('旬空又逢月破时，理由里既有月破也有季令之空', () => {
   assert.match(text, /旬空又月破/, '两样都逢时该两个名都点');
   assert.ok(!/，且逢月破/.test(text), '「月破」已在标记里，理由里不该再重复');
   assert.match(text, /且[^，。]*令正空/, '漏掉了季令正空那条真空的理由');
+});
+
+/* ---------- 冲散（动散章第二十三） ---------- */
+
+test('动散章原卦例逐环复现：涣之坎，上爻卯木发动，丑月丁酉日', async () => {
+  // 原文：「如丑月丁酉日占父出外一载無音得風水渙變坎卦…卯木父爻發動而生世，
+  //   又化子水回頭生許之，在外平安…此非卯動酉日沖之，何當散也。」
+  // 这一例的价值在于：卯木在丑月落囚（休囚），照直觉该断散，原文偏偏断「在外平安」。
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const H = await import('../miniapp/node/hexagrams.mjs');
+  const A = await import('../miniapp/node/almanac.mjs');
+  const hu = H.hexagramByOrder(59);
+  assert.equal(hu.name, '风水涣');
+  const jf = J.jingfang(hu);
+  const top = jf.lines[5];
+  assert.equal(top.branch, '卯', '上爻该是卯木');
+  assert.equal(top.relative, '父母', '占父亲，父母为用神');
+  assert.equal(top.position, 6);
+  // 二爻(索引5)发动变坎为水
+  const kan = H.hexagramByKey(hu.key.slice(0, 5) + (hu.key[5] === '1' ? '0' : '1'));
+  assert.equal(kan.name, '坎为水', '上爻发动该变出坎为水');
+  // 卯木发动而生世（世在五爻巳火），又化坎上爻子水回头生
+  const shi = jf.lines[jf.shi - 1];
+  assert.equal(jf.shi, 5, '世在五爻');
+  assert.equal(shi.branch, '巳');
+  assert.equal(J.elementRelation(top.element, shi.element), '生', '卯木本生巳火，这就是「發動而生世」');
+  const kf = J.jingfang(kan);
+  assert.equal(J.transformRelation(top, kf.lines[5]).key, '回头生', '化子水回头生');
+  // 丑月丁酉：酉日冲卯，而卯木在丑月落囚
+  const now = new Date(2026, 0, 11, 10, 30);
+  assert.equal(A.BRANCHES[A.monthPillar(2026, 1, 11).branch], '丑', '月建该是丑');
+  assert.equal(A.BRANCHES[A.dayPillar(2026, 1, 11).branch], '酉', '日支该是酉');
+  assert.equal(A.branchClash(A.BRANCHES.indexOf('酉')), top.branchIndex, '酉日所冲正是卯');
+  assert.equal(J.vitality('木', A.BRANCH_ELEMENTS[A.BRANCHES.indexOf('丑')]).key, '囚', '卯木在丑月落囚');
+
+  // 用本包把它起出来：上爻发动 → 冲散；化爻回头生
+  const reading = buildReading(castByCoins([8, 7, 8, 8, 7, 9]),
+    { now, question: '我父亲出外一载无音，何时回' });
+  assert.equal(reading.hexagram.name, '风水涣');
+  assert.equal(reading.changed.name, '坎为水');
+  assert.deepEqual(reading.movingLines.map((line) => line.position), [6]);
+  assert.deepEqual(reading.dayClash.pressed, [6], '上爻动而逢酉日冲，该落冲散');
+  assert.deepEqual(reading.dayClash.dark, [], '没有静爻逢冲，不该出暗动');
+  assert.deepEqual(reading.dayClash.dayBroken, [], '动爻不走日破那一路');
+  assert.equal(reading.transforms[0].relation, '回头生');
+  // 断语照章说话：报出事实，引原书「不散」的结论，不拿它断凶
+  const text = clashText(reading);
+  assert.match(text, /动散章第二十三/);
+  assert.match(text, /上爻木（于月建囚）逢日冲，谓之冲散/);
+  assert.match(text, /休囚者間有沖散，亦千百中之一二/);
+  assert.match(text, /不拿它断凶/);
+  assert.ok(!/福來而不知/.test(text), '没有暗动却搬了驳暗动迟缓的那两句');
+});
+
+test('冲散与暗动、日破三路互斥，同一卦里也不打架', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  let sawPress = 0;
+  for (let order = 1; order <= HEXAGRAM_LIST.length; order += 1) {
+    const jf = J.jingfang(hexagramByOrder(order));
+    for (let month = 0; month < 12; month += 1) {
+      for (let day = 0; day < 12; day += 1) {
+        for (let mask = 1; mask < 64; mask += 1) {
+          const moving = [];
+          for (let k = 0; k < 6; k += 1) if (mask >> k & 1) moving.push(k + 1);
+          const r = J.dayClashReading(jf, { monthBranch: month, dayBranch: day, movingPositions: moving });
+          const all = [...r.dark, ...r.dayBroken, ...r.pressed].map((line) => line.position);
+          assert.equal(new Set(all).size, all.length, `${hexagramByOrder(order).name} 同一爻落进两路去了`);
+          if (r.pressed.length > 0) {
+            sawPress += 1;
+            const movingSet = new Set(moving);
+            for (const line of r.pressed) {
+              assert.ok(movingSet.has(line.position), '冲散只该收动爻');
+            }
+          }
+          // 冲散与暗动/日破可以同卦并存（不同爻），但三路绝不同落一爻
+          assert.ok(r.dark.length === 0 || r.dayBroken.length === 0,
+            '暗动与日破同落一卦，说明那支纳支的两爻五行竟然不同');
+        }
+      }
+    }
+  }
+  assert.ok(sawPress > 1000, `只验到 ${sawPress} 次冲散，样本文档没铺开`);
+});
+
+test('冲散只由日辰决定，月建一分不参与——《易冒》「苟非月建」那条豁免', async () => {
+  // 《易冒·日冲章》：「如動爻遇日辰相沖，苟非月建，則謂之散」——「苟非月建」四字
+  // 就是豁免：只有月建冲的动爻不作冲散，它走的是月破那一路。
+  // 所以判据不是「这一卦有没有月破」，而是**冲散这个结果与 monthBranch 无关**：
+  // 同一个日辰下，把月建从子换到亥，冲散那几爻一个都不许变。
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const A = await import('../miniapp/node/almanac.mjs');
+  const picked = (r) => [...r.pressed].map((line) => line.position).sort();
+  let compared = 0;
+  let sawMonthOnly = 0;
+  for (let order = 1; order <= HEXAGRAM_LIST.length && compared < 400; order += 1) {
+    const jf = J.jingfang(hexagramByOrder(order));
+    for (const mask of [0b111111, 0b010101, 0b101010, 0b001010]) {
+      const moving = [];
+      for (let k = 0; k < 6; k += 1) if (mask >> k & 1) moving.push(k + 1);
+      for (let day = 0; day < 12 && compared < 400; day += 1) {
+        const results = [];
+        for (let month = 0; month < 12; month += 1) {
+          const r = J.dayClashReading(jf, { monthBranch: month, dayBranch: day, movingPositions: moving });
+          results.push(JSON.stringify(picked(r)));
+          // 顺带验一条：只有月建冲、而日辰不冲的动爻，既不进冲散，也落月破
+          if (A.branchClash(month) !== day) {
+            for (const line of jf.lines) {
+              if (!moving.includes(line.position)) continue;
+              if (line.branchIndex === A.branchClash(month) && line.branchIndex !== A.branchClash(day)) {
+                sawMonthOnly += 1;
+                assert.ok(!r.pressed.some((one) => one.position === line.position),
+                  `${line.label}只被月建冲到，不该算日辰冲散`);
+                assert.ok(r.pressed.every((one) => one.position !== line.position));
+              }
+            }
+          }
+        }
+        assert.equal(new Set(results).size, 1,
+          `${hexagramByOrder(order).name} 日辰${A.BRANCHES[day]}不动、月建却改变了冲散的结果`);
+        compared += 1;
+      }
+    }
+  }
+  assert.ok(compared >= 300, `只比了 ${compared} 组，样本太薄`);
+  assert.ok(sawMonthOnly > 0, '一例「只逢月建冲的动爻」都没取到，那半条豁免等于没验');
+});
+
+test('用神段把「动而逢日冲」单列一档，不并进动爻也不并进暗动', () => {
+  // 乾为天六爻纳甲子寅辰午申戌，四爻午火被日冲且正在发动，而四爻正是用神
+  const reading = buildReading(castByCoins([7, 9, 7, 9, 7, 9]),
+    { now: new Date(2026, 0, 2, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(reading.dayClash.pressed, [4], '这一例本该四爻冲散，用例选错了');
+  const god = reading.useGod.picked;
+  assert.equal(god.position, 4, '用神该正是那一爻');
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  // 用神自己那一爻的动静与元神忌神仇神同一口径，都是四档。
+  // 早先这里只有动静两档，于是用神自己冲散了也只写「（动）」，看不出来。
+  assert.ok(new RegExp(`${god.label}（动而逢日冲）`).test(text),
+    `用神段没把用神自己报成动而逢日冲：${text}`);
+  assert.ok(!new RegExp(`${god.label}（动）`).test(text), '动而逢日冲被并进了动爻');
+  assert.ok(!new RegExp(`${god.label}（暗动）`).test(text), '动而逢日冲被并进了暗动');
+  assert.ok(!new RegExp(`${god.label}（静）`).test(text), '动而逢日冲被并进了静爻');
+  // 静爻仍照旧不标档，免得满屏都是「（静）」
+  const still = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, 0, 6, 10, 30), question: '我该不该换工作' });
+  const stext = still.insights.find((item) => item.title === '用神').text;
+  assert.ok(!/（静）/.test(stext), `静爻不该挂一个「（静）」：${stext}`);
+});
+
+test('元神冲散时，用神段点名元神那一行', () => {
+  // 二爻寅木被日冲且在动，对用神水而言正是元神
+  const reading = buildReading(castByCoins([7, 9, 7, 9, 7, 9]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(reading.dayClash.pressed, [2]);
+  assert.deepEqual(reading.useGod.circle.yuan, [2], '二爻正是元神那一行');
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  assert.ok(/二爻（动而逢日冲，于月建[旺相休囚死]）/.test(text), `用神段没把二爻报成动而逢日冲：${text}`);
+  assert.ok(!/二爻（动，/.test(text), '二爻被并进了动爻那一档');
+});
+
+test('暗动与冲散可以同卦并存，各说各的', () => {
+  // 水雷屯初爻与上爻同纳子水，上爻发动；午日冲子。
+  // 静的那一爻旺相作暗动，动的那一爻作冲散——同一天、同一个支，两路各归各。
+  const reading = buildReading(castByCoins([7, 8, 8, 8, 7, 6]),
+    { now: new Date(2026, 7, 12, 10, 30), question: '我该不该换工作' });
+  assert.equal(reading.hexagram.name, '水雷屯');
+  assert.deepEqual(reading.movingLines.map((line) => line.position), [6]);
+  assert.deepEqual(reading.dayClash.dark, [1], '初爻静而逢冲，当作暗动');
+  assert.deepEqual(reading.dayClash.pressed, [6], '上爻动而逢冲，当作冲散');
+  assert.deepEqual(reading.dayClash.dayBroken, [], '两爻都旺相，不该出日破');
+  const text = clashText(reading);
+  assert.match(text, /暗动章第二十二/, '暗动那一路该引暗动章');
+  assert.match(text, /动散章第二十三|谓之冲散/, '冲散那一路该引动散章');
+  assert.ok(text.indexOf('暗动') < text.indexOf('谓之冲散'), '暗动在前、冲散在后');
+});
+
+test('旺相的动爻冲散，原书直言冲之不散', () => {
+  const reading = buildReading(castByCoins([7, 9, 7, 9, 7, 9]),
+    { now: new Date(2026, 0, 6, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(reading.dayClash.pressed, [6]);
+  assert.match(clashText(reading), /于月建旺相，原书直言「旺相者沖之不散」/);
+});
+
+test('卦体把冲散标在动爻上，且不拿朱砂替它表态', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function guaLines(');
+  const body = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(/st\.pressed \? '冲散'/.test(body), '卦体没标冲散');
+  // 冲散不上朱砂：动散章整章的结论是「冲之不散」，染红等于替它断凶。
+  // 钉在造 span 那一句上——只查 CSS 的话，.st.po 与 .st 两条规则一个字都不会动。
+  const span = body.slice(body.indexOf('.map((word) =>'), body.indexOf(".join('');"));
+  assert.ok(!span.includes("word === '冲散' ? ' po'"), '冲散不该进朱砂名单');
+  assert.ok(span.includes('冲散'), '冲散那个 span 得留着');
+});
+
+test('MCP 把冲散落进 dayClash，抬头那一行改叫【日冲】并点出冲散', async () => {
+  // 冲散是动散章那一路，只在动爻逢日冲时出。抬头里它得自己占一段，
+  // 不能只靠「三路有任一路非空就出一行」蒙混过去——那一行在、却没写冲散，是另一种错。
+  const hit = await scanMcpDayClash((clash) => clash.pressed.length > 0);
+  assert.ok(hit, '扫遍六十四卦都没撞出冲散——抬头上那一段等于没被验过');
+  const { clash, header, text } = hit;
+  for (const position of clash.pressed) {
+    assert.ok(position >= 1 && position <= 6, `冲散爻位越界：${position}`);
+  }
+  const all = [...clash.dark, ...clash.dayBroken, ...clash.pressed];
+  assert.equal(new Set(all).size, all.length, '三路落到了同一个爻位上');
+  assert.ok(header, '抬头上没有日冲那一行');
+  assert.ok(header.includes(`冲散${clash.pressed.join('、')}爻`),
+    `抬头没点出冲散那一爻：抬头作「${header}」，而 dayClash.pressed 作 [${clash.pressed}]`);
+  assert.match(text, /谓之冲散/, '正文里没有冲散那一段');
 });

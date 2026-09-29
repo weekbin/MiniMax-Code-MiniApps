@@ -747,37 +747,52 @@ export function vitality(element, monthElement) {
 }
 
 /**
- * 暗动与日破：被日辰冲到的静爻，分旺衰两路。
+ * 日辰冲爻，分三路。出处两份，都是逐字引的。
  *
- * 出处为《增删卜易》卷一·暗动章第二十二，一句话把两路都定了：
+ * **静爻那一头是《增删卜易》卷一·暗动章第二十二**：
  *   「靜爻旺相日辰沖之爲暗動，靜爻休囚日辰沖之爲破。」
  * 章节号以卷一目录为准作**第二十二**；传本正文在「增删卜易/22」一页题下亦作
  * 「暗動章第二十二」。另有二手站把这章标作「025章」，是按全书篇序排的号，
  * 与卷内章次不同，本包不从。
  *
- * 旺衰只有旺相休囚死五档，旺相归暗动、休囚归日破，两路互斥且穷尽——
- * 所以这里不设第三种情形，也不留「无从判」的兜底。
+ * **动爻那一头是同卷紧接的《动散章第二十三》**：
+ *   「占以日辰而沖動爻，謂之沖散，又以爻動沖爻，亦能沖散，予屢試之，
+ *     旺相者沖之不散，有气者沖之不散，休囚者間有沖散，亦千百中之一二也，
+ *     其故何也？神兆機於動，動必有因。𨿽則今日受制，後逢值日而不散也。」
+ * 传本有把这段接在暗动章末的，本包仍按目录作独立的第二十三章。
  *
- * 三处取舍照实交代：
+ * 一句话分三路：日辰只冲一支，被冲到的那几爻里，静爻按旺衰分暗动与日破，
+ * 动爻一律记为冲散。三路互斥，结构上就不会同时出现。
  *
- * 一、**动静只看真动爻**。被日辰冲的若本身发动，那是动爻逢冲，《易冒》另名「冲散」，
- *    《增删卜易》归在动散章第二十三，不属本章，本包不并进来。
+ * 四处取舍照实交代：
  *
- * 二、**判定严格照原章，不放宽**。后世与野鹤自己的卦例常把「得动爻生扶」的休囚静爻
- *    也叫暗动——暗动章末尾那个「坤之师」卦例就是如此：未日冲动丑土，寅月土本囚，
- *    按章中定义该作日破，原文却拿它来生金救用神。本包取**章中定义**那一路，
- *    因为它是这一章自己写下的判语；把卦例的宽法补进定义，是拿个例改通例。
- *    差在哪里说在 README，不装作没有。
+ * 一、**动散只管「报」，不断「散」**。这一章的结论恰恰是**不散**：旺相者冲之不散，
+ *    休囚者也说散是「千百中之一二」——野鹤说他屡试都碰不上几回，末了归到
+ *    「神兆機於動，動必有因」。所以本包只把「哪一爻动而逢日冲」这件事实报出来，
+ *    连带把这句话一起引，不拿它断凶。暗动章那半句「占以暗動福來而不知，禍來而不覺」
+ *    是说静爻的，不挪来套在动爻上。
  *
- * 三、**不并入旬空章的「有日建動爻生扶者不爲空」**。那一路指望日辰生扶本爻，
- *    而日辰所冲之支与本爻只可能是同行或相克——六冲六对里丑未、辰戌同为土不生不克，
- *    子午、寅申、卯酉、巳亥四对都是日辰克本爻，没有一对是日辰生本爻。下方加载时
- *    把这一条钉死：若将来改了六冲表，这里先炸。暗动必旺相，旺相又已被旬空章的
- *    「旺不爲空」收走，所以暗动与旬空那半边天然不冲突，也就不必去动 voidReading。
+ * 二、**「有气者冲之不散」那半句没做**。「有气」在《四时旺相章》里是四季土月的余气
+ *    一档，与旺相不同档；原书没有说它落到旺衰哪一档，照搬要靠猜。旺相与休囚两路
+ *    分尽已够，此处只按旺相休囚死五档判，取舍已写进 README。
+ *
+ * 三、**月建冲动爻不作冲散**，这一条是明文。同卷日辰章驳别家时写：
+ *    「他書有云，爻逢月建日沖而不散，是明知當令，不畏日沖」——《易冒·日冲章》说
+ *    「如動爻遇日辰相沖，苟非月建，則謂之散」，「苟非月建」四字就是豁免。
+ *    所以本包只取日辰这一路冲散，月建那一路只留给既有的月破。
+ *
+ * 四、**「又以爻動沖爻」那半句没做**。他爻发动来冲要看两爻谁强谁弱
+ *    （《易冒》作「若彼強我弱皆散」），强弱不在本包现有口径里，硬判就是自造一档。
+ *    只取日辰冲这一路。
+ *
+ * 另有一处结构事实顺带钉住：日辰所冲之支与被冲之爻只可能同行或相克，六冲六对里
+ * 丑未、辰戌同为土不生不克，子午、寅申、卯酉、巳亥四对都是日辰克本爻，没有一对
+ * 是日辰生本爻。所以「得日辰生扶」这一路救不了被冲的爻——旬空章那半个救应
+ * 对暗动与冲散天然不适用。下方加载时把这一条钉死。
  *
  * @param {Jingfang} jingfang
  * @param {{ monthBranch: number, dayBranch: number, movingPositions: number[] }} calendar
- * @returns {{ dark: JingfangLine[], dayBroken: JingfangLine[] }}
+ * @returns {{ dark: JingfangLine[], dayBroken: JingfangLine[], pressed: JingfangLine[] }}
  */
 export function dayClashReading(jingfang, calendar) {
   const monthElement = ELEMENT_BY_BRANCH[calendar.monthBranch];
@@ -785,13 +800,22 @@ export function dayClashReading(jingfang, calendar) {
   const clashed = branchClash(calendar.dayBranch);
   const dark = [];
   const dayBroken = [];
+  const pressed = [];
   for (const line of jingfang.lines) {
-    if (moving.has(line.position)) continue;
     if (line.branchIndex !== clashed) continue;
+    // 动爻逢日冲走冲散那一路，与静爻的两路互斥，所以下面那个 continue 挪到了这里。
+    if (moving.has(line.position)) {
+      pressed.push(line);
+      continue;
+    }
     const tone = vitality(line.element, monthElement).tone;
     (tone === 'strong' || tone === 'good' ? dark : dayBroken).push(line);
   }
-  return Object.freeze({ dark: Object.freeze(dark), dayBroken: Object.freeze(dayBroken) });
+  return Object.freeze({
+    dark: Object.freeze(dark),
+    dayBroken: Object.freeze(dayBroken),
+    pressed: Object.freeze(pressed),
+  });
 }
 
 // 日辰所冲之支永不可能生被冲的那一爻。上面第三条取舍整个建立在这句上，所以在这里钉死。

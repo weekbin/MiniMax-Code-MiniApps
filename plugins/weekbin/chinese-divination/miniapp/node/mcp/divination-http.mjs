@@ -143,15 +143,16 @@ function readingToText(reading) {
         ? `；动爻去向 ${reading.transforms.map((t) => `${t.label}${t.relation}${t.jinTui ? `·${t.jinTui}` : ''}`).join('、')}`
         : '')
     : '【变卦】六爻皆静，无变卦';
-  // 静爻被日辰冲出来的暗动与日破，与世应并排放在抬头上：这两样都是「今天才有的处境」，
-  // 模型复述卦象时最常追问「有没有暗中动起来的爻」。两者皆空时不出这一行，不占版面。
+  // 日辰冲爻的三路，与世应并排放在抬头上：这三样都是「今天才有的处境」，
+  // 模型复述卦象时最常追问「有没有被日辰冲到、又动了的爻」。三路皆空时不出这一行。
   const dayClashLine = (() => {
     const clash = reading.dayClash;
     if (!clash) return null;
     const bits = [];
     if (clash.dark.length > 0) bits.push(`暗动${clash.dark.join('、')}爻`);
     if (clash.dayBroken.length > 0) bits.push(`日破${clash.dayBroken.join('、')}爻`);
-    return bits.length === 0 ? null : `【日冲静爻】${bits.join('，')}`;
+    if (clash.pressed.length > 0) bits.push(`冲散${clash.pressed.join('、')}爻`);
+    return bits.length === 0 ? null : `【日冲】${bits.join('，')}`;
   })();
   return [
     `【起法】${reading.method}`,
@@ -248,11 +249,14 @@ function callTool(name, args) {
           jinTui: t.jinTui,
           marks: t.marks,
         })),
-        // 静爻被日辰冲出来的两种：旺相的作暗动，休囚的作日破。断语里已讲过一遍，
-        // Agent 要复述「今天有没有暗中动起来的爻」时不必再从正文里刨。
-        // 爻位数组，与 states 里的逐爻标记对得上；两者恒不相交。
+        // 日辰冲到的爻分三路：静爻旺相作暗动、静爻休囚作日破、动爻作冲散。断语里已讲过一遍，
+        // Agent 要复述「今天有哪些爻被日辰冲到」时不必再从正文里刨。三个爻位数组互不相交。
         dayClash: reading.dayClash
-          ? { dark: reading.dayClash.dark, dayBroken: reading.dayClash.dayBroken }
+          ? {
+              dark: reading.dayClash.dark,
+              dayBroken: reading.dayClash.dayBroken,
+              pressed: reading.dayClash.pressed,
+            }
           : null,
         timing: reading.timing,
         disclaimer: DISCLAIMER,
