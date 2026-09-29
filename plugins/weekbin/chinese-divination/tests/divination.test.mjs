@@ -1218,3 +1218,63 @@ test('推导图的四卦，取法本身经得起核', () => {
     }
   }
 });
+
+test('查卦默认省去彖传，要原文时显式要', async () => {
+  // 目标里写着「上手成本低」。连查八卦带彖传近五百字，多半用不上，却把要紧的
+  // 话埋在中间。默认给 brief，要原文再传 detail="full"——不是砍内容，是排序。
+  const mcp = await readFile(new URL('../miniapp/node/mcp/divination-http.mjs', import.meta.url), 'utf8');
+
+  // 档位得在工具描述里讲清楚，Agent 才知道什么时候要 full
+  assert.ok(
+    /enum: \['brief', 'full'\], default: 'brief'/.test(mcp),
+    'detail 档位没有在 inputSchema 里声明',
+  );
+  assert.ok(
+    /detail="full"/.test(mcp) && /彖传原文时传/.test(mcp),
+    '工具描述没有告诉 Agent 什么时候该要彖传',
+  );
+  // brief 档下彖传整条不能出现，full 档下必须出现
+  assert.ok(
+    /detail === 'full' \? `彖传：\$\{item\.tuan\}` : null/.test(mcp),
+    '彖传没有跟着 detail 档位走',
+  );
+  // 省下的量要真的省：brief 得比 full 短出四成以上，否则这档白设
+  const tuanTotal = HEXAGRAM_LIST.slice(0, 8).reduce((sum, item) => sum + item.tuan.length, 0);
+  const briefTotal = HEXAGRAM_LIST.slice(0, 8)
+    .reduce((sum, item) => sum + item.judgment.length + item.image.length, 0);
+  assert.ok(
+    briefTotal < tuanTotal * 0.6,
+    `brief 只省了 ${Math.round((1 - briefTotal / tuanTotal) * 100)}%，不够抵一次参数传递`,
+  );
+
+  // 上面全是读源码——把默认档翻成 full 时照样全绿。这一条真跑一次端到端，
+  // 确认不传参数时确实走 brief。
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  const ask = async (args) => {
+    let raw = '';
+    const response = {
+      writeHead() { return this; },
+      end(chunk) { raw += chunk; return this; },
+    };
+    await handleMcpRequest({
+      response,
+      body: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'divination_hexagram_lookup', arguments: args },
+      },
+    });
+    return JSON.parse(raw).result;
+  };
+
+  const byDefault = await ask({ query: '谦' });
+  const byFull = await ask({ query: '谦', detail: 'full' });
+  const shortText = byDefault.content[0].text;
+  const longText = byFull.content[0].text;
+  assert.equal(byDefault.structuredContent.detail, 'brief', '不传 detail 时不是 brief 档');
+  assert.equal(byFull.structuredContent.detail, 'full', '传 detail="full" 没生效');
+  assert.ok(!shortText.includes('彖传：'), 'brief 档里仍带着彖传原文');
+  assert.ok(longText.includes('彖传：'), 'full 档里没有彖传原文');
+  assert.ok(shortText.length < longText.length, 'brief 档没有比 full 档短');
+});

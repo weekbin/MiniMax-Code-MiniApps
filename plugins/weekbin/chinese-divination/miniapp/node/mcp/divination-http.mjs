@@ -72,12 +72,13 @@ const TOOLS = Object.freeze([
   tool(
     'divination_hexagram_lookup',
     '查六十四卦',
-    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、彖传、象辞与互错综三卦。用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。',
+    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、象辞与互错综三卦，用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。默认只给这些：卦辞与象辞说得出这卦是什么，三卦说得出它连着什么。真要看彖传原文时传 detail="full"，那部分动辄六十字，连查几卦就淹掉了要紧的话。',
     {
       type: 'object',
       properties: {
         query: { type: 'string', maxLength: 40, description: '卦名、上下卦名或关键字，如「乾」「雷」「风」「水天」。省略则返回六十四卦全表。' },
         limit: { type: 'integer', minimum: 1, maximum: 64, default: 8, description: '返回条数上限。' },
+        detail: { type: 'string', enum: ['brief', 'full'], default: 'brief', description: 'brief 给出卦辞、象辞与三卦；full 额外附上彖传原文。' },
       },
       additionalProperties: false,
     },
@@ -186,6 +187,10 @@ function callTool(name, args) {
     const query = clampText(args.query, 40);
     const requested = Number.isInteger(args.limit) ? /** @type {number} */ (args.limit) : 8;
     const limit = Math.min(Math.max(requested, 1), 64);
+    // detail 默认 brief：卦辞与象辞说得出这卦是什么，三卦说得出它连着什么，够回答
+    // 「谦卦什么意思」这类问题。彖传动辄六十字，连查八卦就是近五百字，多半用不上，
+    // 却把要紧的话埋在中间。要看原文时显式传 detail="full"。
+    const detail = args.detail === 'full' ? 'full' : 'brief';
     const hits = query
       ? HEXAGRAM_LIST.filter(
           (item) =>
@@ -204,10 +209,12 @@ function callTool(name, args) {
         [
           `【${item.name}】第 ${item.order} 卦，${hexagramSymbol(item.key)}，上${item.upperTrigram.name}下${item.lowerTrigram.name}`,
           `卦辞：${item.judgment}`,
-          `彖传：${item.tuan}`,
+          detail === 'full' ? `彖传：${item.tuan}` : null,
           `象辞：${item.image}`,
           `互卦 ${mutualHexagram(item).name}，错卦 ${oppositeHexagram(item).name}，综卦 ${invertedHexagram(item).name}`,
-        ].join('\n'),
+        ]
+          .filter(Boolean)
+          .join('\n'),
       )
       .join('\n\n');
     return {
@@ -216,10 +223,12 @@ function callTool(name, args) {
           type: 'text',
           text: picked.length === 0
             ? `没有匹配「${query}」的卦。`
-            : `${query ? `匹配「${query}」的卦共 ${hits.length} 个，` : ''}如下：\n\n${text}\n\n${DISCLAIMER}`,
+            : `${query ? `匹配「${query}」的卦共 ${hits.length} 个，` : ''}如下：\n\n${text}` +
+              `${detail === 'brief' ? '\n\n（以上省去了彖传原文；需要时传 detail="full" 补上。）' : ''}` +
+              `\n\n${DISCLAIMER}`,
         },
       ],
-      structuredContent: { count: hits.length, hexagrams: picked.map((item) => ({ name: item.name, order: item.order })) },
+      structuredContent: { count: hits.length, detail, hexagrams: picked.map((item) => ({ name: item.name, order: item.order })) },
     };
   }
 

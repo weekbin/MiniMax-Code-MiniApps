@@ -162,9 +162,14 @@ for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdic
 | --- | --- | --- |
 | `query` | string, ≤40 chars | hexagram name, trigram name, or keyword. Omit for the full table |
 | `limit` | integer 1–64, default 8 | how many to return |
+| `detail` | `brief` / `full`, default `brief` | `brief` omits the 彖传 text (≈45% shorter), `full` includes it |
 
 **This tool never casts a hexagram for you.** Ask "what does 谦 mean" and you get 谦's texts — not
 an unrelated new reading.
+
+The default is 卦辞 and 象辞 only. A lookup is usually a "what does this mean" question, and the
+彖传 (about 61 characters per hexagram) is the layer of principle the Agent rarely needs, so it is
+left out by default with a note at the end. Pass `detail: full` when you want it.
 
 ```text
 匹配「谦」的卦共 1 个，如下：
@@ -173,6 +178,8 @@ an unrelated new reading.
 卦辞：亨，君子有终。
 象辞：地中有山，谦；君子以裒多益寡，称物平施。
 互卦 雷水解，错卦 天泽履，综卦 雷地豫
+
+（以上省去了彖传原文；需要时传 detail="full" 补上。）
 ```
 
 **`divination_almanac` — today's almanac**
@@ -471,7 +478,8 @@ to "打开灵签易占".
   cadence, the element-to-topic matching, and store round-trips. The classic texts are covered
   entry by entry: all 384 爻辞 are checked against the hexagram diagrams, all 384 小象传 against
   their 爻题, and all 64 彖传 against the hexagram table. The twelve 辟卦 are checked against
-  both the month branches and the hexagram table, and the four derivations against their own rules, and the casting timing against the typing budget. 81 passing.
+  both the month branches and the hexagram table, and the four derivations against their own rules, and the casting timing against the typing budget, and the lookup default plus its explicit full-text
+return. 82 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
