@@ -135,12 +135,20 @@ function readingToText(reading) {
   const shiLine = jf.lines[jf.shi - 1];
   const yingLine = jf.lines[jf.ying - 1];
   const jingfangLine = `${jf.palaceName}${jf.stage}卦，属${jf.element}；世爻${shiLine.label}持${shiLine.relative}，应爻${yingLine.label}为${yingLine.relative}`;
+  // 动爻的去向挂在【变卦】这一行：Agent 复述「变到哪里、往哪儿去」时看这一行就够，
+  // 回头生克与进退神的来历在【断语】的「化爻」一段里。
+  const changedLine = reading.changed
+    ? `【变卦】${reading.changed.name}（上卦 ${reading.changed.upper.name}、下卦 ${reading.changed.lower.name}）`
+      + (reading.transforms && reading.transforms.length > 0
+        ? `；动爻去向 ${reading.transforms.map((t) => `${t.label}${t.relation}${t.jinTui ? `·${t.jinTui}` : ''}`).join('、')}`
+        : '')
+    : '【变卦】六爻皆静，无变卦';
   return [
     `【起法】${reading.method}`,
     reading.question ? `【所问】${reading.question}` : '【所问】未填',
     topic,
     `【卦名】${reading.hexagram.name}（第 ${reading.hexagram.order} 卦，${reading.hexagram.symbol}），上卦 ${reading.hexagram.upper.name}${reading.hexagram.upper.element}、下卦 ${reading.hexagram.lower.name}${reading.hexagram.lower.element}`,
-    reading.changed ? `【变卦】${reading.changed.name}（上卦 ${reading.changed.upper.name}、下卦 ${reading.changed.lower.name}）` : '【变卦】六爻皆静，无变卦',
+    changedLine,
     `【爻象】${lines}`,
     `【体用】体卦 ${reading.structure.body.name}${reading.structure.body.element}，用卦 ${reading.structure.use.name}${reading.structure.use.element}`,
     `【京房】${jingfangLine}`,
@@ -206,6 +214,19 @@ function callTool(name, args) {
               })),
             }
           : null,
+        // 每一动爻变出来的那一爻：回头生克与进退神。断语里已经讲过一遍，
+        // Agent 要复述「这一爻往哪儿去」时不必再从正文里刨。
+        transforms: (reading.transforms || []).map((t) => ({
+          position: t.position,
+          label: t.label,
+          moving: t.moving,
+          movingRelative: t.movingRelative,
+          changed: t.changed,
+          changedRelative: t.changedRelative,
+          relation: t.relation,
+          jinTui: t.jinTui,
+          marks: t.marks,
+        })),
         timing: reading.timing,
         disclaimer: DISCLAIMER,
       },

@@ -48,6 +48,9 @@ function overcomesTo(from, to) {
   return OVERCOMES[from] === to;
 }
 
+/** 五行全序，定义校验表用它遍历，不另写一份。 */
+const ELEMENTS = Object.freeze(['木', '火', '土', '金', '水']);
+
 /**
  * 六神起例，《卜筮全书·卷之一·启蒙节要·起六神决》原文：
  *   「甲乙起青龍，丙丁起朱雀，戊日起勾陳，己日起螣蛇，庚辛起白虎，壬癸起玄武。（俱從下起至上。）」
@@ -428,7 +431,152 @@ export function elementRelation(from, to) {
 }
 
 /**
- * 旬空、月破、墓绝，落到一爻上是什么情形；旬空再分真假。
+ * 变出之爻：动爻动了以后变出来的那一爻，讲的是这一爻「往哪儿去」。
+ *
+ * 回头生与回头克的定名，各有一条可核的原话，两句都只看一个方向——**变爻对本爻**：
+ *   回头生——「巽木变坎水，谓之化生，水回头以生木也，即以吉断。」
+ *   回头克——「震木变乾金，谓之化克，金回头以克木也，即以凶推。」
+ * 变爻生本爻是回头生，变爻克本爻是回头克，就这么一条线，两个方向。
+ *
+ * 《卜筮正宗·十八问答第二问》更进一步，把回头克的五种情形逐个点出来：
+ *   「土爻動而變木、木爻動而變金、金爻動而變火、火爻動而變水、水爻動而變土，
+ *     此是爻之回頭剋也」
+ * 正好是「变爻克本爻」在五行上的全部五个组合，一个不多一个不少。本包拿它当回头克的
+ * 定义校验表：HUI_TOU_KE_PAIRS 逐对与 overcomesTo 对撞，少一对多一对都在加载时抛。
+ * 同章还有一句要紧的——「凡遇回頭剋者,徹底剋盡,原用二神遇之則凶,忌仇二神遇之反吉也」：
+ * 回头克是「彻底克尽」，凶不凶还要看它落在哪一亲身上，所以断语里把这半句一并带出。
+ *
+ * 反过来的两个方向书上另有名：变爻生本爻为回头生，本爻生变爻为化泄（气泄给变爻），
+ * 本爻克变爻为化耗（自出力气还要克下），同行者为化比和。这三个本包**只作事实陈述，
+ * 不配吉凶调子**——《增删卜易》只对回头生、回头克明说了吉凶，其余三个没有原话可依，
+ * 硬配就成了编。吉凶那一半仍旧只看回头生与回头克两个字。
+ */
+
+/** 回头克的五个五行组合，出自《卜筮正宗·十八问答第二问》，用来校验定义而非枚举。 */
+export const HUI_TOU_KE_PAIRS = Object.freeze([
+  Object.freeze(['土', '木']),
+  Object.freeze(['木', '金']),
+  Object.freeze(['金', '火']),
+  Object.freeze(['火', '水']),
+  Object.freeze(['水', '土']),
+]);
+
+// 定义校验：表里每一对都得真的是「变爻克本爻」。反过来，五行上的克关系一共就这五对，
+// 这里逐一确认表是全的——将来谁动了 OVERCOMES 而忘了回头克，这里先炸。
+for (const [moving, changed] of HUI_TOU_KE_PAIRS) {
+  if (!overcomesTo(changed, moving)) {
+    throw new Error(`回头克校验不过：书上说${moving}爻动变${changed}是回头克，而${changed}并不克${moving}`);
+  }
+}
+for (const moving of ELEMENTS) {
+  for (const changed of ELEMENTS) {
+    if (overcomesTo(changed, moving) && !HUI_TOU_KE_PAIRS.some(([m, c]) => m === moving && c === changed)) {
+      throw new Error(`回头克校验不过：${moving}爻动变${changed}属于变爻克本爻，歌诀表里却没有这一对`);
+    }
+  }
+}
+
+/**
+ * 动爻与变爻之间的五行关系，即变爻对本爻是回头生、回头克，还是另外三种不配吉凶的。
+ * @param {{ element: string }} moving 本卦动爻
+ * @param {{ element: string }} changed 变卦同位那一爻
+ * @returns {{ key: string, good: boolean|null, text: string }}
+ */
+export function transformRelation(moving, changed) {
+  const from = moving.element;
+  const to = changed.element;
+  if (from === to) {
+    return { key: '化比和', good: null, text: '变爻与本爻同气，是化比和：力量不相增减，事情维持原有格局，不进不退。' };
+  }
+  if (generatesTo(to, from)) {
+    return { key: '回头生', good: true, text: '变爻回头以生本爻，作吉断：动爻往变爻那一头去，反倒得了生扶，越往后越有转机。' };
+  }
+  if (overcomesTo(to, from)) {
+    return {
+      key: '回头克',
+      good: false,
+      text: '变爻回头以克本爻，作凶推。《卜筮正宗》说它「彻底克尽」，落在用神身上则凶，落在忌神仇神身上反吉。',
+    };
+  }
+  if (generatesTo(from, to)) {
+    return { key: '化泄', good: null, text: '本爻生变爻，是化泄：动爻的力量一路泄进变爻，付出在前，收成在后。' };
+  }
+  return { key: '化耗', good: null, text: '本爻克变爻，是化耗：动爻既出了力又去克下，两头耗着，得来不易。' };
+}
+
+/**
+ * 进退神，《增删卜易·进退神章第二十九》歌诀原文：
+ *   「进神：亥化子，寅化卯，巳化午，申化酉，丑化辰，辰化未，未化戌，戍化丑。
+ *     退神：子化亥，卯化寅，午化巳，酉化申，辰化丑，未化辰，戍化未，丑化戍。」
+ *
+ * 底本此处「戍」即「戌」，同一个字的异体；歌诀照录底本，算的时候一律按十二支正字写「戌」。
+ * 十六对两两互为反面，且每一对本支同行：水水、木木、火火、金金各一对，剩下四对都在土上
+ * ——丑→辰→未→戌→丑这一圈上前后各走一步。土占四对不是笔误，是这一行本来就密。
+ *
+ * 这是固定映射不是形状推导，所以直接查表；表本身在模块加载时逐对核两件事——同行、反向互为
+ * 反面，数量也得是十六对。任一条不合就在这里抛，不留一个能算错的表。
+ */
+export const JIN_TUI_SONG = '进神：亥化子，寅化卯，巳化午，申化酉，丑化辰，辰化未，未化戌，戍化丑。退神：子化亥，卯化寅，午化巳，酉化申，辰化丑，未化辰，戍化未，丑化戍。';
+
+const JIN_TUI = Object.freeze({
+  '亥子': '进神', '子亥': '退神',
+  '寅卯': '进神', '卯寅': '退神',
+  '巳午': '进神', '午巳': '退神',
+  '申酉': '进神', '酉申': '退神',
+  '丑辰': '进神', '辰丑': '退神',
+  '辰未': '进神', '未辰': '退神',
+  '未戌': '进神', '戌未': '退神',
+  '戌丑': '进神', '丑戌': '退神',
+});
+
+for (const [pair, key] of Object.entries(JIN_TUI)) {
+  const from = pair[0];
+  const to = pair[1];
+  if (BRANCH_ELEMENTS[from] !== BRANCH_ELEMENTS[to]) {
+    throw new Error(`进退神校验不过：歌诀说${from}化${to}，而两支不同行`);
+  }
+  const back = JIN_TUI[`${to}${from}`];
+  if (back !== (key === '进神' ? '退神' : '进神')) {
+    throw new Error(`进退神校验不过：${from}化${to}为${key}，反方向${to}化${from}却是${back ?? '无'}`);
+  }
+}
+if (Object.keys(JIN_TUI).length !== 16) {
+  throw new Error(`进退神只列了 ${Object.keys(JIN_TUI).length} 对，歌诀两首各八字，应为 16 对`);
+}
+
+/**
+ * 变爻相对本爻是进是退。歌诀里没有的不硬说——不是每一爻都化得成进退。
+ * @param {string} fromBranch 本爻地支
+ * @param {string} toBranch 变爻地支
+ * @returns {{ key: '进神'|'退神', text: string } | null}
+ */
+export function jinTui(fromBranch, toBranch) {
+  const key = JIN_TUI[`${fromBranch}${toBranch}`];
+  if (!key) return null;
+  return {
+    key,
+    text: key === '进神'
+      ? `${fromBranch}化${toBranch}是进神：事情往前走一步，力量渐长，宜顺势推进。`
+      : `${fromBranch}化${toBranch}是退神：事情往回退一步，力量渐消，宜守宜缓。`,
+  };
+}
+
+/**
+ * 纳支里逢不上绝地。绝地是墓的下一支，自墓法：金绝寅、木绝申、水土绝巳、火绝亥。
+ * 纳甲里每个五行只占两支（金申酉、木寅卯、水子亥、火巳午、土丑辰未戌），逐支核下来，
+ * 上列绝支没有一支落在这五行自己占的支里——所以任何一爻、任何一化爻都逢不上绝地，
+ * 卦体与断语的「绝」小标据此撤掉。这不是漏做，留着就是一条永远不亮的字。
+ * 钉在这里是怕日后有人看见「十二长生有绝地」就把它加回来——加回来只会多一个空标记。
+ */
+for (const element of ELEMENTS) {
+  const j = BRANCH_ORDER[(muJue(element).mu + 1) % 12];
+  if (BRANCH_ELEMENTS[j] === element) {
+    throw new Error(`纳支绝地校验不过：${element}的绝地是${j}，而纳甲偏偏把${j}也派给了${element}，「逢绝」重新成立，墓表与纳支得重核`);
+  }
+}
+
+/**
+ * 旬空、月破、入墓，落到一爻上是什么情形；旬空再分真假。
  *
  * 出处为《增删卜易·旬空章第二十六》野鹤自道：
  *   「旺不爲空，動不爲空，有日建動爻生扶者不爲空，動而化空、伏而旺相皆不爲空。
@@ -457,12 +605,11 @@ export function voidReading(line, calendar) {
   const isBroken = branchClash(calendar.monthBranch) === line.branchIndex;
   const mj = muJue(line.element);
   const isTomb = mj.mu === line.branchIndex;
-  const isJue = mj.jue === line.branchIndex;
 
   // 下面只在这一爻确实逢空时才判真假；不逢空的爻不必多话。
   if (!isVoid) {
     return Object.freeze({
-      isVoid: false, isBroken, isTomb, isJue,
+      isVoid: false, isBroken, isTomb,
       status: null, rescues: Object.freeze([]), empties: Object.freeze([]),
     });
   }
@@ -498,7 +645,7 @@ export function voidReading(line, calendar) {
   // 有救就不作真空论——这是野鹤的次序：先说不为空，再说什么为空。
   const status = rescues.length > 0 ? '假空' : (empties.length > 0 ? '真空' : '旬空未判');
   return Object.freeze({
-    isVoid: true, isBroken, isTomb, isJue,
+    isVoid: true, isBroken, isTomb,
     status, rescues: Object.freeze(rescues), empties: Object.freeze(empties),
   });
 }

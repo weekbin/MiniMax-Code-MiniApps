@@ -27,7 +27,7 @@ import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
-  voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING } from './jingfang.mjs';
+  voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -516,7 +516,7 @@ export function buildReading(cast, options = {}) {
   const calendar = {
     monthElement,
     dayElement: BRANCH_ELEMENTS[dayBranch],
-    // 旬空要靠日柱在六十甲子里的序号才排得出，月破与墓绝要靠地支序号，都一并带上。
+    // 旬空要靠日柱在六十甲子里的序号才排得出，月破与入墓要靠地支序号，都一并带上。
     dayIndex: dayGanZhi.index,
     dayStem: dayGanZhi.stem,
     dayBranch,
@@ -533,6 +533,14 @@ export function buildReading(cast, options = {}) {
       ? useGodText(topic, useGod, jf, movingPositions, calendar)
       : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。',
   });
+
+  // 变出之爻：本卦这一爻是「谁」，变出来的那一爻是它「往哪儿去」。前一段说完六亲，
+  // 这一段接着说动爻的去向，京房这层到这里才算装齐。
+  const changedJf = changed ? jingfang(changed) : null;
+  const transforms = changedJf
+    ? movingPositions.map((position) => transformReading(position, jf, changedJf, calendar))
+    : [];
+  insights.push({ title: '化爻 · 变出之爻', text: transformText(transforms) });
 
   // 「世应」这两个字留给京房那边：世爻恒由本卦的宫与世次定，与动爻无关。梅花这一层
   // 讲的是我与事，说「主客」才不打架——同一段解读里出现两个不同的世爻位会看糊涂。
@@ -575,7 +583,7 @@ export function buildReading(cast, options = {}) {
     movingLines,
     structure,
     jingfang: jf,
-    changedJingfang: changed ? jingfang(changed) : null,
+    changedJingfang: changedJf,
     // 六神自初爻向上各归一爻。只说是什么气氛，不参与生克，也不动吉凶。
     sixGods: sixGods(dayGanZhi.stem),
     // 旬空与月破是这一卦整体的两处日子，跟哪一卦无关，单列一份给右栏和历法页用。
@@ -588,7 +596,7 @@ export function buildReading(cast, options = {}) {
         brokenName: BRANCHES[po],
       };
     })(),
-    // 六爻各自逢什么：旬空（连真假）、月破、墓绝。卦体照这个画小标，断语照这个说话。
+    // 六爻各自逢什么：旬空（连真假）、月破、入墓。卦体照这个画小标，断语照这个说话。
     states: jf.lines.map((line) => {
       const v = voidReading(line, calendar);
       return {
@@ -597,7 +605,6 @@ export function buildReading(cast, options = {}) {
         voidKind: v.status,
         broken: v.isBroken,
         tomb: v.isTomb,
-        jue: v.isJue,
         rescues: v.rescues,
         empties: v.empties,
       };
@@ -625,6 +632,9 @@ export function buildReading(cast, options = {}) {
         }
       : null,
     verdict,
+    // 每一动爻变出来的那一爻：回头生克、进退神、化空化墓。断语正文与这里走同一份，
+    // sentence 只进断语不进字段——那段话断语里已经整段说过了。
+    transforms: transforms.map(({ sentence, ...rest }) => rest),
     topic: topic ? { key: topic.key, label: topic.label, element: topic.element, reason: topic.reason } : null,
     qi: monthLord
       ? {
@@ -660,7 +670,7 @@ const GOD_SHI_TONE = Object.freeze({
  *
  * 《增删卜易·飞伏神章》列「伏神易出有六」与「终不得出有五」，本包七条都能核验：
  *   易出六——得日月生、得旺相、得飞神生、得动爻生，用月建与日辰即可判；
- *           「飞神逢旬空、月破或休囚墓绝」这一条要旬空、月破、墓绝，也已做。
+ *           「飞神逢旬空、月破或休囚墓绝」这一条要旬空、月破、入墓，也已做。
  *   不出五——休囚无气、被日月冲克、被旺相飞神克害、正逢墓绝、直逢旬空月破，逐条对上。
  * 六用五不出之外，野鹤还把休、囚、死并入无气，本包同此口径。
  */
@@ -676,7 +686,7 @@ function hiddenReading(name, jingfang, calendar) {
   const pair = hiddenGod(jingfang, name);
   if (!pair) return null;
   const flying = flyingRelation(pair.hushen, pair.feishen);
-  // 伏神与飞神各自逢什么空、破、墓、绝，一并问出来；伏神按野鹤的分法再判真假。
+  // 伏神与飞神各自逢什么空、破、墓，一并问出来；伏神按野鹤的分法再判真假。
   const fu = voidReading(pair.hushen, { ...calendar, isHidden: true, isStruck: flying.key === '飞来克伏' });
   const god = sixGods(calendar.dayStem)[pair.hushen.position - 1];
   const fei = voidReading(pair.feishen, calendar);
@@ -692,11 +702,9 @@ function hiddenReading(name, jingfang, calendar) {
       status: fu.status,
       isBroken: fu.isBroken,
       isTomb: fu.isTomb,
-      isJue: fu.isJue,
       flyingVoid: fei.isVoid,
       flyingBroken: fei.isBroken,
       flyingTomb: fei.isTomb,
-      flyingJue: fei.isJue,
     },
   );
   return {
@@ -731,7 +739,7 @@ function hiddenText(god, jingfang, calendar) {
 
 function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, movingElements, state) {
   // 《增删卜易》「伏神易出有六」与「终不得出有五」逐条落：旺衰靠月建，生扶靠月建与
-  // 日辰，旬空月破墓绝各据其表，飞伏空破则压不住伏神。七条之外野鹤还把休囚死并入无气。
+  // 日辰，旬空月破入墓各据其表，飞伏空破则压不住伏神。七条之外野鹤还把休囚死并入无气。
   const good = [];
   if (generates(monthElement, hushen.element)) good.push('得月建生');
   if (generates(dayElement, hushen.element)) good.push('得日辰生');
@@ -739,8 +747,8 @@ function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, moving
   if (tone.tone === 'strong' || tone.tone === 'good') good.push(`于月建${tone.key}`);
   if (flying.key === '飞来生伏') good.push('得飞神生');
   if (movingElements.some((element) => generates(element, hushen.element))) good.push('得动爻生');
-  if (state.flyingVoid || state.flyingBroken || state.flyingTomb || state.flyingJue) {
-    good.push('飞神逢空破墓绝，压不住它');
+  if (state.flyingVoid || state.flyingBroken || state.flyingTomb) {
+    good.push('飞神逢空破墓，压不住它');
   }
 
   const bad = [];
@@ -754,7 +762,7 @@ function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, moving
   }
   // 「伏神正逢休囚无气」「被日月冲克」「被旺相飞神克害」三条之外，
   // 《增删卜易》另列「占卦之日月伏神正逢墓绝」与「伏神直旬空、月破」——正是这三条。
-  if (state.isTomb || state.isJue) bad.push('占卦日月于伏神正逢墓绝');
+  if (state.isTomb) bad.push('占卦之日月于伏神正逢入墓');
   if (state.isVoid) bad.push(`伏神直${state.status || '旬空'}`);
   if (state.isBroken) bad.push('伏神逢月破');
 
@@ -827,6 +835,63 @@ function useGodText(topic, god, jingfang, movingPositions, calendar) {
 }
 
 /**
+ * 动爻变出来的那一爻：回头生克、进退神、化空化墓。
+ *
+ * 变爻只跟本位这一爻生克，这一条有明文。《增删卜易》：「夫變出之爻，能生克沖合本位之動爻，
+ * 不能生克他爻，而他爻與本位之動爻，亦不能生克變爻。」所以这里只取本卦动爻与变卦同位那一爻，
+ * 不去跟别爻攀关系，也不去跟世爻应爻攀——那是「他爻」，书上说得很清楚。
+ *
+ * 化空、化墓只作事实报告，**不配吉凶调子**。野鹤讲空讲的是「动爻逢空」那一层，
+ * 书上并没有「变爻逢空即凶」这样的断语；变爻是不是空破入墓是看得见的事，说出来就是，
+ * 成不成仍旧归回头生克那一句管。
+ *
+ * @param {number} position 动爻位
+ * @param {import('./jingfang.mjs').Jingfang} jingfang 本卦
+ * @param {import('./jingfang.mjs').Jingfang} changedJingfang 变卦
+ * @param {object} calendar
+ */
+function transformReading(position, jingfang, changedJingfang, calendar) {
+  const moving = jingfang.lines[position - 1];
+  const ch = changedJingfang.lines[position - 1];
+  const relation = transformRelation(moving, ch);
+  const move = jinTui(moving.branch, ch.branch);
+  // 变爻在变卦里是静的，不是本卦的动爻。问它逢什么时要把动爻位与动爻五行清空再问，
+  // 留着就会把「发动」「得动爻生扶」这些救应错记到它头上——变爻不是动爻，别混。
+  const v = voidReading(ch, { ...calendar, movingPositions: [], movingElements: [] });
+  const marks = [];
+  if (v.isVoid) marks.push(v.status === '真空' ? '化真空' : v.status === '假空' ? '化假空' : '化空');
+  if (v.isTomb) marks.push('化墓');
+  const stateText = marks.length === 0
+    ? ''
+    : `变爻${marks.join('又')}——这是这一爻此刻的处境，看得见；成不成仍旧归上头那句话管。`;
+  return {
+    position,
+    label: moving.label,
+    moving: `${moving.stem}${moving.branch}${moving.element}`,
+    movingRelative: moving.relative,
+    changed: `${ch.stem}${ch.branch}${ch.element}`,
+    changedRelative: ch.relative,
+    relation: relation.key,
+    good: relation.good,
+    jinTui: move ? move.key : null,
+    marks,
+    sentence: `${moving.label}${moving.stem}${moving.branch}${moving.element}${moving.relative}动，`
+      + `变出${ch.stem}${ch.branch}${ch.element}${ch.relative}。${relation.text}`
+      + (move ? move.text : '')
+      + stateText,
+  };
+}
+
+/** 化爻那一段。变爻只认本位动爻，所以先把这句规矩摆出来，免得看着像要把变爻拿去六爻通算。 */
+function transformText(transforms) {
+  if (transforms.length === 0) {
+    return '六爻皆静，无变卦，也就谈不上变出之爻——本卦的格局就此定格，不会中途生变。';
+  }
+  return '按《增删卜易》「夫變出之爻，能生克沖合本位之動爻，不能生克他爻」，变爻只与本位动爻相生克，不与他爻相干：'
+    + transforms.map((item) => item.sentence).join(' ');
+}
+
+/**
  * 用神临六神。只交代这件事是什么调子，成不成仍旧只由生克定——
  * 「吉凶全凭五行生克，情态方看六神吉凶」，这句是本包不许越的界。
  */
@@ -836,7 +901,7 @@ function godSentence(god, lineLabel) {
 }
 
 /**
- * 一爻逢空逢破逢墓绝，说人话。
+ * 一爻逢空逢破逢入墓，说人话。
  * 野鹤《增删卜易·旬空章》分真假：「旺不爲空，動不爲空，有日建動爻生扶者不爲空」是假空，
  * 出旬与冲空之后照旧有力；「月破爲空」「真空卽春土、夏金、秋木、三冬逢火」才是真空，
  * 逢值或逢冲之日应事。
@@ -846,7 +911,6 @@ function voidSentence(v) {
   if (v.isVoid) marks.push('旬空');
   if (v.isBroken) marks.push('月破');
   if (v.isTomb) marks.push('入墓');
-  if (v.isJue) marks.push('逢绝');
   if (marks.length === 0) return '';
   if (v.status === '假空') {
     return `${marks.join('又')}，然${v.rescues.join('、')}，是假空：出旬或逢冲之日照旧有力，不是全无指望。`;

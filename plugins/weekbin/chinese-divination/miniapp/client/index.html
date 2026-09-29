@@ -872,7 +872,7 @@
         white-space: nowrap;
       }
 
-      /* 旬空、月破、入墓、逢绝是这一爻此刻的处境，不是它的身份，所以小字无框 */
+      /* 旬空、月破、入墓是这一爻此刻的处境，不是它的身份，所以小字无框 */
       .gua-line .rel .st {
         font-size: 10px;
         line-height: 1;
@@ -894,6 +894,25 @@
         color: var(--text-subtle);
         border-radius: 2px;
         white-space: nowrap;
+      }
+
+      /* 化出之爻标在变卦那一爻上：这一格是本卦动爻变过来的地方，关系名跟着标出来 */
+      .gua-line .rel .hu {
+        font-size: 10px;
+        line-height: 1;
+        padding: 2px 4px;
+        border: 1px solid var(--text-subtle);
+        color: var(--text-subtle);
+        border-radius: 2px;
+        white-space: nowrap;
+      }
+
+      /* 只有回头生与回头克用朱砂——《增删卜易》明写了这一个吉、一个凶；
+         化泄化耗化比和书上没定吉凶，就跟伏神一样用淡字，别拿颜色替它表态。 */
+      .gua-line .rel .hu.hot {
+        border-color: var(--seal);
+        color: var(--seal);
+        font-weight: 600;
       }
 
       /* 用神是「你所问的这一件事」落在哪一爻，与世应的主客不是一回事，另用实底 */
@@ -2241,7 +2260,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2264,10 +2283,17 @@
             st.void ? `空${st.voidKind && st.voidKind !== '旬空未判' ? st.voidKind[0] : ''}` : '',
             st.broken ? '破' : '',
             st.tomb ? '墓' : '',
-            st.jue ? '绝' : '',
           ].filter(Boolean)
             .map((word) => `<span class="st${word === '破' || word === '墓' ? ' po' : ''}${word === '墓' ? ' tomb' : ''}">${word}</span>`)
             .join('');
+          // 化出之爻：变卦里这一格是本卦动爻变过来的，标出它与本爻是什么关系。
+          // 只在变卦上标，本卦那边动爻本来就有 ○／× 两记，再加一记反而挤。
+          // 关系名直接写「回头生」「化比和」这些术语本身，不另加「化」字前缀——
+          // 三个名目本就以「化」开头，再加一遍就成了「化 化比和」。
+          const tf = (transforms || []).find((item) => item.position === position);
+          const huMark = tf
+            ? `<span class="hu${tf.relation === '回头克' || tf.relation === '回头生' ? ' hot' : ''}" title="化出之爻">${escapeHtml(tf.relation)}</span>`
+            : '';
           row.innerHTML =
             `<span class="pos">${names[6 - position]}</span>` +
             `<span class="sg">${gods ? escapeHtml(gods[position - 1]) : ''}</span>` +
@@ -2283,6 +2309,7 @@
                 (fu
                   ? `<span class="fu" title="伏神">伏 ${escapeHtml(fu.hushen)}${escapeHtml(fu.relative)}</span>`
                   : '') +
+                huMark +
                 `</span>`
               : '');
           wrap.append(row);
@@ -2290,7 +2317,7 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2299,7 +2326,7 @@
           `<h3 class="serif">${hexagram.name}</h3>` +
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2379,7 +2406,8 @@
         ));
         if (reading.changed) {
           const changed = document.createElement('div');
-          changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang));
+          changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang,
+            null, [], [], null, reading.transforms || []));
           left.append(changed);
         }
         body.append(left);

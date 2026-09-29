@@ -78,7 +78,7 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 绝 as small marks; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 as small marks; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
 | Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
 | 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
@@ -477,7 +477,7 @@ How the two relate is named four ways, and each carries its own meaning:
 | 飞来克伏 | the line on top pins the one below; suppressed, cannot come out |
 
 Whether it can **emerge** is the follow-up question. 《增删卜易》 lists six conditions for usefulness
-and five for never emerging, and this package now checks **all of them** — 旬空, 月破 and 墓绝 were
+and five for never emerging, and this package now checks **all of them** — 旬空, 月破 and 入墓 were
 added once their tables were in hand, so nothing here is left unsaid. What comes out is always
 出得来 or 出不来: 旺衰 runs 旺相休囚死 with no sixth state, so 旺相 always lands in the first list
 and 休囚死 always in the second, and the two between them cover every case.
@@ -519,7 +519,58 @@ this is. A test casts the same hexagram across twenty-eight different days — t
 line changes hands several times over — and requires the verdict not to move by so much as a
 character.
 
-**旬空 · 月破 · 墓绝 — what the day and month do to a line**
+**化爻 · 变出之爻 — where a moving line goes**
+
+The last layer of 京房: a moving line does not stay itself, it turns into another 纳支 line in the
+变卦. What that line is to the one it came from is the whole of 化爻.
+
+| | What it is | Reads as |
+| --- | --- | --- |
+| 回头生 | 变爻生本爻 | 吉 |
+| 回头克 | 变爻克本爻 | 凶 |
+| 化泄 | 本爻生变爻 | stated, no verdict |
+| 化耗 | 本爻克变爻 | stated, no verdict |
+| 化比和 | 同行 | stated, no verdict |
+
+The two names are fixed by quoted text, and the two directions matter:
+
+> 巽木变坎水，谓之化生，水回头以生木也，即以吉断。
+
+> 震木变乾金，谓之化克，金回头以克木也，即以凶推。
+
+Both watch one direction only — **变爻 to 本爻**. 《卜筮正宗·十八问答第二问》 then spells out all
+five 回头克 cases and they land exactly on the five element pairs where 变爻克本爻: 土爻动变木、
+木爻动变金、金爻动变火、火爻动变水、水爻动变土. That list is stored as `HUI_TOU_KE_PAIRS` and
+checked against the 生克 table when the module loads, so the definition cannot drift from the code.
+The same chapter adds the clause that makes 回头克 more than a flat verdict:
+
+> 凡遇回頭剋者,徹底剋盡,原用二神遇之則凶,忌仇二神遇之反吉也
+
+so the reading always says it — a 回头克 landing on the 用神 is bad, landing on a 忌神 turns
+auspicious. The other three relations get **no** tone: 《增删卜易》 names them but assigns no
+吉凶, and inventing one would be making it up.
+
+**进退神** is the branch-level companion, from 《增删卜易·进退神章第二十九》:
+
+> 进神：亥化子，寅化卯，巳化午，申化酉，丑化辰，辰化未，未化戌，戍化丑。
+> 退神：子化亥，卯化寅，午化巳，酉化申，辰化丑，未化辰，戍化未，丑化戍。
+
+Sixteen pairs, two ways, each pair same-element, each the other's reverse. Four pairs are earth
+(丑→辰→未→戌→丑, one step along the ring each way) — that is the 歌诀 as written, not a slip.
+Pairs not in the 歌诀 are simply not judged. 化空 and 化墓 on the changed line are reported as
+fact, with no verdict attached: 野鹤's emptiness rules are about the moving line, and no text
+makes a changed line's own emptiness good or bad.
+
+One rule bounds the whole layer, and the reading quotes it before giving any of it:
+
+> 夫變出之爻，能生克沖合本位之動爻，不能生克他爻，而他爻與本位之動爻，亦不能生克變爻。
+
+A changed line is weighed **only against the moving line it came from** — not against the other
+lines, and not against 世 and 应. Related: the changed line is a *still* line in the 变卦, so it is
+never credited with 发动 or 得动爻生扶; it occupies the same position as the moving line, and
+mistaking one for the other silently turns a true 真空 into a 假空.
+
+**旬空 · 月破 · 入墓 — what the day and month do to a line**
 
 These three sit on top of 京房's 纳甲 and decide whether a line is doing anything today.
 
@@ -527,7 +578,8 @@ These three sit on top of 京房's 纳甲 and decide whether a line is doing any
 | --- | --- | --- |
 | 旬空 | 《增删卜易·旬空章第二十六》 | The six-line 歌诀 is stored verbatim and checked line by line against the algorithm. Ten stems pair with twelve branches, so every ten-day 旬 leaves two branches unmatched — those are void. |
 | 月破 | 《增删卜易》: 月破者，月建冲爻之谓 | The month branch clashes the line, matching the monthly table 正月申破 through 十二月未破. |
-| 墓绝 | 《纳甲筮法讲义·生旺墓绝》 | Per element: 金墓丑绝寅, 木墓未绝申, 水土墓辰绝巳, 火墓戌绝亥. |
+| 入墓 | 《纳甲筮法讲义·生旺墓绝》 | Per element, the 自墓 branch: 金墓丑, 木墓未, 水土墓辰, 火墓戌. |
+| 绝地 | — | Not in the output, and not by oversight. 绝 is the branch right after 墓 (金绝寅, 木绝申, 水土绝巳, 火绝亥), but 纳甲 gives each element only two branches — 金申酉, 木寅卯, 水子亥, 火巳午, 土丑辰未戌 — and not one of those 绝 branches falls among them. No line in any of the sixty-four hexagrams can land on one. The 绝 mark was removed rather than left as a label that can never light up; loading `jingfang.mjs` checks the fact and throws if it ever stops holding. |
 
 野鹤 himself splits void into false and true, and the reading follows his wording clause by clause
 rather than inventing a rule of its own:
@@ -546,7 +598,7 @@ One reading is a judgement call, and it is flagged rather than hidden: 野鹤's 
 with vitality counts as void. This package takes the **latter**, because 旺不爲空 sits in the very
 same passage and would otherwise have nowhere to apply.
 
-Each line carries a small mark on the diagram — 空, 破, 墓, 绝 — and the right-hand panel names the
+Each line carries a small mark on the diagram — 空, 破, 墓 — and the right-hand panel names the
 旬 and the month's broken branch outright.
 
 **卦气 · 当令主卦 — which hexagram holds the month**
@@ -653,14 +705,21 @@ to pick for the querent, and 用神不上卦 refusing to invent. 伏神 is check
 worked examples reproduced character for character, all 64 hexagrams scanned so every missing 六亲
 resolves to exactly one 伏神 **from its own palace**, the four 飞伏 names, the emergence conditions
 naming what they cannot check, the right-hand panel reporting the line it hides under, and the
-MCP response carrying the same thing as a field. 旬空, 月破 and 墓绝 are checked on eleven more:
+MCP response carrying the same thing as a field. 旬空, 月破 and 入墓 are checked on eleven more:
 the 旬空 歌诀 against the algorithm, both worked examples from the text recovered from their day
-pillars, the twelve months of 月破, the five elements' 墓绝, the seasonal void, false-void rescue
+pillars, the twelve months of 月破, the five elements' 墓, the seasonal void, false-void rescue
 and true-void grounds, the emergence path actually reaching 「终不得出」 on void alone, the
-休囚无气 clause, and 空 破 墓 绝 reaching the diagram and the right-hand panel. 六神 is checked on four
+休囚无气 clause, and 空 破 墓 reaching the diagram and the right-hand panel. 六神 is checked on four
 more: the 歌诀 verbatim, all thirty-two cells of the six-row table, both 乾为天 examples, and the rule
 that a god must not move the verdict — the same hexagram cast across twenty-eight days has to hold its
-verdict while the god under its first line changes hands. 116 passing.
+verdict while the god under its first line changes hands. 化爻 is checked on nine more: the two
+quoted directions of 回头生 and 回头克, all twenty ordered element pairs landing in five classes of
+five, 《卜筮正宗》's five 回头克 cases checked against the 生克 table, the other three relations
+carrying no verdict, the 歌诀's sixteen pairs stored verbatim and each checked same-element and
+reverse, the quote that confines a changed line to its own moving line, the changed line kept still
+so it cannot be rescued as 发动, the reading and the structured field agreeing, and MCP carrying
+it. The removed 绝 mark is checked too — a test asserts no 纳支 can land on its own 绝 branch, so
+nobody adds the label back thinking it was forgotten. 125 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

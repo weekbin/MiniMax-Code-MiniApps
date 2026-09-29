@@ -412,7 +412,7 @@ test('卦历写入 dataDir 后可回读', async () => {
 
     const full = await store.get(reading.id);
     assert.equal(full.hexagram.name, reading.hexagram.name);
-    assert.equal(full.insights.length, 15);
+    assert.equal(full.insights.length, 16);
 
     assert.equal(await store.remove(reading.id), true);
     assert.equal(await store.remove(reading.id), false);
@@ -1453,7 +1453,11 @@ test('卦体把六亲与世应画出来，不只是数据里有', async () => {
     '解读页本卦没把京房数据与用神传进卦体',
   );
   assert.ok(/reading\.useGod\.hidden/.test(render), '解读页本卦没把伏神传进卦体');
-  assert.ok(/guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang\)/.test(render), '解读页变卦没传京房数据');
+  // 变卦要把化爻传进去，才标得出哪一格是由本卦动爻变过来的
+  assert.ok(
+    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,120}?reading\.transforms \|\| \[\]\)/.test(render),
+    '解读页变卦没传京房数据与化爻',
+  );
   // 右栏摘要也得有这一行
   assert.ok(/\['六亲世应',/.test(client), '右栏没有六亲世应摘要');
   assert.ok(/\['用神',/.test(client), '右栏没有用神摘要');
@@ -1729,17 +1733,17 @@ test('MCP 起卦把伏神一并带进 structuredContent', async () => {
   assert.ok(out.content[0].text.includes(fu.emerges.text), '正文与 structuredContent 的出伏结论不一致');
 });
 
-test('出伏七条逐条落地，旬空月破墓绝都算数了', async () => {
+test('出伏七条逐条落地，旬空月破入墓都算数了', async () => {
   // 《增删卜易·飞伏神章》列「易出六」与「不出五」。上一轮只做得出四条，
   // 剩下一条「飞神逢空破墓绝」和两条「正逢墓绝」「直旬空月破」当时说没做。
-  // 这一轮把旬空、月破、墓绝都补上，那句「本包未做」必须随之消失。
+  // 这一轮把旬空、月破、入墓都补上，那句「本包未做」必须随之消失。
   const source = await readFile(new URL('../miniapp/node/divination.mjs', import.meta.url), 'utf8');
   assert.ok(!/本包未做/.test(source), '出伏条件已补齐，还留着「本包未做」是过期话');
   assert.ok(!/HIDDEN_GAP/.test(source), '出伏缺口的常量该删了');
   assert.ok(/得月建生/.test(source) && /得日辰生/.test(source) && /得飞神生/.test(source), '原有的出伏条件掉了');
-  assert.ok(/占卦日月于伏神正逢墓绝/.test(source), '没接上「正逢墓绝」这一条');
+  assert.ok(/占卦之日月于伏神正逢入墓/.test(source), '没接上「正逢墓绝」这一条');
   assert.ok(/伏神逢月破/.test(source), '没接上「直逢旬空月破」这一条');
-  assert.ok(/飞神逢空破墓绝/.test(source), '没接上「飞神逢空破墓绝压不住它」这一条');
+  assert.ok(/飞神逢空破墓/.test(source), '没接上「飞神逢空破墓压不住它」这一条');
 
   // 上面是读源码。下面真跑：造一个伏神正逢旬空的日子，看「终不得出」这一路走不走得到。
   const jfModule = await import('../miniapp/node/jingfang.mjs');
@@ -1840,13 +1844,27 @@ test('月破逐月对得上《增删卜易》正月申破至十二月未破', as
   }
 });
 
-test('五行墓绝与四季真空各按自己的表', async () => {
+test('五行入墓各按自己的表，绝地则纳支里逢不上', async () => {
   const A = await import('../miniapp/node/almanac.mjs');
+  const J = await import('../miniapp/node/jingfang.mjs');
   const mu = { 金: '丑', 木: '未', 水: '辰', 土: '辰', 火: '戌' };
-  const jue = { 金: '寅', 木: '申', 水: '巳', 土: '巳', 火: '亥' };
   for (const [element, want] of Object.entries(mu)) {
     assert.equal(A.BRANCHES[A.muJue(element).mu], want, `${element}墓应在${want}`);
-    assert.equal(A.BRANCHES[A.muJue(element).jue], jue[element], `${element}绝应在${jue[element]}`);
+  }
+  // 绝地是墓的下一支（金寅、木申、水土巳、火亥）。纳甲里每个五行只占两支
+  // （金申酉、木寅卯、水子亥、火巳午、土丑辰未戌），逐个核下来没有一支落在五行自己
+  // 占据的那两支里——所以任何一爻都逢不上绝地，卦体与断语的「绝」标据此撤掉。
+  // 这里钉的是「绝确实逢不上」这个事实，不是绝地清单：将来谁动了纳支或墓表，
+  // 这个断言会先红，而不是让一个永不点亮的小标悄悄留在界面上。
+  for (const element of Object.keys(mu)) {
+    const j = A.BRANCHES[(A.muJue(element).mu + 1) % 12];
+    assert.notEqual(J.BRANCH_ELEMENTS[j], element,
+      `${element}的绝地${j}竟被纳给了${element}自己，「逢绝」重新成立，墓表与纳支得重核`);
+  }
+  for (const hexagram of HEXAGRAM_LIST) {
+    for (const line of J.jingfang(hexagram).lines) {
+      assert.equal(A.muJue(line.element).jue, undefined, '墓表里不该还留着绝地');
+    }
   }
   // 《黄金策》口诀「春土、夏金、秋木、三冬逢火是真空」，四季各三月
   const expect = { 寅: '土', 卯: '土', 辰: '土', 巳: '金', 午: '金', 未: '金', 申: '木', 酉: '木', 戌: '木', 亥: '火', 子: '火', 丑: '火' };
@@ -1975,18 +1993,19 @@ test('伏神休囚无气那一条真的在出不来里说得出来', async () =>
   assert.equal(checked, 64, '应当扫满八八六十四组');
 });
 
-test('卦体与右栏把空破标出来', async () => {
+test('卦体与右栏把空破墓标出来', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
   const i = client.indexOf('function guaLines(');
   const body = client.slice(i, client.indexOf('\n      function ', i + 10));
   assert.ok(/states/.test(body), '卦体没收 states');
   assert.ok(/st\.void/.test(body) && /st\.broken/.test(body), '卦体没画旬空与月破');
-  assert.ok(/st\.tomb/.test(body) && /st\.jue/.test(body), '卦体没画墓绝');
+  assert.ok(/st\.tomb/.test(body), '卦体没画入墓');
+  assert.ok(!/st\.jue/.test(body), '纳支里逢不上绝地，卦体不该还留着绝这一标');
   // 四种情形各自成字，不能合成一个词了事
   const mark = client.slice(client.indexOf('const stateMark ='), client.indexOf('const stateMark =') + 700);
   // 钉在「这一支真的会出这个字」上。钉 st.broken 出现过是不够的——把 '破' 换成 '' 时
   // st.broken 还在下面 word === '破' 里出现过，照样全绿，那等于没测月破。
-  for (const [field, word] of [['void', '空'], ['broken', '破'], ['tomb', '墓'], ['jue', '绝']]) {
+  for (const [field, word] of [['void', '空'], ['broken', '破'], ['tomb', '墓']]) {
     const re = new RegExp(`st\\.${field} \\? [^\\n]*${word}`);
     assert.ok(re.test(mark), `${field} 那一支没出「${word}」字`);
   }
@@ -2006,7 +2025,7 @@ test('reading 带着旬空月破与六爻逢什么，断语用神段说得出真
   assert.deepEqual(reading.void.names, ['寅', '卯'], '甲辰旬空寅卯');
   assert.equal(reading.void.brokenName, '卯', '酉月破卯');
   assert.equal(reading.states.length, 6, '六爻的状态要逐爻给');
-  const mu = reading.states.filter((s) => s.void || s.broken || s.tomb || s.jue);
+  const mu = reading.states.filter((s) => s.void || s.broken || s.tomb);
   assert.ok(mu.length > 0, '这一卦该有逢空逢破逢墓的爻');
   for (const s of mu) {
     if (s.void) {
@@ -2145,4 +2164,184 @@ test('卦体画出六神一列，用神临哪一神断语说得出', async () =>
   assert.ok(reading.useGod.picked, '这一卦用神本该上卦，否则验错了路');
   assert.match(text, /成不成仍只由上面的生克与旺衰定/, '用神上卦那一路没说清六神不作判据');
   assert.ok(!/伏神临/.test(text), '用神上卦却说起伏神来了');
+});
+
+test('回头生与回头克定的是变爻对本爻，五行上各占五对', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 两个原话定方向：变爻生本爻是回头生、变爻克本爻是回头克。
+  // 「巽木变坎水，谓之化生，水回头以生木也，即以吉断。」
+  assert.equal(J.transformRelation({ element: '木' }, { element: '水' }).key, '回头生', '木变水应作回头生');
+  assert.equal(J.transformRelation({ element: '木' }, { element: '水' }).good, true, '书上明说回头生作吉断');
+  // 「震木变乾金，谓之化克，金回头以克木也，即以凶推。」
+  assert.equal(J.transformRelation({ element: '木' }, { element: '金' }).key, '回头克', '木变金应作回头克');
+  assert.equal(J.transformRelation({ element: '木' }, { element: '金' }).good, false, '书上明说回头克作凶推');
+
+  // 五行上二十个有序组合，五类各五，不重不漏——钉分布，钉「某几个」会漏掉第四类。
+  const tally = {};
+  for (const from of ['木', '火', '土', '金', '水']) {
+    for (const to of ['木', '火', '土', '金', '水']) {
+      const r = J.transformRelation({ element: from }, { element: to });
+      tally[r.key] = (tally[r.key] || 0) + 1;
+    }
+  }
+  assert.deepEqual(tally, { 回头生: 5, 回头克: 5, 化泄: 5, 化耗: 5, 化比和: 5 });
+
+  // 《卜筮正宗·十八问答第二问》把回头克的五种情形逐个点了出来，正是上表里
+  // 「变爻克本爻」那五个组合。这张表在 jingfang 里是当作定义校验用的，
+  // 这里再对一次：表里五对真的都是变爻克本爻，且没有漏掉哪一对。
+  assert.equal(J.HUI_TOU_KE_PAIRS.length, 5, '回头克的五行组合应恰好五对');
+  for (const [moving, changed] of J.HUI_TOU_KE_PAIRS) {
+    assert.equal(J.transformRelation({ element: moving }, { element: changed }).key, '回头克',
+      `${moving}动变${changed}书上说是回头克`);
+  }
+  // 同章那句「彻底克尽」不是装饰，凶不凶要看落在哪一亲身上，这半句得在断语里
+  assert.match(J.transformRelation({ element: '木' }, { element: '金' }).text, /彻底克尽.*用神.*忌神仇神/s);
+});
+
+test('化泄化耗化比和不配吉凶调子，书上没原话就不硬配', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 《增删卜易》只对回头生、回头克明说了吉凶。其余三个方向书上只给名目，
+  // 硬配一个吉凶就成了编，所以 good 一律为 null。
+  for (const [moving, changed, key] of [
+    ['土', '金', '化泄'],   // 本爻生变爻
+    ['金', '木', '化耗'],   // 本爻克变爻
+    ['火', '火', '化比和'], // 同行
+  ]) {
+    const r = J.transformRelation({ element: moving }, { element: changed });
+    assert.equal(r.key, key, `${moving}动变${changed}该是${key}`);
+    assert.equal(r.good, null, `${key}书上没定吉凶，good 不该有值`);
+    assert.ok(r.text.length > 8, `${key}连句话都没说`);
+  }
+});
+
+test('进退神歌诀十六对两两互为反面，且每一对本支同行', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 歌诀原文照录底本，底本此处「戍」是「戌」的异体
+  assert.equal(
+    J.JIN_TUI_SONG,
+    '进神：亥化子，寅化卯，巳化午，申化酉，丑化辰，辰化未，未化戌，戍化丑。退神：子化亥，卯化寅，午化巳，酉化申，辰化丑，未化辰，戍化未，丑化戍。',
+    '进退神歌诀与《增删卜易·进退神章》原文不符',
+  );
+  const jin = [['亥', '子'], ['寅', '卯'], ['巳', '午'], ['申', '酉'], ['丑', '辰'], ['辰', '未'], ['未', '戌'], ['戌', '丑']];
+  for (const [from, to] of jin) {
+    assert.equal(J.jinTui(from, to)?.key, '进神', `${from}化${to}该是进神`);
+    assert.equal(J.jinTui(to, from)?.key, '退神', `${to}化${from}该是退神`);
+    assert.equal(J.BRANCH_ELEMENTS[from], J.BRANCH_ELEMENTS[to], `${from}与${to}不同行，不该出现在进退神里`);
+  }
+  // 歌诀里没有的不硬说
+  for (const [from, to] of [['寅', '辰'], ['子', '午'], ['亥', '亥']]) {
+    assert.equal(J.jinTui(from, to), null, `${from}化${to}不在歌诀里，不该判进退`);
+  }
+});
+
+test('变爻只与本位动爻生克，不与他爻相干', async () => {
+  const reading = buildReading(castByNumbers(1, 7), { now: new Date(2026, 8, 30, 10, 0), question: '这批货该不该进' });
+  const text = reading.insights.find((item) => item.title === '化爻 · 变出之爻').text;
+  // 《增删卜易》原话得摊开，否则看着像要把变爻拿去六爻通算
+  assert.match(text, /能生克沖合本位之動爻，不能生克他爻/, '化爻段没交代变爻只认本位动爻');
+  // 断语只该提本位动爻那一个六亲身份，不许把世爻应爻拉进来一起算
+  const t = reading.transforms[0];
+  assert.equal(t.relation, '回头克', '天山遁二爻午火动变姤卦二爻亥水应是回头克');
+  assert.ok(!/世爻.*应爻/.test(text), '化爻段把世应扯进来了，那是「他爻」');
+  // 逐个动爻都只报自己那一格
+  for (const one of reading.transforms) {
+    const chg = reading.changedJingfang.lines[one.position - 1];
+    assert.equal(one.changed, `${chg.stem}${chg.branch}${chg.element}`, '化爻报的变爻对不上变卦同位那一爻');
+    assert.equal(one.changedRelative, chg.relative, '化爻报的变爻六亲对不上');
+  }
+});
+
+test('变爻是变卦里的静爻，不许把动爻那份救应算到它头上', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 天泽履初爻丁巳火动，变出天水讼初爻戊寅木。丁未日甲辰旬空寅卯，寅正在空里；
+  // 变爻在变卦里是静的，可它占的爻位恰好就是动爻那位——一 careless 就把「发动」
+  // 这条有救算给它，真空会翻成假空。所以这一例专盯这个：它必须落在真空。
+  const reading = buildReading(castByNumbers(1, 18), { now: new Date(2026, 8, 30, 10, 0), question: '这批货该不该进' });
+  const t = reading.transforms[0];
+  assert.equal(t.position, 1, '该例动爻在初爻');
+  assert.equal(t.changed, '戊寅木', '变爻该是戊寅木');
+  assert.deepEqual(t.marks, ['化真空'], '变爻寅木逢空又落秋令正空，该作真空，不该被「发动」救成假空');
+  // 反过来核一遍：真的把它当动爻问，同一爻立刻翻成假空。钉住这个反差，
+  // 免得日后有人把 movingPositions 传回去却以为结果没变。
+  const chg = reading.changedJingfang.lines[0];
+  const day = dayPillar(2026, 9, 30);
+  const calendar = {
+    monthBranch: monthPillar(2026, 9, 30).branch, dayBranch: day.branch, dayIndex: day.index,
+    movingElements: ['火'], movingPositions: [1],
+  };
+  assert.equal(J.voidReading(chg, { ...calendar, movingPositions: [1] }).status, '假空',
+    '同一爻若误记为发动，应翻成假空——两路不一致就说明这组断言没钉住区别');
+  assert.equal(J.voidReading(chg, { ...calendar, movingPositions: [] }).status, '真空',
+    '变爻按静爻问才是真空');
+});
+
+test('化爻断语与结构化字段同源，且 sentence 不混进字段', async () => {
+  const reading = buildReading(castByNumbers(1, 2), { now: new Date(2026, 8, 30, 10, 0), question: '这批货该不该进' });
+  const text = reading.insights.find((item) => item.title === '化爻 · 变出之爻').text;
+  const t = reading.transforms[0];
+  // 丑化辰是进神，同时同属土为化比和，辰又正是土的墓——一行三件事
+  assert.equal(t.jinTui, '进神', '丑化辰该是进神');
+  assert.equal(t.relation, '化比和', '丑土变辰土同属土，该是化比和');
+  assert.ok(t.marks.includes('化墓'), '辰正是土的墓，该标出化墓');
+  // 断语正文里这一条的事实，字段里得对得上
+  assert.ok(text.includes(`${t.label}${t.moving}${t.movingRelative}动`), '断语没报本爻的干支与六亲');
+  assert.ok(text.includes(`变出${t.changed}${t.changedRelative}`), '断语没报变爻的干支与六亲');
+  assert.ok(text.includes('进神') && text.includes('化比和') && text.includes('化墓'), '断语没把进退与化墓说出来');
+  // sentence 只进断语，不进结构化字段
+  assert.ok(!('sentence' in t), 'sentence 混进了结构化字段，正文与字段会各说各话');
+});
+
+test('六爻皆静时化爻段明说无变卦，不空着不提', async () => {
+  const reading = buildReading(castByCoins([7, 8, 7, 8, 7, 8]));
+  assert.deepEqual(reading.transforms, [], '静卦不该有化爻');
+  const text = reading.insights.find((item) => item.title === '化爻 · 变出之爻').text;
+  assert.match(text, /六爻皆静.*无变卦/, '静卦的化爻段该明说无变卦');
+  assert.equal(reading.changedJingfang, null, '静卦不该有变卦京房');
+});
+
+test('卦体在变卦上标出化出之爻，回头克与回头生加重', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function guaLines(');
+  const body = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(/transforms/.test(body), '卦体没收 transforms');
+  assert.ok(/const tf = \(transforms \|\| \[\]\)\.find/.test(body), '化出之爻没按爻位对位');
+  // 钉在「这一支真的会出『化』字与关系名」上，不是钉 transforms 出现过
+  assert.ok(/class="hu\$\{tf\.relation === '回头克' \|\| tf\.relation === '回头生' \? ' hot' : ''\}"/.test(body),
+    '化爻小标没画出来，或回头克回头生没加重');
+  // 直接写术语本身，不再加「化」字前缀——三个名目本就以「化」开头，加一遍就成了「化 化比和」
+  assert.ok(/title="化出之爻">\$\{escapeHtml\(tf\.relation\)\}/.test(body), '化爻小标没写关系名');
+  assert.ok(!/化 \$\{escapeHtml\(tf\.relation\)\}/.test(body), '化爻小标多了一个「化」前缀，读成了「化 化比和」');
+  // 本卦那边不标：动爻本来就有 ○／×，再挤一记反而看不清
+  const call = client.slice(client.indexOf('left.append(guaBlock('), client.indexOf('left.append(guaBlock(') + 400);
+  assert.ok(!/reading\.transforms/.test(call), '本卦不该标化出之爻');
+  // 变卦那次得把它传下去
+  const changedCall = client.slice(client.indexOf("guaBlock(reading.changed, null, '变卦'"), client.indexOf("guaBlock(reading.changed, null, '变卦'") + 200);
+  assert.ok(/reading\.transforms \|\| \[\]/.test(changedCall), '变卦没把化爻传进卦体');
+
+  // 颜色也得说真话：只有书上明写了一个吉一个凶的回头生、回头克用朱砂，
+  // 化泄化耗化比和书上没定吉凶，就跟伏神一样用淡字。别拿颜色替它表态。
+  const css = client.slice(client.indexOf('.gua-line .rel .hu {'), client.indexOf('.gua-line .rel .hu.hot {'));
+  assert.ok(!/var\(--seal\)/.test(css), '化爻小标不该一律朱砂——没定吉凶的三类用朱砂等于替它们表态');
+  const hot = client.slice(client.indexOf('.gua-line .rel .hu.hot {'), client.indexOf('.gua-line .rel .hu.hot {') + 200);
+  assert.ok(/var\(--seal\)/.test(hot), '回头生回头克该用朱砂');
+});
+
+test('MCP 把化爻落成字段，变卦那一行带上动爻去向', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  let raw = '';
+  const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+  await handleMcpRequest({
+    response,
+    body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: { question: '这批货该不该进', method: 'numbers', upper: 1, lower: 2 } } },
+  });
+  const result = JSON.parse(raw).result;
+  const sc = result.structuredContent;
+  assert.ok(Array.isArray(sc.transforms) && sc.transforms.length > 0, 'MCP 没给 transforms');
+  for (const t of sc.transforms) {
+    assert.ok(['回头生', '回头克', '化泄', '化耗', '化比和'].includes(t.relation), `关系名不在五类里：${t.relation}`);
+    assert.ok(/[金木水火土]/.test(t.moving) && /[金木水火土]/.test(t.changed), '干支五行没带全');
+    assert.ok(t.movingRelative && t.changedRelative, '六亲没带全');
+  }
+  // 抬头那一行：Agent 复述「变到哪儿、往哪儿去」看这一行就够
+  assert.match(result.content[0].text, /【变卦】.+动爻去向 .+回头|动爻去向 .+化/s, '变卦行没带动爻去向');
 });
