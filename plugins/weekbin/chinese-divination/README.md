@@ -79,8 +79,8 @@ every single time.
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
-| 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line, which is about 46% of readings |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
+| 断语 | seventeen to twenty sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -136,8 +136,13 @@ still works, but no topic will be recognised and the timing falls back to the �
 
 Two blocks come back: `content[0].text` is prose written for the model, and `structuredContent` is
 for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `useGod` /
-`transforms` / `dayClash` / `timing` / `disclaimer`). `dayClash` gives the 爻 positions of any 暗动,
-日破 and 冲散, and the header gains a 【日冲】 line only when there is something to say. `useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
+`transforms` / `dayClash` / `clash` / `timing` / `disclaimer`). `dayClash` gives the 爻 positions of any 暗动,
+日破 and 冲散, and the header gains a 【日冲】 line only when there is something to say. `clash` gives
+whether the hexagram is a 六冲卦 or a 六合卦, whether the changed one is, whether the pair is
+六合变六冲 or 六冲变六冲, which moving lines clash their own transformed line, the three 爻 pairs with
+each one's verdict, and any incidental 爻与爻冲 as 爻-position pairs; the header gains a 【卦体】 line
+when there is something to say — which is most readings, so the line is kept to a few words.
+`useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
 carries the 伏神 as `hidden` — `position`, `hushen`, `feishen`, `flying` and an `emerges` verdict —
 and, when a single 用神 is settled, carries its circle as `circle` — the 爻 positions of the 元神, 忌神
 and 仇神 with their elements under `circle.elements` —
@@ -338,6 +343,11 @@ middle course, 变卦 for the outcome, 错卦 for the other side, 综卦 seen fr
 六亲世应, 用神, 主客, 取象 of both trigrams, 爻位 for the moving line's position, and 方所 for the
 后天八卦 directions. A recognised topic adds one more, 所问之事, naming the topic, its 类神, and how that
 element stands to the 体卦.
+
+Three more come and go with the reading. 暗动 · 日破 · 冲散 appears only when the day's branch really
+does clash a line. 化爻 · 变出之爻 appears whenever anything moves. 六冲 appears when the hexagram
+itself is 六冲 or 六合, or the changed one is, or a moving line clashes its own transformed line. So a
+reading runs seventeen to twenty sections.
 
 **动爻爻辞 — the line that actually moved**
 
@@ -678,6 +688,77 @@ muted with a tooltip giving the rule — no red, because the chapter's finding i
 being clashed apart was reported as simply 动. The two sections that mention it — the 用神 circle and
 the 用神 line of the 断语 — now take their wording from one shared helper, so they cannot drift apart.
 
+**六冲 · 六合 — the clash that belongs to the whole hexagram**
+
+Everything above is a clash the **day's branch** brings to a single line. The chapter right after
+动散章第二十三 is about a different kind entirely: a clash built into the hexagram itself.
+《增删卜易》卷一·六冲章第二十 opens by naming the six branches that clash, then counts the ways:
+
+> 子午相冲、丑未相冲、寅申相冲、卯酉相冲、辰戌相冲、巳亥相冲。相冲之法有六：日月冲爻者一也，
+> 卦逢六冲者二也，六合卦变六冲者三也，冲变六冲者四也。动爻变冲者五也，爻与爻冲者六也。
+
+The first way is the day's and month's branches against a line — already computed, line by line, in
+暗动章第二十二 and 动散章第二十三. The other five are what this section adds. 「冲变六冲」 is how
+the base text reads the fourth; 明天机一系 writes it out as 「六冲卦变六冲」, meaning the same thing
+(the hexagram that comes out is also a 六冲卦), and this package uses the expanded wording.
+
+**The pairing is 初四、二五、三六 — and getting it wrong finds nothing.** 纳甲 loads the inner three
+branches at positions 1–3 and the outer three at 4–6 from an offset of one, so 乾 carries 子寅辰 inside
+and 午申戌 outside: the counterpart of a line is three places away, not at the same height. Pair them
+the naive way and not one of the sixty-four hexagrams comes out 六冲. With the right pairing there are
+exactly **ten** 六冲卦 and **eight** 六合卦, matching the transmitted lists name for name:
+
+| | which | names |
+| --- | --- | --- |
+| 六冲卦 | eight 八纯卦, plus the two 乾/震 crosses | 乾为天、坤为地、天雷无妄、坎为水、离为火、雷天大壮、震为雷、艮为山、巽为风、兑为泽 |
+| 六合卦 | — | 地天泰、天地否、雷地豫、山火贲、地雷复、泽水困、火山旅、水泽节 |
+
+乾 and 震 load the same branches, which is why 天雷无妄 and 雷天大壮 are 六冲 too. The lists are
+re-derived from 纳甲 and checked against these names when the module loads, so a wrong 纳甲 table
+throws rather than quietly reporting a different set.
+
+**One pair proves three.** The received rule says 「这三组，只要有一组相冲，其他两组必定相冲，
+一看就知」. That is not an observation, it is forced: the six branches are one sequence translated,
+six clash partners split the twelve into disjoint pairs, and each branch has exactly one. So one hit
+means three. A test holds that for all sixty-four hexagrams, and the module-load check refuses to
+start if it ever stops holding.
+
+**爻与爻冲 is not 六冲卦.** Any two lines clashing inside one hexagram happens in 30 of the 64 — twenty
+of them are not 六冲卦 at all. A 六冲卦 is the whole structure, all three pairs; an incidental clash
+is a local fact. Conflating them would call a third of the hexagrams 六冲. So the reading reports
+those pairs without ever raising them to that, and it does not open a section for them alone.
+
+**The chapter's verdicts, and what this package refuses to decide.** 冲 is 散, and 散 helps a bad
+matter and hurts a good one — but the chapter immediately qualifies itself with 「亦必兼用神而言，
+用神若旺，虽冲不碍；用神失陷，凶而又凶」. That half is decidable and the reading applies it: with the
+用神 settled it says 旺 or 相 leaves the clash harmless, 休 囚 死 makes it harmful, and if the 用神 is
+not settled it says the layer does not apply. Two halves are quoted and not applied. Whether the
+matter asked about is a 吉事 or a 凶事 is the querent's own framing, not something a question string
+carries, so both halves are put on the table and neither is chosen. And 「近病逢冲即愈，久病逢冲则
+死」 turns on whether an illness is recent or long-standing, which only the person asking knows, so
+占病 gets the rule quoted and no side picked. The one conditional the reading *can* join up is the
+last half of 「惟占官非、盗贼、结绝事者宜之」: when the question has been recognised as 官讼是非,
+that half applies and the reading says so. When it has not, it says the matter is not of that kind
+rather than re-judging it.
+
+The chapter also writes the pattern up hard in both directions — 六合变六冲 as 「先合后离、先亲后疏、
+先浓后淡、始荣终悴、得而复失、成而后败」, and 六冲变六冲 as 「内外变动，交相冲击，必主上下不和，
+至亲反目，彼此怀奸，始终不就」 — and then in the same breath refuses to decide the hexagram:
+
+> 古以六冲卦，诸占不吉。予屡试之，用神失陷，实不为吉；用若得地，须以用神断之。
+
+So a 六冲卦 on its own is not bad news, and this package does not colour it as such: on the diagram
+the 六冲 and 六合 marks are thin and muted, never red.
+
+**What is deliberately not here.** 卦身 and 世身 appear on most traditional charts, and this package
+draws neither. Not an oversight: 《增删卜易》 is the base text here, and removing them is stated as
+one of the book's own features — 「删除卦身世身、星煞本命，使人无歧路之虞」. 《卜筮全书》 and
+《卜筮正宗》 record the terms without using them, 韩艺's 连三易 leans on 世身 heavily, and later
+writers split three ways. A package that follows 《增删卜易》 as its spine and adds a layer the spine
+deleted would be arguing with its own source. The rules are recorded here for anyone who wants them
+— 阳世从初爻起子、阴世起午，数至世爻那一支便是卦身; 世身按世爻地支定爻位（子午居初、丑未居二、
+寅申居三、卯酉居四、辰戌居五、巳亥居六）— but they are not drawn and not used to judge anything.
+
 **六神 — what the day's stem says about the mood**
 
 The sixth column a 六爻 chart has always carried. 《卜筮全书·卷之一·启蒙节要》:
@@ -946,7 +1027,14 @@ instead of folding it into 动, and the diagram and MCP both carrying it. The tw
 sixty-four hexagrams rather than pinning one cast, because the tool runs on the real clock and a fixed cast
 would quietly stop exercising the branch it names. 旺衰 is checked against all eight non-seasonal months
 of 《四时旺相章》 when the module loads, so transposing 囚 and 死 throws instead of silently reporting.
-154 passing.
+六冲 · 六合 is checked on nine more: the ten and the eight pinned name for name, the pairing offsets
+pinned to 初四、二五、三六 so the naive inner/outer pairing cannot creep back, the pairing table
+itself read from 纳甲, the 「one pair proves three」 fact held across all sixty-four, no hexagram
+counted as both, each of the four reportable ways placed on a real reading, 爻与爻冲 kept below
+六冲卦 and never opening a section on its own, the 用神-conditional half applied at 旺 and at 囚 and
+declined when the 用神 is not settled, the 近病/久病 rule quoted without a side picked, the
+官讼 clause joined only when the matter really is 官讼是非, and the diagram plus MCP carrying it.
+163 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

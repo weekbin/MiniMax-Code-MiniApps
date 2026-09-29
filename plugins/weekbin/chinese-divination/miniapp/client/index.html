@@ -943,8 +943,7 @@
 
       .gua-line .pos {
         font-size: 11px;
-        color: var(--text-subtle);
-        text-align: right;
+        color: var(--text-subtle);        text-align: right;
       }
 
       .gua-line .bars {
@@ -1110,6 +1109,19 @@
       .gua-title .meta {
         font-size: 12px;
         color: var(--text-muted);
+      }
+
+      /* 六冲 / 六合：整卦的结构事实，不是吉凶。描边淡字，与「暗」「冲散」一个路子——
+         颜色不替没定下来的事表态，所以这两枚都不进朱砂。 */
+      .gua-title .gua-tag {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: var(--text-subtle);
+        border: 1px solid currentColor;
+        border-radius: 3px;
+        padding: 1px 5px;
+        cursor: help;
+        opacity: 0.85;
       }
 
       .text-line {
@@ -2353,14 +2365,50 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms, circle) {
+      // 右栏那格「卦体冲合」。只在断语真要出「六冲」那一段时才露——卦内零散两爻相冲
+      // 六十四卦里有三十卦都有，单为它开一格，右栏就成了一本流水账。
+      function clashFact(reading) {
+        const c = reading.clash;
+        const jf = reading.jingfang;
+        if (!c || !jf) return null;
+        if (!(c.chong || c.he || c.changedChong || c.transformClash.length)) return null;
+        const br = (position) => jf.lines[position - 1].branch;
+        const out = [c.chong ? '本卦六冲卦' : c.he ? '本卦六合卦' : '本卦非六冲非六合'];
+        const spoken = c.pairs.filter((pair) => pair.kind)
+          .map((pair) => `${br(pair.lower)}${pair.kind}${br(pair.upper)}`);
+        if (spoken.length > 0) out.push(spoken.join(' · '));
+        const tail = [];
+        if (c.chongToChong) tail.push('变卦亦六冲');
+        else if (c.heToChong) tail.push('变卦六冲（六合变六冲）');
+        else if (c.changedChong) tail.push('变卦六冲');
+        if (c.transformClash.length > 0) tail.push(`${c.transformClash.length} 爻动爻变冲`);
+        return out.join('，') + (tail.length > 0 ? `；${tail.join('；')}` : '');
+      }
+
+      // 卦体冲合那枚小标。六冲六合是整卦的结构，不是吉凶，所以不上朱砂——跟暗动、
+      // 冲散一个道理：颜色不替没定下来的事表态。
+      function clashTag(reading, which) {
+        const c = reading.clash;
+        if (!c) return null;
+        if (which === '本卦') {
+          if (c.chong) return '六冲';
+          if (c.he) return '六合';
+          return null;
+        }
+        if (c.changedChong) return '六冲';
+        if (c.changedHe) return '六合';
+        return null;
+      }
+
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms, circle, tag) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
         const gong = jingfang ? ` · ${escapeHtml(jingfang.palaceName + jingfang.stage + '卦')}` : '';
         title.innerHTML =
           `<h3 class="serif">${hexagram.name}</h3>` +
-          `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
+          `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>` +
+          (tag ? `<span class="gua-tag" title="${tag === '六冲' ? '初四、二五、三六三对地支两两相冲' : '初四、二五、三六三对地支两两相合'}">${tag}</span>` : '');
         block.append(title);
         block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle));
         const text = document.createElement('div');
@@ -2441,11 +2489,12 @@
           reading.sixGods || null,
           null,
           (reading.useGod && reading.useGod.circle) || null,
+          clashTag(reading, '本卦'),
         ));
         if (reading.changed) {
           const changed = document.createElement('div');
           changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang,
-            null, [], [], null, reading.transforms || [], null));
+            null, [], [], null, reading.transforms || [], null, clashTag(reading, '变卦')));
           left.append(changed);
         }
         body.append(left);
@@ -2461,6 +2510,7 @@
           ['生克', `${reading.verdict.key} → ${reading.verdict.label}`],
           ['主客', `体在${s.shi.label}，用在${s.ying.label}`],
           jf ? ['六亲世应', `${jf.palaceName}${jf.stage}卦 · 世${jf.shi}爻持${jf.lines[jf.shi - 1].relative} · 应${jf.ying}爻为${jf.lines[jf.ying - 1].relative}`] : null,
+          clashFact(reading) ? ['卦体冲合', clashFact(reading)] : null,
           reading.useGod ? ['用神', useGodFact(reading.useGod)] : null,
           ['月令旺衰', `当令 ${s.monthElement} · 体 ${s.bodyVitality} · 用 ${s.useVitality}`],
           reading.void ? ['旬空月破', `${reading.void.headName}旬空 ${reading.void.names.join('')} · 本月破 ${reading.void.brokenName}`] : null,

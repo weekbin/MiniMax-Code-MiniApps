@@ -30,7 +30,7 @@
 import { TRIGRAMS, HEXAGRAM_LIST, hexagramByKey } from './hexagrams.mjs';
 // 本文件已有一个按地支字符取五行的 BRANCH_ELEMENTS；历法那边是按索引排的数组，
 // 同名会撞成重复声明，所以这里换个别名，别图省事直接 import 同名常量。
-import { branchClash, muJue, seasonVacuous, xunKong, BRANCH_ELEMENTS as ELEMENT_BY_BRANCH } from './almanac.mjs';
+import { branchClash, muJue, seasonVacuous, xunKong, SIX_HARMONY, BRANCH_ELEMENTS as ELEMENT_BY_BRANCH } from './almanac.mjs';
 
 import { BRANCHES } from './almanac.mjs';
 
@@ -816,6 +816,81 @@ export function dayClashReading(jingfang, calendar) {
     dayBroken: Object.freeze(dayBroken),
     pressed: Object.freeze(pressed),
   });
+}
+
+/**
+ * 六冲卦与六合卦。判据是纳甲装出来的六支按初四、二五、三六配成三对，三对全冲为六冲卦，
+ * 三对全合为六合卦。
+ *
+ * 出处：《增删卜易》卷一·六合章第十九与六冲章第二十。
+ * 六合章：「卦逢六合者，即如天地否卦內外六爻自相和合是也，不動亦是。」
+ * 六冲章：「相冲之法有六……卦逢六冲者，二也。」
+ *
+ * **配对为什么是初四、二五、三六，不是内外卦各自成对。** 这一步容易数错：
+ * 纳甲装卦时内卦三爻排在初二三、外卦三爻排在四五六，两卦的地支起点错开一位
+ * （乾内子寅辰、外午申戌，坤内未巳卯、外丑亥酉），所以内外对应的地支是「隔三位相配」
+ * 才撞得上，不是「内外同位相配」。按同位去配，六十四卦里一个六冲卦也找不出来。
+ *
+ * **「三对全冲」其实一组就够。** 世传歌诀说「这三组，只要有一组相冲，其他两组必定相冲，
+ * 一看就知」。这不是经验，是纳甲定死的：两卦的地支是同一起点的平移，六冲六对把十二支
+ * 分成六组互斥的搭档，任一支的冲支唯一，所以三组里撞上一组，另两组必也撞上。下方
+ * 加载时把这一条对六十四卦逐个核过。
+ *
+ * 卦内**任意**两爻相冲是另一回事，频次高得多（六十四卦里三十卦都有，六冲卦之外的二十卦
+ * 也有），本函数不把它算成六冲卦——六冲卦是三对皆冲的整卦结构，爻与爻冲是零散的事实，
+ * 两者混为一谈会把三分之一的卦都说成六冲卦。
+ *
+ * @param {object} hexagram
+ * @param {{ palace: string, stage: string, shi: number, ying: number, element: string,
+ *           lines: JingfangLine[] }} [prepared] 已有京房卦就传进来，省一次重算
+ * @returns {{ chong: boolean, he: boolean, pairs: Array<{ lower: JingfangLine, upper: JingfangLine, kind: '冲'|'合' }> }}
+ */
+export function hexagramClash(hexagram, prepared) {
+  const jf = prepared ?? jingfang(hexagram);
+  const pairs = CLASH_PAIR_OFFSETS.map(([lower, upper]) => {
+    const a = jf.lines[lower - 1];
+    const b = jf.lines[upper - 1];
+    const kind = branchClash(a.branchIndex) === b.branchIndex
+      ? '冲'
+      : SIX_HARMONY.some(([x, y]) => (x === a.branchIndex && y === b.branchIndex)
+        || (x === b.branchIndex && y === a.branchIndex)) ? '合' : null;
+    return { lower: a, upper: b, kind };
+  });
+  const chong = pairs.every((pair) => pair.kind === '冲');
+  const he = pairs.every((pair) => pair.kind === '合');
+  return Object.freeze({ chong, he, pairs: Object.freeze(pairs) });
+}
+
+/** 纳甲六爻的配对位：内卦初二三与外卦四五六错开一位，隔三位相配。 */
+const CLASH_PAIR_OFFSETS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
+
+// 六冲卦十个、六合卦八个，是传世名单里人人能背下来的两组卦；数目或名单对不上就是装卦错了。
+// 另有一处结构事实顺带钉住：三对里只要有一组相冲（相合），另两组必也相冲（相合）。
+// 两者都在下面核，任一条不合就在这里抛，不留一个能算错的判定。
+{
+  const chongNames = [];
+  const heNames = [];
+  for (const hexagram of HEXAGRAM_LIST) {
+    const clash = hexagramClash(hexagram);
+    if (clash.chong) chongNames.push(hexagram.name);
+    if (clash.he) heNames.push(hexagram.name);
+    const chongPairs = clash.pairs.filter((pair) => pair.kind === '冲').length;
+    const hePairs = clash.pairs.filter((pair) => pair.kind === '合').length;
+    if ((chongPairs > 0) !== clash.chong) {
+      throw new Error(`六冲校验不过：${hexagram.name}只有${chongPairs}对冲，却判成非六冲——`
+        + '「一组冲则三组皆冲」这条结构事实不成立，配对位或纳甲表有问题');
+    }
+    if ((hePairs > 0) !== clash.he) {
+      throw new Error(`六合校验不过：${hexagram.name}只有${hePairs}对合，却判成非六合——`
+        + '「一组合则三组皆合」这条结构事实不成立，配对位或六合表有问题');
+    }
+  }
+  if (chongNames.length !== 10) {
+    throw new Error(`六冲卦校验不过：传世名单十个（八纯卦加天雷无妄、雷天大壮），实算出${chongNames.length}个：${chongNames.join('、')}`);
+  }
+  if (heNames.length !== 8) {
+    throw new Error(`六合卦校验不过：传世名单八个（泰否豫贲复困旅节），实算出${heNames.length}个：${heNames.join('、')}`);
+  }
 }
 
 // 日辰所冲之支永不可能生被冲的那一爻。上面第三条取舍整个建立在这句上，所以在这里钉死。

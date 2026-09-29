@@ -21,14 +21,14 @@ import {
   normalizeToSix,
   oppositeHexagram,
 } from './hexagrams.mjs';
-import { monthPillar, yearPillar, dayPillar, hourPillar, monthPo, xunKong, BRANCHES, BRANCH_ELEMENTS } from './almanac.mjs';
+import { monthPillar, yearPillar, dayPillar, hourPillar, monthPo, xunKong, branchClash, BRANCHES, BRANCH_ELEMENTS } from './almanac.mjs';
 import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
   voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui,
-  useGodCircle, dayClashReading } from './jingfang.mjs';
+  useGodCircle, dayClashReading, hexagramClash } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -553,9 +553,20 @@ export function buildReading(cast, options = {}) {
     insights.push({ title: '暗动 · 日破 · 冲散', text: dayClashText(clash, circle, calendar) });
   }
 
+  // 变卦的京房卦提前算出来：下面「六冲」那一段要判变卦是不是六冲/六合，化爻那一段也要用。
+  const changedJf = changed ? jingfang(changed) : null;
+
+  // 六冲章的六种冲，前一路（日月冲爻）刚在上面逐爻算过，这里接着数剩下几路。
+  // 触发条件取「卦体本身是六冲或六合」加「变卦是六冲」加「动爻变冲」——
+  // 卦内零散爻与爻冲六十四卦里有三十卦都有，单拿它当触发会让大半卦都多出这一段，
+  // 所以那一路只在卦体已经因为别的理由出段时顺带报，不单独开段。
+  const kinds = clashKinds({ hexagram, jf, changed, changedJf, movingPositions });
+  if (kinds.chong || kinds.he || kinds.changedChong || kinds.transformClash.length > 0) {
+    insights.push({ title: '六冲', text: clashText(kinds, circle, topic, calendar) });
+  }
+
   // 变出之爻：本卦这一爻是「谁」，变出来的那一爻是它「往哪儿去」。前一段说完六亲，
   // 这一段接着说动爻的去向，京房这层到这里才算装齐。
-  const changedJf = changed ? jingfang(changed) : null;
   const transforms = changedJf
     ? movingPositions.map((position) => transformReading(position, jf, changedJf, calendar))
     : [];
@@ -639,6 +650,23 @@ export function buildReading(cast, options = {}) {
       dark: darkPositions,
       dayBroken: clash.dayBroken.map((line) => line.position),
       pressed: pressedPositions,
+    },
+    // 六冲章那六种冲逐条对出来的结果。本卦逢六冲十五卦中的十卦、六合八卦，都是整卦的
+    // 定性；变卦那两路与动爻变冲要等动起来才谈得上。爻位一律用数字，便于程序取用。
+    clash: {
+      chong: kinds.chong,
+      he: kinds.he,
+      changedChong: kinds.changedChong,
+      changedHe: kinds.changedHe,
+      heToChong: kinds.heToChong,
+      chongToChong: kinds.chongToChong,
+      transformClash: kinds.transformClash.map((item) => item.position),
+      incidental: kinds.incidental.map((pair) => [pair.a, pair.b]),
+      pairs: kinds.pairs.map((pair) => ({
+        lower: pair.lower.position,
+        upper: pair.upper.position,
+        kind: pair.kind,
+      })),
     },
     useGod: useGod
       ? {
@@ -1105,6 +1133,151 @@ function dayClashText(clash, circle, calendar) {
   if (clash.dark.length > 0) {
     parts.push('「占以暗動福來而不知，禍來而不覺」是旧说，原作者在本章末尾就驳了它：'
       + '「吉凶之應於動，有急緩之應，則緩非此論，何當不知不覺，報應亦非緩也。」暗动不必当成迟缓。');
+  }
+  return parts.join('');
+}
+
+/**
+ * 《增删卜易·六冲章第二十》「相冲之法有六」逐条对出本卦这一卦实到哪几种。
+ *
+ *   「子午相冲、丑未相冲、寅申相冲、卯酉相冲、辰戌相冲、巳亥相冲。相冲之法有六：
+ *     日月冲爻者一也，卦逢六冲者二也，六合卦变六冲者三也，冲变六冲者四也，
+ *     动爻变冲者五也，爻与爻冲者六也。」
+ *
+ * 第一路「日月冲爻」归日辰与月建，日辰那一半已经在暗动章与动散章里逐爻算过（暗动、
+ * 日破、冲散），月建那一半是月破，所以这里不重数，只在收尾时指一句路。本函数数的是
+ * 剩下五路里本卦实到的那几条。
+ *
+ * 「冲变六冲」（第四路）底本如此；明天机一系作「六冲卦变六冲者，四也」，把「冲」二字
+ * 补全成「六冲卦」。两说指同一件事——变出来的那个卦也是六冲卦——本包取补全的写法，
+ * 底本原样记在这里。
+ *
+ * @param {{ hexagram: object, jf: object, changed: object|null,
+ *           changedJf: object|null, movingPositions: number[] }} input
+ */
+function clashKinds({ hexagram, jf, changed, changedJf, movingPositions }) {
+  const here = hexagramClash(hexagram, jf);
+  const there = changedJf ? hexagramClash(changed, changedJf) : null;
+  // 卦内任意两爻相冲。标准那三对（初四、二五、三六）单另走 chong/he 两条判语，
+  // 这里报的是余下那些撞上的零散对——六冲卦那三对不重复报，免得同一件事说两遍。
+  const incidental = [];
+  for (let a = 1; a <= 6; a += 1) {
+    for (let b = a + 1; b <= 6; b += 1) {
+      if (branchClash(jf.lines[a - 1].branchIndex) !== jf.lines[b - 1].branchIndex) continue;
+      if (CLASH_STANDARD_PAIRS.some(([x, y]) => (x === a && y === b) || (x === b && y === a))) continue;
+      incidental.push({ a, b, lineA: jf.lines[a - 1], lineB: jf.lines[b - 1] });
+    }
+  }
+  // 动爻变冲：这一爻动起来变出去的那一爻，正好冲它本位那一爻。
+  const transformClash = [];
+  if (changedJf) {
+    for (const position of movingPositions) {
+      const line = jf.lines[position - 1];
+      const changedLine = changedJf.lines[position - 1];
+      if (branchClash(line.branchIndex) === changedLine.branchIndex) {
+        transformClash.push({ position, line, changedLine });
+      }
+    }
+  }
+  return {
+    chong: here.chong,
+    he: here.he,
+    pairs: here.pairs,
+    changedChong: there?.chong ?? false,
+    changedHe: there?.he ?? false,
+    heToChong: Boolean(here.he && there?.chong),
+    chongToChong: Boolean(here.chong && there?.chong),
+    transformClash,
+    incidental,
+    incidentalOutsideChong: incidental.length > 0 && !here.chong,
+    hasAny: here.chong || here.he || Boolean(there?.chong) || transformClash.length > 0 || incidental.length > 0,
+  };
+}
+
+const CLASH_STANDARD_PAIRS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
+
+/**
+ * 六冲那一段。断语逐字引《增删卜易·六冲章第二十》，该给吉凶的地方一律压在用神上。
+ *
+ * 两条本包不替人定的：
+ * 一是「凡占凶事，宜于冲散；占吉事，则不宜」。所问算吉事还是凶事，是问卦人自己心里的
+ *   定位，一句问题里读不出来；本包不替他把事归到哪一头，只把两半都摆上。
+ * 二是「近病逢冲即愈，久病逢冲则死」。新病与久病差着一条命，这是个只有问的人知道的事，
+ *   本包不认病势，所以占病遇六冲时只引这句、不选边。
+ * 官讼那一半反倒能接：所问既已认作官讼是非，原书「惟占官非、盗贼、结绝事者宜之」
+ *   说的正是这一类，直接引。
+ *
+ * @param {ReturnType<typeof clashKinds>} kinds
+ * @param {ReturnType<typeof circleReading>|null} circle
+ * @param {{ key: string, label: string }|null} topic
+ * @param {object} calendar
+ */
+function clashText(kinds, circle, topic, calendar) {
+  const parts = [];
+  if (kinds.chong || kinds.he) {
+    const which = kinds.chong ? '六冲卦' : '六合卦';
+    const spoken = kinds.pairs.map((pair) => `${pair.lower.branch}${pair.upper.branch}`).join('、');
+    parts.push(`本卦是${which}。纳甲装出来初四、二五、三六三对，${kinds.chong ? '三对皆冲' : '三对皆合'}（${spoken}）。`);
+  } else {
+    const near = kinds.pairs.filter((pair) => pair.kind !== null);
+    parts.push(`本卦既不是六冲卦也不是六合卦：初四、二五、三六三对里`
+      + (near.length === 0 ? '一对也不冲不合。' : `只有${near.map((pair) => `${pair.lower.branch}${pair.upper.branch}`).join('、')}这一对${near[0].kind}。`));
+  }
+
+  const trans = [];
+  if (kinds.transformClash.length > 0) {
+    trans.push(`${kinds.transformClash.map((item) => `${item.line.label}化出${item.changedLine.branch}`).join('、')}`
+      + '，变出去的那一支正好冲本位那一爻（动爻变冲）');
+  }
+  if (kinds.heToChong) {
+    trans.push('本卦六合、变卦六冲（六合变六冲）');
+  }
+  if (kinds.chongToChong) {
+    trans.push('本卦六冲、变卦也是六冲（六冲变六冲）');
+  } else if (kinds.changedChong && !kinds.heToChong) {
+    trans.push('变出来的那个卦是六冲卦（卦变六冲，底本作「冲变六冲」）');
+  }
+  if (trans.length > 0) parts.push(`${trans.join('；')}。`);
+
+  if (kinds.incidentalOutsideChong) {
+    parts.push(`卦里另有${kinds.incidental.map((pair) => `${pair.lineA.label}${pair.lineA.branch}冲${pair.lineB.label}${pair.lineB.branch}`).join('、')}`
+      + '——这是卦内两爻相冲，不等于本卦就是六冲卦。');
+  }
+
+  if (kinds.heToChong) {
+    parts.push('原书对六合变六冲写得很重：「诸占先合后离、先亲后疏、先浓后淡，始荣终悴，'
+      + '得而复失，成而后败，事就而又变也。惟占官非、盗贼、结绝事者宜之。」'
+      + (topic?.key === 'dispute'
+        ? '所问正落在官讼是非上，末了那半句说的就是这一类。'
+        : '末了那半句说的是官非、盗贼、结绝事一类；所问不在此，断语不替它改判吉凶。'));
+  }
+  if (kinds.chongToChong) {
+    parts.push('六冲变六冲，原书作「乃内外变动，交相冲击，必主上下不和，至亲反目，彼此怀奸，'
+      + '始终不就。若用神再受克者，大凶之兆，纵用神旺相，亦不长久」。');
+  }
+
+  if (kinds.chong || kinds.heToChong || kinds.chongToChong) {
+    parts.push('章末把总规矩收在一句上：「冲者，散也。凡占凶事，宜于冲散；占吉事，则不宜。'
+      + '亦必兼用神而言，用神若旺，虽冲不碍；用神失陷，凶而又凶。」'
+      + '所问算吉事还是凶事，是你自己的定位，本包不替你归这一头；后半句判得了，按用神说：');
+    if (!circle) {
+      parts.push('用神定不下来，这一层就不接。');
+    } else {
+      const tone = vitality(circle.god.element, calendar.monthElement);
+      const strong = tone.tone === 'strong' || tone.tone === 'good';
+      parts.push(strong
+        ? `用神${circle.god.label}${circle.god.element}于月建为${tone.key}，照「用神若旺，虽冲不碍」，这层冲不碍着它。`
+        : `用神${circle.god.label}${circle.god.element}于月建为${tone.key}，落在失陷那一头，照「用神失陷，凶而又凶」，这层冲对它不是好事。`);
+    }
+  }
+
+  if (topic?.key === 'health' && (kinds.chong || kinds.heToChong || kinds.chongToChong)) {
+    parts.push('占病另有一条不兼用神的：「惟占病，有远近之分，不用用神，近病逢冲即愈，久病逢冲则死。」'
+      + '新病还是久病只有你清楚，这里只引这句、不替你选边。');
+  }
+  if (kinds.chong) {
+    parts.push('原书另有一句兜底：「古以六冲卦，诸占不吉。予屡试之，用神失陷，实不为吉；'
+      + '用若得地，须以用神断之。」所以六冲卦本身不作凶论。');
   }
   return parts.join('');
 }

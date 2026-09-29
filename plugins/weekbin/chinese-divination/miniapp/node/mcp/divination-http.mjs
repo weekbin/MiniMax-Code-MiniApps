@@ -154,6 +154,20 @@ function readingToText(reading) {
     if (clash.pressed.length > 0) bits.push(`冲散${clash.pressed.join('、')}爻`);
     return bits.length === 0 ? null : `【日冲】${bits.join('，')}`;
   })();
+  // 卦体冲合。六冲卦十个、六合卦八个，都是整卦的定性；变卦那两路要等动起来才谈得上。
+  // 六十四卦里有四十六卦既不是六冲也不是六合，那种「不是」不值一行，不出。
+  const clashLine = (() => {
+    const c = reading.clash;
+    if (!c) return null;
+    if (!(c.chong || c.he || c.changedChong || c.changedHe || (c.transformClash || []).length > 0)) return null;
+    const bits = [];
+    bits.push(c.chong ? '本卦六冲卦' : c.he ? '本卦六合卦' : '本卦非六冲非六合');
+    if (c.chongToChong) bits.push('变卦亦六冲');
+    else if (c.heToChong) bits.push('变卦六冲（六合变六冲）');
+    else if (c.changedChong) bits.push('变卦六冲');
+    if ((c.transformClash || []).length > 0) bits.push(`动爻变冲${c.transformClash.join('、')}爻`);
+    return `【卦体】${bits.join('，')}`;
+  })();
   return [
     `【起法】${reading.method}`,
     reading.question ? `【所问】${reading.question}` : '【所问】未填',
@@ -163,6 +177,7 @@ function readingToText(reading) {
     `【爻象】${lines}`,
     `【体用】体卦 ${reading.structure.body.name}${reading.structure.body.element}，用卦 ${reading.structure.use.name}${reading.structure.use.element}`,
     `【京房】${jingfangLine}`,
+    clashLine,
     dayClashLine,
     `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
     `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
@@ -258,6 +273,10 @@ function callTool(name, args) {
               pressed: reading.dayClash.pressed,
             }
           : null,
+        // 卦体冲合：六冲卦十个、六合卦八个，都是整卦的定性，一卦至多中一个；
+        // 变卦那两路（六合变六冲、六冲变六冲）与动爻变冲要等动起来才谈得上。
+        // 卦内零散爻与爻冲六十四卦里有三十卦都有，太常见，不单列开关，只给爻位对。
+        clash: reading.clash,
         timing: reading.timing,
         disclaimer: DISCLAIMER,
       },

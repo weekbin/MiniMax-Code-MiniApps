@@ -412,7 +412,11 @@ test('卦历写入 dataDir 后可回读', async () => {
 
     const full = await store.get(reading.id);
     assert.equal(full.hexagram.name, reading.hexagram.name);
-    assert.equal(full.insights.length, 16);
+    assert.equal(full.insights.length, reading.insights.length, '落盘再读回，断语段数得跟起卦时一致');
+    // 乾为天是六冲卦，断语里会多出「六冲」那一段，所以这一卦是 17 段。
+    assert.ok(full.insights.some((item) => item.title === '六冲'), '六冲卦的断语里该有「六冲」那一段');
+    assert.equal(full.insights.length, 17);
+    assert.equal(full.clash.chong, true, '六冲卦这个定性也要跟着落盘走');
 
     assert.equal(await store.remove(reading.id), true);
     assert.equal(await store.remove(reading.id), false);
@@ -1455,9 +1459,16 @@ test('卦体把六亲与世应画出来，不只是数据里有', async () => {
   assert.ok(/reading\.useGod\.hidden/.test(render), '解读页本卦没把伏神传进卦体');
   // 变卦要把化爻传进去，才标得出哪一格是由本卦动爻变过来的
   assert.ok(
-    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,140}?reading\.transforms \|\| \[\][\s\S]{0,20}?\)\)/.test(render),
+    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,200}?reading\.transforms \|\| \[\][\s\S]{0,80}?\)\)/.test(render),
     '解读页变卦没传京房数据与化爻',
   );
+  // 六冲/六合那枚小标，本卦与变卦都要传——变卦也可能是六冲卦，那正是「六合变六冲」
+  // 要在卦面上看得见的地方
+  assert.ok(
+    /reading\.useGod && reading\.useGod\.circle\) \|\| null,\s*clashTag\(reading, '本卦'\)/.test(render),
+    '解读页本卦没把卦体冲合小标传进卦体',
+  );
+  assert.ok(/clashTag\(reading, '变卦'\)/.test(render), '解读页变卦没把卦体冲合小标传进卦体');
   // 右栏摘要也得有这一行
   assert.ok(/\['六亲世应',/.test(client), '右栏没有六亲世应摘要');
   assert.ok(/\['用神',/.test(client), '右栏没有用神摘要');
@@ -3059,4 +3070,242 @@ test('MCP 把冲散落进 dayClash，抬头那一行改叫【日冲】并点出�
   assert.ok(header.includes(`冲散${clash.pressed.join('、')}爻`),
     `抬头没点出冲散那一爻：抬头作「${header}」，而 dayClash.pressed 作 [${clash.pressed}]`);
   assert.match(text, /谓之冲散/, '正文里没有冲散那一段');
+});
+
+/* ---------- 六冲（增删卜易·六冲章第二十、六合章第十九） ---------- */
+
+const clashSection = (reading) => reading.insights.find((item) => item.title === '六冲');
+
+test('六冲卦十个、六合卦八个，名单逐一钉死', async () => {
+  const { hexagramClash } = await import('../miniapp/node/jingfang.mjs');
+  const chong = [];
+  const he = [];
+  for (const hexagram of HEXAGRAM_LIST) {
+    const clash = hexagramClash(hexagram);
+    if (clash.chong) chong.push(hexagram.name);
+    if (clash.he) he.push(hexagram.name);
+  }
+  // 八纯卦加天雷无妄、雷天大壮。无妄与大壮之所以也在内：乾与震纳甲同支，
+  // 上下互易之后三对照样全冲。
+  assert.deepEqual(chong, ['乾为天', '坤为地', '天雷无妄', '坎为水', '离为火',
+    '雷天大壮', '震为雷', '艮为山', '巽为风', '兑为泽']);
+  assert.deepEqual(he, ['地天泰', '天地否', '雷地豫', '山火贲', '地雷复', '泽水困',
+    '火山旅', '水泽节']);
+  // 一卦不能又冲又合：那要三对同时既冲又合
+  for (const hexagram of HEXAGRAM_LIST) {
+    const clash = hexagramClash(hexagram);
+    assert.ok(!(clash.chong && clash.he), `${hexagram.name}又算六冲又算六合`);
+  }
+});
+
+test('六冲六合按初四、二五、三六配对，且一组成立则三组皆成立', async () => {
+  const { hexagramClash } = await import('../miniapp/node/jingfang.mjs');
+  // 这一步最易数错：纳甲内外两卦的起支错开一位，配对是隔三位，不是内外同位。
+  // 按内外同位去配，六十四卦里一个六冲卦也找不出来。
+  for (const hexagram of HEXAGRAM_LIST) {
+    const clash = hexagramClash(hexagram);
+    assert.deepEqual(clash.pairs.map((pair) => [pair.lower.position, pair.upper.position]),
+      [[1, 4], [2, 5], [3, 6]], `${hexagram.name}的配对位不对`);
+    // 「这三组，只要有一组相冲，其他两组必定相冲」——不是经验，是纳甲定死的
+    const chongPairs = clash.pairs.filter((pair) => pair.kind === '冲').length;
+    const hePairs = clash.pairs.filter((pair) => pair.kind === '合').length;
+    assert.equal(clash.chong, chongPairs === 3, `${hexagram.name}三对冲的组数与判定不符`);
+    assert.equal(clash.he, hePairs === 3, `${hexagram.name}三对合的组数与判定不符`);
+    assert.equal(clash.chong, chongPairs > 0, `${hexagram.name}「一组冲则三组皆冲」这条不成立`);
+    assert.equal(clash.he, hePairs > 0, `${hexagram.name}「一组合则三组皆合」这条不成立`);
+  }
+  // 乾为天三对的具体支，别只钉住「是六冲卦」这句话
+  const qian = hexagramClash(hexagramByOrder(1));
+  assert.deepEqual(qian.pairs.map((pair) => `${pair.lower.branch}${pair.upper.branch}`),
+    ['子午', '寅申', '辰戌']);
+});
+
+test('六冲章那六种冲里的四路，各自落到本卦上', async () => {
+  // 第一路日月冲爻归日辰与月建，已在暗动章与月破里逐爻算过，这里数的是剩下几路。
+  const sixChongToChong = buildReading(castByCoins([6, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.equal(sixChongToChong.hexagram.name, '坤为地');
+  assert.equal(sixChongToChong.changed.name, '乾为天');
+  assert.ok(sixChongToChong.clash.chong, '坤为地该是六冲卦');
+  assert.ok(sixChongToChong.clash.changedChong && sixChongToChong.clash.chongToChong,
+    '坤为地变乾为天，两头都是六冲卦，该作六冲变六冲');
+  assert.match(clashSection(sixChongToChong).text, /本卦六冲、变卦也是六冲（六冲变六冲）/);
+
+  const heToChong = buildReading(castByCoins([7, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.equal(heToChong.hexagram.name, '地雷复', '用例选错了卦');
+  assert.ok(heToChong.clash.he, '地雷复该是六合卦');
+  assert.ok(heToChong.clash.heToChong, '地雷复变乾为天，该作六合变六冲');
+  assert.equal(heToChong.clash.chongToChong, false, '本卦不是六冲卦，不该同时算六冲变六冲');
+  assert.match(clashSection(heToChong).text, /本卦六合、变卦六冲（六合变六冲）/);
+
+  const transformClash = buildReading(castByCoins([8, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(transformClash.clash.transformClash, [2, 3], '这一例本该二爻三爻动爻变冲');
+  assert.match(clashSection(transformClash).text, /变出去的那一支正好冲本位那一爻（动爻变冲）/);
+});
+
+test('卦内两爻相冲不等于六冲卦，零散的那几对只在卦体已出段时顺带报', async () => {
+  // 地泽临：兑下纳巳卯丑、坤上纳丑亥酉。初巳冲五亥、二卯冲上酉，各撞上一对。
+  const lin = buildReading(castByCoins([7, 7, 6, 6, 6, 6]),
+    { now: new Date(2026, 8, 30, 10, 30), question: '我该不该换工作' });
+  assert.equal(lin.hexagram.name, '地泽临', '用例选错了卦');
+  assert.deepEqual(lin.clash.incidental, [[1, 5], [2, 6]]);
+  assert.equal(lin.clash.chong, false, '地泽临三对标准位不冲，就不是六冲卦');
+  assert.equal(lin.clash.he, false);
+  // 零散爻冲六十四卦里有三十卦都有，单拿它当触发会让大半卦都多出这一段
+  // ——同一卦换成不动上爻那一组（变出天风姤，不是六冲卦），整段就不出
+  const quiet = buildReading(castByCoins([9, 7, 6, 6, 6, 6]),
+    { now: new Date(2026, 8, 30, 10, 30), question: '我该不该换工作' });
+  assert.equal(quiet.hexagram.name, '地泽临', '用例选错了卦');
+  assert.deepEqual(quiet.clash.incidental, [[1, 5], [2, 6]], '卦内那两对冲还在');
+  assert.equal(quiet.clash.changedChong, false, '这一例变出天风姤，本该不是六冲卦');
+  assert.equal(clashSection(quiet), undefined, '只为卦内零散爻冲就开段，那是噪音');
+  // 同一卦变出六冲卦时它就顺带被报出来——上面那一组正变出乾为天
+  assert.ok(lin.clash.changedChong);
+  assert.match(clashSection(lin).text, /卦里另有初爻巳冲五爻亥、二爻卯冲上爻酉/);
+  assert.match(clashSection(lin).text, /不等于本卦就是六冲卦/);
+});
+
+test('六冲的吉凶只按用神说，用神定不下来就不接那一层', async () => {
+  // 章末：「亦必兼用神而言，用神若旺，虽冲不碍；用神失陷，凶而又凶。」
+  // 断言要认「照……这层冲……」那半句实说的话，不能只认引文里那半句——每段都引着它，
+  // 拿引文当判据，改口了照样全绿。
+  const strong = buildReading(castByCoins([6, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 1, 10, 10, 30), question: '我该不该换工作' });
+  assert.match(clashSection(strong).text, /用神三爻木于月建为旺/, '这一例本该用神旺相');
+  assert.match(clashSection(strong).text, /照「用神若旺，虽冲不碍」，这层冲不碍着它/);
+  assert.ok(!/这层冲对它不是好事/.test(clashSection(strong).text), '用神旺相却按失陷说了');
+
+  const weak = buildReading(castByCoins([6, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.match(clashSection(weak).text, /用神三爻木于月建为囚/);
+  assert.match(clashSection(weak).text, /落在失陷那一头，照「用神失陷，凶而又凶」，这层冲对它不是好事/);
+  assert.ok(!/照「用神若旺，虽冲不碍」，这层冲不碍着它/.test(clashSection(weak).text), '用神失陷却说它不碍');
+
+  // 用神不上卦时那一圈是空的，吉凶那一层就悬着，不拿别的爻顶上
+  const blank = buildReading(castByCoins([6, 6, 7, 7, 6, 7]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '这场官司能了结吗' });
+  assert.equal(blank.hexagram.name, '火山旅', '用例选错了卦');
+  assert.ok(blank.clash.heToChong, '这一例本该是六合变六冲');
+  assert.equal(blank.useGod.circle, null, '这一例本该取不出那一圈，用例选错了');
+  assert.match(clashSection(blank).text, /用神定不下来，这一层就不接/);
+});
+
+test('「占凶事宜、占吉事不宜」那半句只引不裁，疾病那条只引不选边', async () => {
+  // 所问算吉事还是凶事，是问卦人自己的定位，一句问题里读不出来
+  const plain = buildReading(castByCoins([6, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.match(clashSection(plain).text, /所问算吉事还是凶事，是你自己的定位，本包不替你归这一头/);
+  // 近病与久病差着一条命，只有问的人知道
+  const health = buildReading(castByCoins([6, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '父亲的病能好起来吗' });
+  const text = clashSection(health).text;
+  assert.match(text, /近病逢冲即愈，久病逢冲则死/, '占病那条原话该引出来');
+  assert.match(text, /新病还是久病只有你清楚，这里只引这句、不替你选边/);
+  assert.ok(!/近病逢冲则愈/.test(text.replace('近病逢冲即愈，久病逢冲则死', '')),
+    '占病被替人选了「新病即愈」这一边');
+  // 非占病时不摆疾病那一条
+  assert.ok(!/近病逢冲即愈/.test(clashSection(plain).text), '不占病却搬了占病那条');
+});
+
+test('官讼事类接得上「惟占官非、盗贼、结绝事者宜之」那半句', async () => {
+  // 所问既已认作官讼是非，原书末了那半句说的正是这一类，可以直接接
+  const dispute = buildReading(castByCoins([7, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '这场官司能了结吗' });
+  assert.equal(dispute.topic.key, 'dispute', '所问没认成官讼是非，用例选错了');
+  assert.match(clashSection(dispute).text, /惟占官非、盗贼、结绝事者宜之/);
+  assert.match(clashSection(dispute).text, /所问正落在官讼是非上，末了那半句说的就是这一类/);
+  // 不在这一类上时明说不在，不替它改判吉凶
+  const other = buildReading(castByCoins([7, 6, 6, 6, 6, 6]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  assert.match(clashSection(other).text, /所问不在此，断语不替它改判吉凶/);
+});
+
+test('卦体给六冲/六合挂一枚小标，淡字不上朱砂；右栏另有一格', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const start = client.indexOf('function clashTag(');
+  const tag = client.slice(start, client.indexOf('\n      function ', start + 10));
+  assert.ok(tag.length > 0, '没找到 clashTag 函数体');
+  assert.ok(/reading\.clash/.test(tag), '小标没读卦体冲合那一组数据');
+  // 本卦与变卦各判一次：本卦看它自己，变卦看变出来的那个是不是六冲/六合
+  assert.ok(/which === '本卦'/.test(tag) && /if \(c\.chong\) return '六冲'/.test(tag)
+    && /if \(c\.changedChong\) return '六冲'/.test(tag), '小标没把本卦与变卦分开判');
+  // 六冲六合是整卦的结构，不是吉凶，所以不列进朱砂名单
+  assert.ok(!/' po'/.test(tag), '卦体冲合那枚小标不该用朱砂');
+  // 钉在真正画出去的那一行：函数算对了、调用点不把 tag 传进去，卦面上照样什么都没有
+  const block = client.slice(client.indexOf('function guaBlock('));
+  const head = block.slice(0, block.indexOf('block.append(title)'));
+  assert.ok(/\(tag \? `<span class="gua-tag"/.test(head), 'guaBlock 没把 tag 那一枚画到标题上');
+  assert.ok(/>\$\{tag\}<\/span>/.test(head), '卦体冲合那枚小标没把 tag 的字写进去');
+  const rule = client.slice(client.indexOf('.gua-title .gua-tag {'));
+  const css = rule.slice(0, rule.indexOf('}'));
+  assert.ok(/var\(--text-subtle\)/.test(css), '卦体冲合那枚小标该用淡字');
+  assert.ok(!/var\(--seal\)/.test(css), '卦体冲合那枚小标不该染朱砂');
+  // 右栏那格
+  assert.ok(/\['卦体冲合', clashFact\(reading\)\]/.test(client), '右栏没有卦体冲合一格');
+  const fact = client.slice(client.indexOf('function clashFact('));
+  const body = fact.slice(0, fact.indexOf('\n      function '));
+  // 卦内零散爻与爻冲六十四卦里有三十卦都有，只为它开一格，右栏就成了流水账
+  assert.ok(!/c\.incidental/.test(body), 'clashFact 不该把零散爻与爻冲单独拎出来开格');
+  assert.ok(/if \(!\(c\.chong \|\| c\.he \|\| c\.changedChong \|\| c\.transformClash\.length\)\) return null;/.test(body),
+    '卦体既非六冲也非六合、变卦也不六冲、无动爻变冲时不该开这一格');
+});
+
+test('MCP 把卦体冲合落成字段，抬头另起一行【卦体】', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  const call = async (upper, lower) => {
+    let raw = '';
+    const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+    await handleMcpRequest({
+      response,
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: { question: '我该不该换工作', method: 'numbers', upper, lower } } },
+    });
+    return JSON.parse(raw);
+  };
+  const headerOf = (text) => text.split('\n').find((line) => line.startsWith('【卦体】')) ?? null;
+
+  // 卦体定性是整卦的，数字起卦的动爻位也不随日期动——这三组四个不同月建下取值不变，
+  // 所以可以直接钉死卦例，不必像【日冲】那样扫遍六十四卦。
+  const chong = await call(7, 7);
+  assert.equal(chong.result.structuredContent.hexagram.name, '艮为山');
+  assert.equal(chong.result.structuredContent.clash.chong, true, '艮为山该判成六冲卦');
+  assert.equal(chong.result.structuredContent.clash.he, false);
+  const chongHeader = headerOf(chong.result.content[0].text);
+  assert.ok(chongHeader, '六冲卦该出【卦体】那一行');
+  assert.match(chongHeader, /本卦六冲卦/);
+
+  // 变卦也是六冲卦——这正是「六合变六冲」那一路要在抬头露出来的地方
+  const changedChong = await call(1, 2);
+  const sc = changedChong.result.structuredContent;
+  assert.equal(sc.hexagram.name, '天泽履');
+  assert.equal(sc.clash.chong, false);
+  assert.equal(sc.clash.he, false, '天泽履既不是六冲也不是六合，走的是「卦变六冲」那一支');
+  assert.equal(sc.clash.changedChong, true, '天泽履变乾为天，变卦该是六冲卦');
+  assert.match(headerOf(changedChong.result.content[0].text), /变卦六冲/);
+
+  // 六合变六冲要单独走它自己那半句，不能跟上面那一支混成同一句
+  const heToChong = await call(3, 7);
+  const heSc = heToChong.result.structuredContent;
+  assert.equal(heSc.hexagram.name, '火山旅', '用例选错了卦');
+  assert.equal(heSc.clash.he, true, '火山旅该是六合卦');
+  assert.equal(heSc.clash.heToChong, true, '火山旅变艮为山，该作六合变六冲');
+  assert.match(headerOf(heToChong.result.content[0].text), /变卦六冲（六合变六冲）/);
+
+  // 又不是六冲、又不是六合、变卦也不六冲、无动爻变冲：这种「不是」不值一行
+  const quiet = await call(3, 1);
+  const quietSc = quiet.result.structuredContent;
+  assert.equal(quietSc.clash.chong, false);
+  assert.equal(quietSc.clash.he, false);
+  assert.equal(quietSc.clash.changedChong, false);
+  assert.deepEqual(quietSc.clash.transformClash, []);
+  assert.equal(headerOf(quiet.result.content[0].text), null, '没东西可说却出了【卦体】那一行');
+
+  // pairs 里给的是爻位对，程序不必再从正文里刨
+  const pairs = chong.result.structuredContent.clash.pairs;
+  assert.deepEqual(pairs.map((pair) => [pair.lower, pair.upper]),
+    [[1, 4], [2, 5], [3, 6]], '三对的爻位不对');
+  for (const pair of pairs) {
+    assert.equal(pair.kind, '冲', '艮为山三对都该判成冲');
+  }
 });
