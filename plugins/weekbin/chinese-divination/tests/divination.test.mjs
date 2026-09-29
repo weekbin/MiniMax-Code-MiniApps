@@ -2034,3 +2034,115 @@ test('买卖行话也认得出财运，不该因为措辞不像「赚钱」就�
     assert.equal(detectTopic(q)?.key, key, `「${q}」不该被买卖那批词抢走`);
   }
 });
+
+/* ---------- 六神 ---------- */
+// 装卦时人人都会画的一列，日干定初爻起哪一神。《卜筮全书·卷之一·起六神决》
+// 「甲乙起青龍，丙丁起朱雀，戊日起勾陳，己日起螣蛇，庚辛起白虎，壬癸起玄武。（俱從下起至上。）」
+
+test('六神歌诀与六行排列表逐格对撞', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 歌诀原文一个字都不许改
+  assert.equal(
+    J.SIX_GOD_SONG,
+    '甲乙起青龙，丙丁起朱雀，戊日起勾陈，己日起螣蛇，庚辛起白虎，壬癸起玄武。（俱从下起至上。）',
+    '六神歌诀与《卜筮全书》原文不符',
+  );
+  // 原文后面的排布表，自初爻起六格
+  const table = [
+    ['甲', '乙', '青龙 朱雀 勾陈 螣蛇 白虎 玄武'],
+    ['丙', '丁', '朱雀 勾陈 螣蛇 白虎 玄武 青龙'],
+    ['戊', null, '勾陈 螣蛇 白虎 玄武 青龙 朱雀'],
+    ['己', null, '螣蛇 白虎 玄武 青龙 朱雀 勾陈'],
+    ['庚', '辛', '白虎 玄武 青龙 朱雀 勾陈 螣蛇'],
+    ['壬', '癸', '玄武 青龙 朱雀 勾陈 螣蛇 白虎'],
+  ];
+  let cells = 0;
+  for (const [first, second, want] of table) {
+    for (const stem of [first, second].filter(Boolean)) {
+      const got = J.sixGods(J.SIX_GOD_ORDER && ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'].indexOf(stem)).join(' ');
+      assert.equal(got, want, `${stem}日六神排得不对：得「${got}」，表作「${want}」`);
+      cells += 6;
+    }
+  }
+  assert.equal(cells, 60, '十个日干各六格共六十格，少一格就是漏了字');
+  // 六十甲子日柱各归各神，一个都不能排不出
+  for (let d = 0; d < 60; d += 1) {
+    const g = J.sixGods(d % 10);
+    assert.equal(g.length, 6, `日干序 ${d % 10} 排不出六神`);
+    assert.equal(new Set(g).size, 6, '六神不可重样');
+  }
+});
+
+test('六神对着书上两个乾为天卦例逐爻对', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const A = await import('../miniapp/node/almanac.mjs');
+  const stemOf = (name) => A.STEMS.indexOf(name[0]);
+  // 「丙辰月甲子日（测卦得乾为天卦）」：初爻子水子孙临青龙，父戌土临玄武，逐爻如下
+  const jia = J.sixGods(stemOf('甲子'));
+  assert.equal(jia[0], '青龙', '甲子日子水子孙该临青龙');
+  assert.equal(jia[1], '朱雀', '二爻寅木妻财该临朱雀');
+  assert.equal(jia[2], '勾陈', '三爻辰土父母该临勾陈');
+  assert.equal(jia[3], '螣蛇', '四爻午火官鬼该临螣蛇');
+  assert.equal(jia[4], '白虎', '五爻申金兄弟该临白虎');
+  assert.equal(jia[5], '玄武', '上爻戌土父母该临玄武');
+  // 「丙辰月戊子日」同一卦：初爻该临勾陈，上爻该临朱雀
+  const wu = J.sixGods(stemOf('戊子'));
+  assert.equal(wu[0], '勾陈', '戊子日子水子孙该临勾陈');
+  assert.equal(wu[5], '朱雀', '上爻戌土父母该临朱雀');
+  assert.equal(wu.join(''), '勾陈螣蛇白虎玄武青龙朱雀', '戊子日六神排得不对');
+});
+
+test('六神只说气氛，不改吉凶', async () => {
+  // 野鹤一派的老话：「吉凶全凭五行生克，情态方看六神吉凶。」六神一旦能改吉凶，
+  // 断卦的根就动摇了。头一版这个测试拿同一个 now 循环十次，日干压根没变，六神也压根没换，
+  // 等于什么都没验——得真的换日子，让六神换过一轮，吉凶仍纹丝不动才作数。
+  const seen = new Set();
+  for (let day = 1; day <= 28; day += 1) {
+    const reading = buildReading(castByNumbers(5, 2), { now: new Date(2026, 8, day, 10, 0), question: '这单生意能赚钱吗' });
+    assert.equal(reading.sixGods.length, 6, `${day} 日六神没有排满六爻`);
+    seen.add(reading.sixGods[0]);
+    // 同一个卦、同一句话，只有日子在动
+    assert.equal(reading.hexagram.name, '风泽中孚', '卦变了，说明这一轮不是只换日子');
+    assert.equal(reading.verdict.key, '体克用', `${day} 日竟改动了吉凶`);
+    assert.equal(reading.verdict.label, '小吉', `${day} 日竟改动了吉凶`);
+    // 这一卦用神不上卦，走的是伏神那一路。断言就只认这一路的话——
+    // 早先写成一句通用匹配，结果用神上卦那一路的话替它作了证，两路坏一路照样全绿。
+    const text = reading.insights.find((item) => item.title === '用神').text;
+    assert.match(text, /伏神临(青龙|朱雀|勾陈|螣蛇|白虎|玄武)/, `${day} 日没说伏神临哪一神`);
+    assert.match(text, /成不成仍只由生克与旺衰定/, `${day} 日伏神那一路没说清六神不作判据`);
+  }
+  assert.ok(seen.size >= 4, `二十八天里初爻只轮到 ${seen.size} 种六神，八月里该转遍六神才对`);
+  // 六神意象表六神齐全，且各神各有所主，不能张冠李戴
+  const J = await import('../miniapp/node/jingfang.mjs');
+  for (const god of J.SIX_GOD_ORDER) {
+    assert.ok(J.SIX_GOD_MEANING[god], `${god} 没有意象`);
+    assert.ok(J.SIX_GOD_MEANING[god].element, `${god} 没有五行`);
+    assert.ok(J.SIX_GOD_MEANING[god].meaning.length > 4, `${god} 的意象太空`);
+  }
+  assert.ok(/喜庆/.test(J.SIX_GOD_MEANING.青龙.meaning), '青龙主喜庆');
+  assert.ok(/口舌/.test(J.SIX_GOD_MEANING.朱雀.meaning), '朱雀主口舌');
+  assert.ok(/盗贼/.test(J.SIX_GOD_MEANING.玄武.meaning), '玄武主盗贼');
+});
+
+test('卦体画出六神一列，用神临哪一神断语说得出', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function guaLines(');
+  const body = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(/gods/.test(body), '卦体没收六神');
+  assert.ok(/class="sg"/.test(body), '卦体没画六神这一列');
+  assert.ok(/gods\[position - 1\]/.test(body), '六神没按爻位取，下标多半错了');
+  // 本卦那次调用得把六神传下去
+  const call = client.slice(client.indexOf('left.append(guaBlock('), client.indexOf('left.append(guaBlock(') + 460);
+  assert.ok(/reading\.sixGods/.test(call), '解读页本卦没把六神传进卦体');
+  // 断语里的神必须是六神表里的一神，且与该爻实算对得上
+  const reading = buildReading(castByNumbers(3, 1), { now: new Date(2026, 8, 30, 10, 0), question: '这批货该不该进' });
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  const said = text.match(/用神临(青龙|朱雀|勾陈|螣蛇|白虎|玄武)/);
+  assert.ok(said, '用神段没说临哪一神');
+  assert.equal(said[1], reading.sixGods[reading.useGod.picked.position - 1], '断语说的六神与实排对不上');
+  // 用神上卦这一路自己的那半句，不能靠伏神那一路的话顶数
+  assert.ok(reading.useGod.picked, '这一卦用神本该上卦，否则验错了路');
+  assert.match(text, /成不成仍只由上面的生克与旺衰定/, '用神上卦那一路没说清六神不作判据');
+  assert.ok(!/伏神临/.test(text), '用神上卦却说起伏神来了');
+});

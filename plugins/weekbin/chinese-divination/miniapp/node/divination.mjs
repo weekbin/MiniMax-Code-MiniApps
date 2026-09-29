@@ -27,7 +27,7 @@ import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
-  voidReading, vitality, RELATIVE_MEANING } from './jingfang.mjs';
+  voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -518,6 +518,7 @@ export function buildReading(cast, options = {}) {
     dayElement: BRANCH_ELEMENTS[dayBranch],
     // 旬空要靠日柱在六十甲子里的序号才排得出，月破与墓绝要靠地支序号，都一并带上。
     dayIndex: dayGanZhi.index,
+    dayStem: dayGanZhi.stem,
     dayBranch,
     monthBranch,
     movingPositions,
@@ -575,6 +576,8 @@ export function buildReading(cast, options = {}) {
     structure,
     jingfang: jf,
     changedJingfang: changed ? jingfang(changed) : null,
+    // 六神自初爻向上各归一爻。只说是什么气氛，不参与生克，也不动吉凶。
+    sixGods: sixGods(dayGanZhi.stem),
     // 旬空与月破是这一卦整体的两处日子，跟哪一卦无关，单列一份给右栏和历法页用。
     void: (() => {
       const kong = xunKong(dayGanZhi.index);
@@ -675,6 +678,7 @@ function hiddenReading(name, jingfang, calendar) {
   const flying = flyingRelation(pair.hushen, pair.feishen);
   // 伏神与飞神各自逢什么空、破、墓、绝，一并问出来；伏神按野鹤的分法再判真假。
   const fu = voidReading(pair.hushen, { ...calendar, isHidden: true, isStruck: flying.key === '飞来克伏' });
+  const god = sixGods(calendar.dayStem)[pair.hushen.position - 1];
   const fei = voidReading(pair.feishen, calendar);
   const emerges = hiddenVerdict(
     pair.hushen,
@@ -701,11 +705,13 @@ function hiddenReading(name, jingfang, calendar) {
     hushen: `${pair.hushen.stem}${pair.hushen.branch}${pair.hushen.element}`,
     feishen: `${pair.feishen.stem}${pair.feishen.branch}${pair.feishen.element}`,
     feishenRelative: pair.feishen.relative,
+    god,
     flying: flying.key,
     emerges,
     sentence: `${name}伏在${pair.hushen.position}爻之下——本宫首卦${pair.palaceName}的${pair.hushen.stem}${pair.hushen.branch}${pair.hushen.element}在此位，`
       + `压着它的${pair.feishen.stem}${pair.feishen.branch}${pair.feishen.element}${pair.feishen.relative}是飞神。`
-      + `${flying.text}。${emerges.text}`,
+      + `${flying.text}。伏神临${god}，${SIX_GOD_MEANING[god].meaning}，只是它的调子，成不成仍只由生克与旺衰定。`
+      + `${emerges.text}`,
   };
 }
 
@@ -812,7 +818,21 @@ function useGodText(topic, god, jingfang, movingPositions, calendar) {
     : GOD_SHI_TONE[relation]);
   const state = voidSentence(voidReading(picked, { ...calendar, movingPositions }));
   if (state) parts.push(state);
+  // 别把局部也叫 god：这个函数的第二个参数就叫 god，同名会撞成重复声明。
+  // （与先前 hiddenGod 那次参数名 jingfang 遮蔽同源，是同一类错。）
+  const pickedGod = sixGods(calendar.dayStem)[picked.position - 1];
+  // 爻位用汉字，跟全篇「二爻」「五爻」一致，别在中文里插个「2爻」。
+  parts.push(godSentence(pickedGod, picked.label));
   return parts.join('');
+}
+
+/**
+ * 用神临六神。只交代这件事是什么调子，成不成仍旧只由生克定——
+ * 「吉凶全凭五行生克，情态方看六神吉凶」，这句是本包不许越的界。
+ */
+function godSentence(god, lineLabel) {
+  return `用神临${god}（${lineLabel}），${SIX_GOD_MEANING[god].meaning}——这是这件事的调子，`
+    + '成不成仍只由上面的生克与旺衰定，六神不改吉凶。';
 }
 
 /**

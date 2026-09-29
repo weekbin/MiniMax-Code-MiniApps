@@ -826,9 +826,18 @@
 
       .gua-line {
         display: grid;
-        grid-template-columns: 30px 1fr 26px auto;
+        grid-template-columns: 30px 34px 1fr 26px auto;
         align-items: center;
         gap: 10px;
+      }
+
+      /* 六神排在爻画左边，依《卜筮全书》「俱从下起至上」自初爻向上转。
+         它只说气氛，不参与生克也不改吉凶，所以用淡字，不跟世应用同一种朱砂。 */
+      .gua-line .sg {
+        font-size: 11px;
+        color: var(--text-subtle);
+        letter-spacing: 0.02em;
+        white-space: nowrap;
       }
 
       /* 纳甲一列：干支定五行，六亲定身份，世应定主客。装上了就多出这一列 */
@@ -2232,7 +2241,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2261,6 +2270,7 @@
             .join('');
           row.innerHTML =
             `<span class="pos">${names[6 - position]}</span>` +
+            `<span class="sg">${gods ? escapeHtml(gods[position - 1]) : ''}</span>` +
             `<span class="bars">${isYang ? '<i></i>' : '<i></i><i></i>'}</span>` +
             `<span class="mark">${mark}</span>` +
             (na
@@ -2280,7 +2290,7 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2289,7 +2299,7 @@
           `<h3 class="serif">${hexagram.name}</h3>` +
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2365,6 +2375,7 @@
           reading.useGod && reading.useGod.picked ? reading.useGod.picked.position : null,
           (reading.useGod && reading.useGod.hidden) || [],
           reading.states || [],
+          reading.sixGods || null,
         ));
         if (reading.changed) {
           const changed = document.createElement('div');

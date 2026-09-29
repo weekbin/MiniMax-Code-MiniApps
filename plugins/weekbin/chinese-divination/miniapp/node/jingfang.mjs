@@ -48,6 +48,50 @@ function overcomesTo(from, to) {
   return OVERCOMES[from] === to;
 }
 
+/**
+ * 六神起例，《卜筮全书·卷之一·启蒙节要·起六神决》原文：
+ *   「甲乙起青龍，丙丁起朱雀，戊日起勾陳，己日起螣蛇，庚辛起白虎，壬癸起玄武。（俱從下起至上。）」
+ * 歌诀定的是**初爻**起哪一神；自初爻往上，六神的先后是青龙、朱雀、勾陈、螣蛇、白虎、玄武，
+ * 日干只管从哪一神起转，顺序永不改变。存成数据是为了让测试逐字对着底本校。
+ */
+export const SIX_GOD_SONG = '甲乙起青龙，丙丁起朱雀，戊日起勾陈，己日起螣蛇，庚辛起白虎，壬癸起玄武。（俱从下起至上。）';
+
+/** 六神自初爻向上的固定次序。 */
+export const SIX_GOD_ORDER = Object.freeze(['青龙', '朱雀', '勾陈', '螣蛇', '白虎', '玄武']);
+
+/** 日干序（甲乙丙丁戊己庚辛壬癸）各从哪一神起转。 */
+const SIX_GOD_FIRST = Object.freeze([0, 0, 1, 1, 2, 3, 4, 4, 5, 5]);
+
+/**
+ * 六神的象。
+ *
+ * 螣蛇的五行有异说：或作火，或作阴土。本包取**火**并在此注明，因为《卜筮全书》与
+ * 《增删卜易》通行本多把它与朱雀同类；取土则与勾陈同，两者一主虚惊一主迟滞，取错说反。
+ *
+ * 另有一条本包死死守住的原则，出处在野鹤一派：「吉凶全凭五行生克，情态方看六神吉凶。」
+ * 六神**不参与生克、不改吉凶**，它只说这件事是什么气氛、什么性质。
+ */
+export const SIX_GOD_MEANING = Object.freeze({
+  青龙: Object.freeze({ element: '木', meaning: '喜庆、喜事、贵人、酒色、正直' }),
+  朱雀: Object.freeze({ element: '火', meaning: '口舌、文书、消息、是非、诉讼' }),
+  勾陈: Object.freeze({ element: '土', meaning: '田土、房产、牵连、迟滞、牢狱' }),
+  螣蛇: Object.freeze({ element: '火', meaning: '怪异、虚惊、缠绕、噩梦、欺诈' }),
+  白虎: Object.freeze({ element: '金', meaning: '凶险、血光、伤病、丧事、威猛' }),
+  玄武: Object.freeze({ element: '水', meaning: '暗昧、盗贼、隐私、暧昧、欺瞒' }),
+});
+
+/**
+ * 装卦时排的六神：自初爻向上，一神一爻。
+ * 书上的两个乾为天卦例本包的测试逐爻对过：甲子日子水子孙临青龙、戊子日子水子孙临勾陈。
+ * @param {number} dayStem 日干序 0–9（甲乙丙丁戊己庚辛壬癸）
+ * @returns {string[]} 下标 0 为初爻，5 为上爻
+ */
+export function sixGods(dayStem) {
+  const start = SIX_GOD_FIRST[dayStem];
+  if (start === undefined) return [];
+  return SIX_GOD_ORDER.map((_, i) => SIX_GOD_ORDER[(start + i) % 6]);
+}
+
 /** 十二地支五行。地支定这一爻的五行，六亲与一切生克都从这里起。 */
 export const BRANCH_ELEMENTS = Object.freeze({
   子: '水', 丑: '土', 寅: '木', 卯: '木', 辰: '土', 巳: '火',

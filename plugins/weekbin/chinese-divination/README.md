@@ -78,7 +78,7 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 绝 as small marks; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 绝 as small marks; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
 | Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
 | 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
@@ -485,6 +485,40 @@ and 休囚死 always in the second, and the two between them cover every case.
 On the diagram the 用神 line carries a **solid red badge**, against the outlined 世/应 boxes; a
 伏神 sits under its line as smaller dashed text reading 「伏 丙子水妻财」.
 
+**六神 — what the day's stem says about the mood**
+
+The sixth column a 六爻 chart has always carried. 《卜筮全书·卷之一·启蒙节要》:
+
+> 甲乙起青龍，丙丁起朱雀，戊日起勾陳，己日起螣蛇，庚辛起白虎，壬癸起玄武。（俱從下起至上。）
+
+The day stem fixes which god sits on the **first line**; from there they run upward in one fixed
+order, 青龙 → 朱雀 → 勾陈 → 螣蛇 → 白虎 → 玄武, wrapping around. The song is stored verbatim and
+checked cell by cell against the six-row table that follows it — thirty-two cells, since 甲乙, 丙丁,
+庚辛 and 壬癸 are paired. The two worked 乾为天 charts in the same chapter are checked line by line:
+on a 甲子 day 子水子孙 carries 青龙, on a 戊子 day it carries 勾陈.
+
+| God | Element | Stands for |
+| --- | --- | --- |
+| 青龙 | 木 | 喜庆、喜事、贵人、酒色、正直 |
+| 朱雀 | 火 | 口舌、文书、消息、是非、诉讼 |
+| 勾陈 | 土 | 田土、房产、牵连、迟滞、牢狱 |
+| 螣蛇 | 火 | 怪异、虚惊、缠绕、噩梦、欺诈 |
+| 白虎 | 金 | 凶险、血光、伤病、丧事、威猛 |
+| 玄武 | 水 | 暗昧、盗贼、隐私、暧昧、欺瞒 |
+
+螣蛇's element is disputed — fire in most circulating editions, yin earth in others. This package
+takes **fire** and says so, because taking earth would make it identical to 勾陈, and 虚惊 and
+迟滞 are not the same thing.
+
+One line this package will not cross, and the reading says so out loud every time it names a god:
+
+> 吉凶全憑五行生克，情態方看六神吉凶。
+
+The gods **do not take part in 生克 and do not move the verdict**. They say what kind of matter
+this is. A test casts the same hexagram across twenty-eight different days — the god under the first
+line changes hands several times over — and requires the verdict not to move by so much as a
+character.
+
 **旬空 · 月破 · 墓绝 — what the day and month do to a line**
 
 These three sit on top of 京房's 纳甲 and decide whether a line is doing anything today.
@@ -623,7 +657,10 @@ MCP response carrying the same thing as a field. 旬空, 月破 and 墓绝 are c
 the 旬空 歌诀 against the algorithm, both worked examples from the text recovered from their day
 pillars, the twelve months of 月破, the five elements' 墓绝, the seasonal void, false-void rescue
 and true-void grounds, the emergence path actually reaching 「终不得出」 on void alone, the
-休囚无气 clause, and 空 破 墓 绝 reaching the diagram and the right-hand panel. 111 passing.
+休囚无气 clause, and 空 破 墓 绝 reaching the diagram and the right-hand panel. 六神 is checked on four
+more: the 歌诀 verbatim, all thirty-two cells of the six-row table, both 乾为天 examples, and the rule
+that a god must not move the verdict — the same hexagram cast across twenty-eight days has to hold its
+verdict while the god under its first line changes hands. 116 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
