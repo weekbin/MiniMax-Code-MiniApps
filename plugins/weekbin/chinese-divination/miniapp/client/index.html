@@ -249,6 +249,120 @@
         color: var(--text);
       }
 
+      /* ---------- 四卦推导 ----------
+         互、变、错、综四种取法，纯文字说一遍是「互卦为XX」四个字，
+         看不出怎么互出来的。这里把本卦摆在左边，四种取法的结果摆在右边，
+         中间用一条线连过去，并标出每一步动了哪几爻。 */
+
+      .derive {
+        margin-top: 16px;
+        padding: 14px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-sunken, rgba(0, 0, 0, 0.015));
+      }
+
+      .derive .derive-head {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: center;
+        margin-bottom: 12px;
+      }
+
+      .derive .derive-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+
+      /* 本卦一行，四种取法一行。挤在一行里最后一卦会折行、断得莫名其妙，
+         分成两行反而把「本卦 vs 推出来的四卦」这层关系讲清了。 */
+      .derive .derive-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+
+      .derive .derive-unit {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        min-width: 46px;
+      }
+
+      .derive .unit-name {
+        font-size: 12px;
+        color: var(--text);
+      }
+
+      .derive .unit-tag {
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .derive .arrow {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 0 1px;
+        color: var(--border-strong);
+      }
+
+      .derive .arrow .how {
+        font-size: 9px;
+        line-height: 1.35;
+        color: var(--text-muted);
+        text-align: center;
+        max-width: 66px;
+      }
+
+      .derive .arrow svg {
+        display: block;
+      }
+
+      .derive .mini-gua {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        width: 42px;
+      }
+
+      .derive .mini-line {
+        display: flex;
+        gap: 4px;
+        height: 4px;
+      }
+
+      .derive .mini-line i {
+        display: block;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--text);
+      }
+
+      .derive .mini-line.yin i {
+        width: 44%;
+        background: var(--border-strong);
+      }
+
+      .derive .mini-line.yang i {
+        flex: 1;
+      }
+
+      /* 参与这一步取法的爻，染朱砂，一眼看出「动的是这几爻」 */
+      .derive .mini-line.touched i {
+        background: var(--seal);
+      }
+
+      .derive .self-unit .unit-name {
+        font-weight: 600;
+      }
+
       .qiring .month-label {
         font-size: 7px;
         fill: var(--text-muted);
@@ -1768,6 +1882,92 @@
         );
       }
 
+      /**
+       * 一卦的迷你爻画。touched 是参与这一步取法的爻位（1 起，自下而上），
+       * 染朱砂——四个取法各不相同，只有把「动了哪几爻」标出来才看得出差别。
+       */
+      function miniGua(key, touched) {
+        const rows = [];
+        for (let position = 6; position >= 1; position -= 1) {
+          const isYang = key[position - 1] === '1';
+          const on = touched && touched.includes(position);
+          rows.push(
+            `<div class="mini-line ${isYang ? 'yang' : 'yin'}${on ? ' touched' : ''}">` +
+            `<i></i>${isYang ? '' : '<i></i>'}</div>`,
+          );
+        }
+        return `<div class="mini-gua">${rows.join('')}</div>`;
+      }
+
+      /** 取法说明。字越少越好，这是图注不是段落。 */
+      const DERIVE_HOW = {
+        mutual: ['互卦', '取二三四为下卦\n三四五为上卦'],
+        changed: ['变卦', '动爻阴阳反转'],
+        opposite: ['错卦', '六爻阴阳全反'],
+        inverted: ['综卦', '六爻上下倒置'],
+      };
+
+      /**
+       * 互、变、错、综四种取法摊成一张图。
+       *
+       * 这四种是梅花易数里最容易被当成结论记住、却最没被看见的推法：断语只说
+       * 「互卦为XX」，看不到是怎么互出来的。摆成图之后，取哪几爻、怎么反、怎么
+       * 倒，各是一眼的事。
+       */
+      function deriveBlock(reading) {
+        const base = reading.hexagram;
+        const moving = (reading.movingLines || []).map((line) => line.position);
+        const steps = [
+          ['mutual', reading.mutual, [2, 3, 4, 5]],
+          ['changed', reading.changed, moving],
+          ['opposite', reading.opposite, [1, 2, 3, 4, 5, 6]],
+          ['inverted', reading.inverted, [1, 2, 3, 4, 5, 6]],
+        ].filter(([, target]) => Boolean(target));
+
+        if (steps.length === 0) return null;
+
+        const arrow = (label, how) => (
+          `<div class="arrow">` +
+          `<div class="how">${how.split('\n').map(escapeHtml).join('<br>')}</div>` +
+          `<svg width="30" height="8" viewBox="0 0 30 8" aria-hidden="true">` +
+          `<line x1="0" y1="4" x2="24" y2="4" stroke="currentColor" stroke-width="1"/>` +
+          `<path d="M24 1.5 L29 4 L24 6.5 Z" fill="currentColor"/>` +
+          `</svg>` +
+          `</div>`
+        );
+
+        const units = steps
+          .map(([kind, target, touched]) => {
+            const [label, how] = DERIVE_HOW[kind];
+            const isChanged = kind === 'changed';
+            return (
+              arrow(label, how) +
+              `<div class="derive-unit">` +
+              miniGua(target.key, isChanged ? touched : null) +
+              `<span class="unit-name">${escapeHtml(target.name)}</span>` +
+              `<span class="unit-tag">${escapeHtml(label)}</span>` +
+              `</div>`
+            );
+          })
+          .join('');
+
+        return (
+          `<div class="derive">` +
+          `<div class="derive-head">本卦之外，四种取法各有所据</div>` +
+          `<div class="derive-body">` +
+          `<div class="derive-row">` +
+          `<div class="derive-unit self-unit">` +
+          miniGua(base.key, null) +
+          `<span class="unit-name">${escapeHtml(base.name)}</span>` +
+          `<span class="unit-tag">本卦</span>` +
+          `</div>` +
+          `</div>` +
+          `<div class="derive-row">${units}</div>` +
+          `</div>` +
+          `</div>`
+        );
+      }
+
       function showCasting() {
         const slot = el('result-slot');
         stopCastingTyping();
@@ -1983,6 +2183,15 @@
           caution.setAttribute('role', 'note');
           caution.textContent = reading.advice.caution;
           right.append(caution);
+        }
+
+        // 四卦推导摆在最前：这四卦是本卦的推法，讲清了才轮到「当月主卦」那句话。
+        const derive = deriveBlock(reading);
+        if (derive) {
+          const box = document.createElement('div');
+          box.className = 'anim-fade';
+          box.innerHTML = derive;
+          right.append(box);
         }
 
         // 卦气消长环放在断语之前：断语是结论，这个环是结论背后的时令坐标，

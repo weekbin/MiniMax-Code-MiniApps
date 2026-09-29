@@ -1128,3 +1128,58 @@ test('消长环按十二格画出，并与卦气数据对得上', async () => {
   assert.deepEqual(branches, ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']);
   assert.ok(/prefers-reduced-motion: reduce[\s\S]*?\.qiring \.now-sector \{\s*animation: none/.test(client), '消长环没有尊重系统的减少动效设置');
 });
+
+test('四卦推导图把互、变、错、综的取法画出来', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.derive \{/.test(client), '推导图没有样式');
+  assert.ok(/function deriveBlock\(reading\)/.test(client), '没有推导图的绘制函数');
+  // 钉在调用点，不是钉在符号存在。上一版只匹配「赋值到 append」，
+  // 结果 if (false && derive) 也能过——这一版把判断本身也圈进来。
+  assert.ok(
+    /if \(derive\) \{[\s\S]{0,160}?box\.innerHTML = derive;[\s\S]{0,80}?right\.append\(box\)/.test(client),
+    '解读页没有真正把推导图插进页面',
+  );
+  // 四种取法都要真的排进 steps，光在 DERIVE_HOW 里写个说明不算数
+  for (const kind of ['mutual', 'changed', 'opposite', 'inverted']) {
+    assert.ok(
+      new RegExp(`\\['${kind}', reading\\.${kind},`).test(client),
+      `推导图没有把${kind}排进去`,
+    );
+  }
+  // 六爻皆静时变卦为 null，步骤表要能把它滤掉，否则会画出一个空卦
+  assert.ok(/\.filter\(\(\[, target\]\) => Boolean\(target\)\)/.test(client), '推导图没有滤掉不存在的变卦');
+  // 四种取法一个都不能少，图注要写清怎么取
+  for (const [kind, how] of [
+    ['mutual', '取二三四为下卦'],
+    ['changed', '动爻阴阳反转'],
+    ['opposite', '六爻阴阳全反'],
+    ['inverted', '六爻上下倒置'],
+  ]) {
+    assert.ok(new RegExp(`${kind}: \\['${kind === 'mutual' ? '互卦' : kind === 'changed' ? '变卦' : kind === 'opposite' ? '错卦' : '综卦'}', '${how}`).test(client), `推导图少了${how}的说明`);
+  }
+});
+
+test('推导图的四卦，取法本身经得起核', () => {
+  // 图只是把既有结果画出来，所以要保证画出去的与算出来的一致：互卦取二三四、
+  // 三四五，错卦全反，综卦倒置——这四条若有一条画错，图就在骗人。
+  for (const [name, cast] of SAMPLES()) {
+    const reading = buildReading(cast);
+    const self = reading.hexagram.key;
+    const mutual = reading.mutual.key;
+    assert.equal(mutual.slice(0, 3), self.slice(1, 4), `${name}：互卦下卦不是二三四爻`);
+    assert.equal(mutual.slice(3, 6), self.slice(2, 5), `${name}：互卦上卦不是三四五爻`);
+    assert.equal(reading.opposite.key, [...self].map((c) => (c === '1' ? '0' : '1')).join(''), `${name}：错卦不是六爻全反`);
+    assert.equal(reading.inverted.key, [...self].reverse().join(''), `${name}：综卦不是上下倒置`);
+    if (reading.changed) {
+      const moving = new Set(reading.movingLines.map((l) => l.position));
+      for (let i = 0; i < 6; i += 1) {
+        const position = i + 1;
+        if (moving.has(position)) {
+          assert.notEqual(reading.changed.key[i], self[i], `${name}：第${position}爻动了却没变`);
+        } else {
+          assert.equal(reading.changed.key[i], self[i], `${name}：第${position}爻没动却变了`);
+        }
+      }
+    }
+  }
+});

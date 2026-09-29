@@ -79,7 +79,7 @@ every single time.
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 世应, and the month's vitality |
+| Right | 体卦/用卦 elements and directions, 世应, the month's vitality, the four-derivation diagram, and the 消长 ring |
 | 断语 | thirteen sections, fourteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
@@ -355,6 +355,17 @@ by a test, as is the traditional-to-simplified mapping, which is derived rather 
 simplified source is aligned position by position against the traditional base, only agreeing pairs
 are kept, and three false pairs produced by source typos are then removed by hand.
 
+**The four derivations — where 互, 变, 错, 综 come from**
+
+The reading says 「互卦为XX」 and leaves the derivation invisible. This puts the cast hexagram on
+one row and the four derived ones below, each arrow labelled with how it is taken: 互 takes lines
+2-3-4 as the lower trigram and 3-4-5 as the upper; 变 flips the moving line; 错 inverts all six;
+综 reverses their order. In 变, the line that actually moved is vermilion, so 「that one changed」 is
+visible rather than stated. The four are not four parallel conclusions but four directions onto one
+question. The derivations are themselves under test — 互 really is 2-3-4 and 3-4-5, 错 really
+inverts, 综 really reverses, 变 moves only what moved — so a wrong line in the diagram fails the
+suite.
+
 **卦气 · 当令主卦 — which hexagram holds the month**
 
 Han-dynasty 易学 assigns twelve hexagrams to the twelve months, called the 十二辟卦: 复 rules 子月
@@ -449,7 +460,7 @@ to "打开灵签易占".
   cadence, the element-to-topic matching, and store round-trips. The classic texts are covered
   entry by entry: all 384 爻辞 are checked against the hexagram diagrams, all 384 小象传 against
   their 爻题, and all 64 彖传 against the hexagram table. The twelve 辟卦 are checked against
-  both the month branches and the hexagram table. 77 passing.
+  both the month branches and the hexagram table, and the four derivations against their own rules. 79 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
