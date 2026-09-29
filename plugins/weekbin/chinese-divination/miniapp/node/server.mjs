@@ -121,6 +121,7 @@ async function handle(request, response, clientEntry, store) {
           ? hexagram.upperTrigram.element
           : `${hexagram.upperTrigram.element}${hexagram.lowerTrigram.element}`,
         judgment: hexagram.judgment,
+        tuan: hexagram.tuan,
         image: hexagram.image,
         mutual: mutualHexagram(hexagram).name,
         opposite: oppositeHexagram(hexagram).name,

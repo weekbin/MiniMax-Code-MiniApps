@@ -4,8 +4,11 @@
  * 八卦与六十四卦。
  *
  * 卦的爻象一律由「上卦 + 下卦」推导，不手写爻字符串：少抄一次就少错一次。
- * 本文件只保留三项必须人工录入的经典文本：卦名、卦辞、象辞。
+ * 本文件只保留三项必须人工录入的经典文本：卦名、卦辞、象辞。彖传与逐爻爻辞、
+ * 小象传分别在 tuan.mjs、yao.mjs、xiang-chuan.mjs 里，理由见各自的说明。
  */
+
+import { tuanText } from './tuan.mjs';
 
 /**
  * 三爻，自下而上，1 为阳、0 为阴。
@@ -148,7 +151,8 @@ const HEXAGRAMS = [
  * @property {Trigram} upperTrigram
  * @property {Trigram} lowerTrigram
  * @property {string} judgment       卦辞
- * @property {string} image          象辞
+ * @property {string} image          象辞（大象传）
+ * @property {string} tuan           彖传
  */
 
 /** @type {readonly Hexagram[]} */
@@ -168,6 +172,7 @@ export const HEXAGRAM_LIST = Object.freeze(
       lowerTrigram,
       judgment,
       image,
+      tuan: tuanText(index + 1),
     });
   }),
 );

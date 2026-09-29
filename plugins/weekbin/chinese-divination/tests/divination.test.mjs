@@ -34,6 +34,7 @@ import { ReadingStore } from '../miniapp/node/store.mjs';
 import { responseTiming } from '../miniapp/node/xiang.mjs';
 import { hexagramYaoTexts, lineText } from '../miniapp/node/yao.mjs';
 import { hexagramXiangTexts, lineXiang } from '../miniapp/node/xiang-chuan.mjs';
+import { tuanText } from '../miniapp/node/tuan.mjs';
 import { detectTopic, godRelation, TOPIC_CLASSES } from '../miniapp/node/topics.mjs';
 import { generates, overcomes } from '../miniapp/node/divination.mjs';
 
@@ -944,4 +945,89 @@ test('卦盘把象传排在爻辞下一行', async () => {
   assert.ok(/\.yao-line em \{/.test(client), '缺少象传的样式');
   assert.ok(/象曰：\$\{escapeHtml\(body\(line\.xiang\)\)\}/.test(client), '卦盘没有渲染象传');
   assert.ok(/function body\(entry\)/.test(client), '缺少去爻题前缀的辅助函数');
+});
+
+/* ---------- 彖传 ---------- */
+
+test('彖传六十四卦每卦一条，且都挂进了卦表', () => {
+  let count = 0;
+  for (let order = 1; order <= 64; order += 1) {
+    const text = tuanText(order);
+    assert.ok(text, `第 ${order} 卦没有彖传`);
+    assert.ok(text.trim().length > 0, `第 ${order} 卦的彖传为空`);
+    assert.equal(hexagramByOrder(order).tuan, text, `第 ${order} 卦的卦表里没有带上彖传`);
+    count += 1;
+  }
+  assert.equal(count, 64);
+  assert.equal(tuanText(0), null);
+  assert.equal(tuanText(65), null);
+  assert.ok(HEXAGRAM_LIST.every((item) => typeof item.tuan === 'string' && item.tuan.length > 0));
+});
+
+test('彖传不残留繁体', () => {
+  const TRADITIONAL = '龍貞無見萬與東車馬鳥魚長門風飛貴進遠連覺語說統應瀆聖況罰薦顒設電獄篤輝麗穀氣風晝嚴澤揚廟揜飪驚懼邇靜勸財續湯繘踰';
+  for (let order = 1; order <= 64; order += 1) {
+    for (const char of TRADITIONAL) {
+      assert.ok(!tuanText(order).includes(char), `第 ${order} 卦彖传残留繁体「${char}」`);
+    }
+  }
+});
+
+test('名篇锚定与对校订正', () => {
+  // 乾：两版一作「保和大和」一作「保合太和」，通行本作太和；「品物流形」后该收句
+  assert.equal(tuanText(1), '大哉乾元，万物资始，乃统天。云行雨施，品物流形。大明终始，六位时成，时乘六龙以御天。乾道变化，各正性命，保合太和，乃利贞。首出庶物，万国咸宁。');
+  // 蒙：底本作「初筮告」，另一版误作「初噬告」
+  assert.ok(tuanText(4).includes('初筮告'));
+  // 小畜：底本有「健而巽」四字，另一版漏
+  assert.ok(tuanText(9).includes('健而巽'));
+  // 贲：另一版把夹注「（刚柔交错）」混进了正文
+  assert.ok(!tuanText(22).includes('刚柔交错'));
+  // 革：底本作「革而信之」，且「巳日」与六二爻辞同
+  assert.ok(tuanText(49).includes('革而信之'));
+  assert.ok(tuanText(49).includes('巳日乃孚'));
+});
+
+test('彖传与爻辞同源：革的「巳日」两处一致', () => {
+  assert.ok(lineText(49, 2).startsWith('六二：巳日乃革之'));
+  assert.ok(tuanText(49).includes('巳日乃孚'));
+});
+
+test('卦盘与卦库都按「卦辞 → 彖传 → 象辞」的次序排出', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.text-line \.tuan \{/.test(client), '缺少彖传的样式');
+  for (const [label, pattern] of [
+    ['卦盘', /judgment[^]*?class="tuan">\$\{escapeHtml\(hexagram\.tuan\)\}[^]*?hexagram\.image/],
+    ['卦库', /item\.judgment[^]*?class="tuan">\$\{escapeHtml\(item\.tuan\)\}[^]*?item\.image/],
+  ]) {
+    assert.ok(pattern.test(client), `${label}没有按卦辞、彖传、象辞的次序排`);
+  }
+  const server = await readFile(new URL('../miniapp/node/server.mjs', import.meta.url), 'utf8');
+  assert.ok(/tuan: hexagram\.tuan,/.test(server), '卦库接口没有带出彖传');
+  const mcp = await readFile(new URL('../miniapp/node/mcp/divination-http.mjs', import.meta.url), 'utf8');
+  assert.ok(/`彖传：\$\{item\.tuan\}`/.test(mcp), 'MCP 查卦没有输出彖传');
+  assert.ok(/item\.tuan\.includes\(query\)/.test(mcp), 'MCP 查卦没有按彖传检索');
+});
+
+test('起卦返回的本卦与变卦都带着彖传', () => {
+  // 卦库页与解读页读的是两条不同的数据路径：卦库走 server 自己的字段列表，
+  // 解读页走 reading.hexagram。少一处，另一处就会把彖传渲染成 undefined。
+  const cases = [...SAMPLES().map(([, cast]) => cast), castByCoins([7, 7, 7, 7, 7, 7])];
+  let changed = 0;
+  for (const cast of cases) {
+    const reading = buildReading(cast);
+    assert.equal(
+      reading.hexagram.tuan,
+      tuanText(reading.hexagram.order),
+      `${reading.hexagram.name} 的本卦没带上彖传`,
+    );
+    if (reading.changed) {
+      changed += 1;
+      assert.equal(
+        reading.changed.tuan,
+        tuanText(reading.changed.order),
+        `${reading.changed.name} 的变卦没带上彖传`,
+      );
+    }
+  }
+  assert.ok(changed > 0, '样本里一个变卦都没有，这条断言等于没验');
 });

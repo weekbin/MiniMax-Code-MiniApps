@@ -769,6 +769,14 @@
         color: var(--text);
       }
 
+      /* 彖传是解卦之辞，不是卦本身的原话，压一档以示区别 */
+      .text-line .tuan {
+        margin: 6px 0;
+        padding-left: 10px;
+        border-left: 1px solid var(--border-strong);
+        color: var(--text-muted);
+      }
+
       .yao-line {
         margin: 10px 0 0;
         padding: 8px 10px;
@@ -1290,7 +1298,7 @@
         <section role="tabpanel" id="panel-library" aria-labelledby="tab-library" hidden>
           <div class="card">
             <h2>六十四卦</h2>
-            <p class="hint">点开任一卦，可看卦辞、象辞与互错综三卦。</p>
+            <p class="hint">点开任一卦，可看卦辞、彖传、象辞与互错综三卦。</p>
             <input type="text" id="library-search" maxlength="40" placeholder="搜索卦名或上下卦，如「乾」「雷」" />
             <div class="library-grid" id="library-grid" style="margin-top: 14px"></div>
           </div>
@@ -1720,7 +1728,10 @@
         block.append(guaLines(hexagram, lines));
         const text = document.createElement('div');
         text.className = 'text-line serif';
-        text.innerHTML = `<p style="margin:0">${hexagram.judgment}</p><p style="margin:0">${hexagram.image}</p>`;
+        text.innerHTML =
+          `<p style="margin:0">${escapeHtml(hexagram.judgment)}</p>` +
+          `<p class="tuan">${escapeHtml(hexagram.tuan)}</p>` +
+          `<p style="margin:0">${escapeHtml(hexagram.image)}</p>`;
         block.append(text);
         // 爻辞只在动爻上露一条：六爻全列会把卦盘压成一堵字墙，动爻才是断的那一处。
         const moving = lines ? lines.filter((line) => line.moving && line.text) : [];
@@ -1968,7 +1979,10 @@
         const right = document.createElement('div');
         const quote = document.createElement('p');
         quote.className = 'text-line serif';
-        quote.innerHTML = `<p style="margin:0 0 8px">${escapeHtml(item.judgment)}</p><p style="margin:0">${escapeHtml(item.image)}</p>`;
+        quote.innerHTML =
+          `<p style="margin:0 0 8px">${escapeHtml(item.judgment)}</p>` +
+          `<p class="tuan">${escapeHtml(item.tuan)}</p>` +
+          `<p style="margin:0">${escapeHtml(item.image)}</p>`;
         const seek = document.createElement('div');
         seek.className = 'row';
         seek.style.marginTop = '16px';

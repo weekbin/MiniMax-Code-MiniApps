@@ -72,7 +72,7 @@ const TOOLS = Object.freeze([
   tool(
     'divination_hexagram_lookup',
     '查六十四卦',
-    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、象辞与互错综三卦。用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。',
+    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、彖传、象辞与互错综三卦。用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。',
     {
       type: 'object',
       properties: {
@@ -194,7 +194,8 @@ function callTool(name, args) {
             item.lowerTrigram.name.includes(query) ||
             item.upperTrigram.image.includes(query) ||
             item.lowerTrigram.image.includes(query) ||
-            item.judgment.includes(query),
+            item.judgment.includes(query) ||
+            item.tuan.includes(query),
         )
       : HEXAGRAM_LIST;
     const picked = hits.slice(0, limit);
@@ -203,6 +204,7 @@ function callTool(name, args) {
         [
           `【${item.name}】第 ${item.order} 卦，${hexagramSymbol(item.key)}，上${item.upperTrigram.name}下${item.lowerTrigram.name}`,
           `卦辞：${item.judgment}`,
+          `彖传：${item.tuan}`,
           `象辞：${item.image}`,
           `互卦 ${mutualHexagram(item).name}，错卦 ${oppositeHexagram(item).name}，综卦 ${invertedHexagram(item).name}`,
         ].join('\n'),

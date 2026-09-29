@@ -545,6 +545,7 @@ function serialize(hexagram) {
     upper: hexagram.upperTrigram,
     lower: hexagram.lowerTrigram,
     judgment: hexagram.judgment,
+    tuan: hexagram.tuan,
     image: hexagram.image,
     element: uniqueElement(hexagram.upperTrigram.element, hexagram.lowerTrigram.element),
   };

@@ -339,6 +339,21 @@ Two spellings that are easy to "simplify" away are pinned by tests: 损's 已事
 (already) while 革's 巳日乃革之 keeps 巳 (the sixth earthly branch), and 噬嗑's 噬乾胏 borrows 乾
 for 干 while 乾卦's 终日乾乾 means something else entirely.
 
+**彖传 — why this hexagram is shaped this way**
+
+The 卦辞 says what the hexagram is; the 彖传 says why. There is one per hexagram, all 64 stored,
+printed between the 卦辞 and the 象辞 and set in a lighter tone behind a left rule to mark that it
+is commentary rather than the hexagram's own voice. The long ones run to a hundred characters or
+more: 乾's walks from 「大哉乾元」 to 「万国咸宁」, unpacking 元亨利贞 one step at a time.
+
+Cross-checking two editions turned up ten substantive differences; nine take the base text. 蒙's
+「初筮告」 (the other edition prints 「初噬告」), 小畜's 「健而巽」 (missing from one edition), and
+革's 「革而信之」 with 「巳日乃孚」 all agree with the 爻辞. The tenth is 乾 itself: the two
+editions give 「保和大和」 and 「保合太和」, and the received text reads 太和. Each ruling is pinned
+by a test, as is the traditional-to-simplified mapping, which is derived rather than recalled: a
+simplified source is aligned position by position against the traditional base, only agreeing pairs
+are kept, and three false pairs produced by source typos are then removed by hand.
+
 **应期 — when it lands**
 
 Taken from the 类神 when a topic was recognised, otherwise from the 用卦. It surfaces during the
@@ -360,7 +375,7 @@ clean yes: 方向可进，力气要省.
 
 **卦库 — all sixty-four hexagrams**
 
-Search by name or by upper/lower trigram, then read the 卦辞, 象辞, and the 互卦 / 错卦 / 综卦
+Search by name or by upper/lower trigram, then read the 卦辞, 彖传, 象辞, and the 互卦 / 错卦 / 综卦
 cross-references for any hexagram.
 
 **历法 — the almanac**
@@ -406,7 +421,9 @@ to "打开灵签易占".
 - The package's own tests (`node --test "tests/**/*.test.mjs"` from this directory) cover the
   hexagram table, the 错卦/综卦/互卦 derivations, the ganzhi anchors, the twelve offices, the
   建除 cycle, the nine-day period, the coin rules, the response timing table, each method's change
-  cadence, the element-to-topic matching, and store round-trips: 39 passing.
+  cadence, the element-to-topic matching, and store round-trips. The classic texts are covered
+  entry by entry: all 384 爻辞 are checked against the hexagram diagrams, all 384 小象传 against
+  their 爻题, and all 64 彖传 against the hexagram table. 70 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
@@ -444,6 +461,7 @@ miniapp/node/server.mjs       Node entry: routes, MCP mount, start(context) → 
 miniapp/node/hexagrams.mjs    Trigrams and the sixty-four hexagrams
 miniapp/node/yao.mjs           The 384 爻辞, cross-checked against the hexagram diagrams
 miniapp/node/xiang-chuan.mjs    The 384 小象传, cross-checked between two editions
+miniapp/node/tuan.mjs           The 64 彖传, cross-checked between two editions
 miniapp/node/xiang.mjs        Line positions and response timing
 miniapp/node/topics.mjs       Element-to-topic: question → topic → 类神
 miniapp/node/almanac.mjs      Ganzhi, the twelve offices, solar terms, zodiac
