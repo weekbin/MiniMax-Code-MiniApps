@@ -473,6 +473,70 @@
         text-align: left;
       }
 
+      /* ---------- 成卦盘 ----------
+         起卦这一拍原先只有八卦环空转加一段打字，六爻是怎么成出来的看不见。
+         这里让卦体随推演逐爻长出来：自初爻向上长到上爻，长的过程中套用该爻的
+         动静（少阳、老阳…），最后动爻单独标红。取数、成卦、定动爻这条线，
+         从此是看得见的。 */
+
+      .casting-hex {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        width: 96px;
+        margin: 4px 0 12px;
+      }
+
+      .casting-hex .grow {
+        display: flex;
+        gap: 6px;
+        height: 5px;
+        opacity: 0;
+        transform: scaleX(0.2);
+        transform-origin: left center;
+      }
+
+      .casting-hex .grow.in {
+        opacity: 1;
+        transform: scaleX(1);
+        transition: opacity 260ms ease, transform 260ms cubic-bezier(0.22, 0.9, 0.3, 1);
+      }
+
+      .casting-hex .grow i {
+        display: block;
+        height: 5px;
+        border-radius: 2.5px;
+        background: var(--text);
+      }
+
+      .casting-hex .grow.yin i {
+        width: 42%;
+        background: var(--border-strong);
+      }
+
+      .casting-hex .grow.yang i {
+        flex: 1;
+      }
+
+      .casting-hex .grow.moving i {
+        background: var(--seal);
+      }
+
+      .casting-hex .grow.moving::after {
+        content: '○';
+        font-size: 10px;
+        line-height: 1;
+        color: var(--seal);
+        margin-left: 2px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .casting-hex .grow {
+          transform: none;
+          transition: none;
+        }
+      }
+
       .casting-line {
         white-space: nowrap;
         overflow: hidden;
@@ -1695,17 +1759,64 @@
         step();
       }
 
+      /**
+       * 随推演逐爻长出卦体。
+       *
+       * 每次推演报出一爻，就长一爻。什么时候标红动爻：等六爻都长齐了再点，
+       * 免得动爻在一开始就被指出来——起卦的意义正在于先成卦、后定哪一爻动。
+       */
+      function growCastingHex(box, reading) {
+        if (!box) return;
+        box.replaceChildren();
+        const lines = reading?.lines ?? [];
+        if (lines.length === 0) return;
+        const rows = [];
+        // 自上爻排到初爻，视觉上与卦盘一致；长出来时再倒着补，跟推演顺序对上。
+        for (let position = 6; position >= 1; position -= 1) {
+          const line = lines[position - 1];
+          const row = document.createElement('div');
+          const isYang = line ? line.value === 1 : false;
+          row.className = `grow ${isYang ? 'yang' : 'yin'}`;
+          row.innerHTML = `<i></i>${isYang ? '' : '<i></i>'}`;
+          box.append(row);
+          rows.push({ row, line, position });
+        }
+        if (reducedMotion()) {
+          for (const item of rows) {
+            item.row.classList.add('in');
+            if (item.line?.moving) item.row.classList.add('moving');
+          }
+          return;
+        }
+        // 推演报一行，长一爻。打字那一拍已经占掉 CASTING_BUDGET_MS，成卦盘只取
+        // 其中一小段，六爻铺完仍在等待之内，不至于推演画到一半就被切走。
+        const order = [...rows].sort((a, b) => a.position - b.position);
+        const stepMs = Math.max(70, Math.floor((CASTING_BUDGET_MS * 0.35) / order.length));
+        order.forEach((item, index) => {
+          castingTimers.add(setTimeout(() => {
+            item.row.classList.add('in');
+            if (index === order.length - 1) {
+              // 全部长齐，再点动爻
+              for (const other of rows) {
+                if (other.line?.moving) other.row.classList.add('moving');
+              }
+            }
+          }, stepMs * (index + 1)));
+        });
+      }
+
       async function cast(payload) {
         const slot = el('result-slot');
         try {
           // 先起卦、再显结果：跳过这一拍，结果就只是一次文本替换。
-          const log = showCasting();
+          const stage = showCasting();
           const data = await api('/cast', {
             method: 'POST',
             body: JSON.stringify({ ...payload, question: payload.question ?? el('question').trim() }),
           });
           // 取数结果到了才知道这卦算出什么，推演日志照着它现编，不是预先摆好的一段话。
-          if (log?.isConnected) typeCasting(log, castingLines(data.reading));
+          if (stage?.log?.isConnected) typeCasting(stage.log, castingLines(data.reading));
+          if (stage?.hex?.isConnected) growCastingHex(stage.hex, data.reading);
           // 留够三秒，让八卦环转满一圈、推演日志打完；直接跳结果就只是换了段文字。
           await wait(reducedMotion() ? 0 : 3000);
           stopCastingTyping();
@@ -1979,10 +2090,15 @@
           baguaSvg() +
           '<div class="casting-bar"></div>' +
           '<div class="casting-text">起 卦 中</div>' +
+          // 逐爻生长的卦体：取数、上下卦、动爻都靠它把推演画出来
+          '<div class="casting-hex" aria-hidden="true"></div>' +
           // 逐字刷新的行不给读屏念，卡片只播「起 卦 中」
           '<div class="casting-log" aria-hidden="true"></div>';
         slot.append(card);
-        return card.querySelector('.casting-log');
+        return {
+          log: card.querySelector('.casting-log'),
+          hex: card.querySelector('.casting-hex'),
+        };
       }
 
       /* ---------- 摇卦 ---------- */

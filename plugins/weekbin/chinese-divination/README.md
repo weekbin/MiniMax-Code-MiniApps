@@ -355,6 +355,17 @@ by a test, as is the traditional-to-simplified mapping, which is derived rather 
 simplified source is aligned position by position against the traditional base, only agreeing pairs
 are kept, and three false pairs produced by source typos are then removed by hand.
 
+**The three seconds of casting — how the hexagram forms**
+
+Press a method and the trigram ring turns while the derivation types out line by line. The six
+lines used to appear only in the result, unrelated to what the log was saying; now the hexagram
+body grows with the derivation, one line at a time from the bottom. **The moving line is marked
+only after all six are in** — marking it early gives the answer away, and the whole point of
+casting is that the hexagram forms first and only then the moving line is settled. Timing is
+covered statically: the wait must not be shorter than the typing budget, and six lines at the
+minimum interval must still fit inside it, so 「the typing finished but the diagram did not」 cannot
+slip through. With reduced motion on, all six appear at once.
+
 **The four derivations — where 互, 变, 错, 综 come from**
 
 The reading says 「互卦为XX」 and leaves the derivation invisible. This puts the cast hexagram on
@@ -460,7 +471,7 @@ to "打开灵签易占".
   cadence, the element-to-topic matching, and store round-trips. The classic texts are covered
   entry by entry: all 384 爻辞 are checked against the hexagram diagrams, all 384 小象传 against
   their 爻题, and all 64 彖传 against the hexagram table. The twelve 辟卦 are checked against
-  both the month branches and the hexagram table, and the four derivations against their own rules. 79 passing.
+  both the month branches and the hexagram table, and the four derivations against their own rules, and the casting timing against the typing budget. 81 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

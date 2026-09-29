@@ -1129,6 +1129,41 @@ test('消长环按十二格画出，并与卦气数据对得上', async () => {
   assert.ok(/prefers-reduced-motion: reduce[\s\S]*?\.qiring \.now-sector \{\s*animation: none/.test(client), '消长环没有尊重系统的减少动效设置');
 });
 
+test('成卦盘随推演长出，动爻最后才标红', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.casting-hex \{/.test(client), '成卦盘没有样式');
+  assert.ok(/function growCastingHex\(box, reading\)/.test(client), '没有成卦盘的生长逻辑');
+  // 钉在调用点，不是钉在符号存在
+  assert.ok(
+    /const stage = showCasting\(\);[\s\S]{0,400}?growCastingHex\(stage\.hex, data\.reading\)/.test(client),
+    '起卦流程没有驱动成卦盘生长',
+  );
+  // 动爻必须等六爻长齐再点。早一点就泄底了——起卦的意义正是先成卦、后定动爻。
+  assert.ok(
+    /if \(index === order\.length - 1\) \{[\s\S]{0,220}?if \(other\.line\?\.moving\)/.test(client),
+    '动爻不是等六爻长齐后才标红',
+  );
+  // 成卦盘只画一爻都不长就等于没画
+  assert.ok(/if \(lines\.length === 0\) return;/.test(client), '成卦盘没有处理空卦体');
+  assert.ok(/prefers-reduced-motion: reduce[\s\S]{0,200}?\.casting-hex \.grow \{[\s\S]{0,120}?transition: none/.test(client), '成卦盘没有尊重系统的减少动效设置');
+});
+
+test('起卦那一拍留得够长，成卦盘能在等待之内长齐', async () => {
+  // 成卦盘分到的时间不能超过整段等待，否则推演还没画完就跳结果。
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const budget = Number(/const CASTING_BUDGET_MS = (\d+);/.exec(client)[1]);
+  const waitMs = Number(/await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client)[1]);
+  assert.ok(waitMs >= budget, `等待 ${waitMs}ms 短于推演预算 ${budget}ms，画到一半就会被切掉`);
+  // 成卦盘取推演预算的一部分，再除以六爻：下界 × 6 仍须落在等待之内
+  const step = /const stepMs = Math\.max\((\d+), Math\.floor\(\(CASTING_BUDGET_MS \* ([\d.]+)\) \/ order\.length\)\)/.exec(client);
+  assert.ok(step, '找不到成卦盘每爻的间隔');
+  const minStep = Number(step[1]);
+  const share = Number(step[2]);
+  assert.ok(minStep * 6 <= waitMs, `六爻按最小间隔 ${minStep}ms 排下来要 ${minStep * 6}ms，超过等待 ${waitMs}ms`);
+  assert.ok(share <= 1, '成卦盘分到的时间占比不合法');
+  assert.ok(budget * share + budget <= waitMs + budget, '成卦盘与打字两段不应把等待撑爆');
+});
+
 test('四卦推导图把互、变、错、综的取法画出来', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
   assert.ok(/\.derive \{/.test(client), '推导图没有样式');
