@@ -284,6 +284,59 @@
         letter-spacing: 0.12em;
       }
 
+      /* 推演日志：定高，免得最后一行还在打字、下面就换成结果，页面跳一下 */
+      .casting-log {
+        width: min(320px, 100%);
+        min-height: 130px;
+        font-size: 13px;
+        line-height: 1.8;
+        color: var(--text-muted);
+        text-align: left;
+      }
+
+      .casting-line {
+        white-space: nowrap;
+        overflow: hidden;
+        animation: fadeIn 220ms ease both;
+      }
+
+      .casting-line.done {
+        color: var(--text-subtle);
+      }
+
+      /* 光标只在还没打完的那一行上 */
+      .casting-line::after {
+        content: '';
+        display: inline-block;
+        width: 6px;
+        height: 13px;
+        margin-left: 3px;
+        vertical-align: -2px;
+        background: var(--seal);
+        animation: caretBlink 1s steps(1) infinite;
+      }
+
+      .casting-line.done::after {
+        content: none;
+      }
+
+      @keyframes caretBlink {
+        0%,
+        49% {
+          opacity: 1;
+        }
+        50%,
+        100% {
+          opacity: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .casting-line::after {
+          animation: none;
+        }
+      }
+
       body {
         margin: 0;
         background: var(--bg);
@@ -1347,16 +1400,72 @@
         announce('已取两数，可直接起卦');
       });
 
+      /* 起卦推演日志。四种起卦法取数来源本来就不同，步骤也该不同——
+       * 抄一套通用的就成了假动作。铜钱那条按引擎的算式写：三背为九老阳，三字为六老阴。 */
+      const CASTING_LINES = {
+        daily: ['年月日三数相加', '除以八，余数定上卦', '加上时辰数，定下卦', '总数除以六，余数定动爻', '体用相参，吉凶自见'],
+        time: ['取当下时辰', '年月日时四数相加', '除以八，余数定上卦', '加时数定下卦，除六取动爻', '体用相参，吉凶自见'],
+        numbers: ['取所报两数', '第一数除八，定上卦', '第二数除八，定下卦', '两数相加除六，定动爻', '体用相参，吉凶自见'],
+        coins: ['六爻既成', '三背为老阳，三字为老阴', '动爻既出，变卦随之', '体用相生相克', '吉凶自此而生'],
+      };
+
+      const castingTimers = new Set();
+      // 一法五句，按下面这两个速度打完约 2.8 秒，落在 3 秒停留里，末尾还能留一口气
+      const CASTING_CHAR_MS = 48;
+      const CASTING_LINE_MS = 150;
+
+      function stopCastingTyping() {
+        for (const id of castingTimers) clearTimeout(id);
+        castingTimers.clear();
+      }
+
+      /** 逐字打五行推演。打完一行换下一行，光标只留在还没打完的那行上。 */
+      function typeCasting(log, lines) {
+        const add = (text, done) => {
+          const row = document.createElement('div');
+          row.className = done ? 'casting-line done' : 'casting-line';
+          row.textContent = text;
+          log.append(row);
+          return row;
+        };
+        if (reducedMotion()) {
+          lines.forEach((text) => add(text, true));
+          return;
+        }
+        let index = 0;
+        let row = add(lines[0].slice(0, 1), false);
+        let count = 1;
+        const step = () => {
+          const text = lines[index];
+          count += 1;
+          row.textContent = text.slice(0, count);
+          if (count < text.length) {
+            castingTimers.add(setTimeout(step, CASTING_CHAR_MS));
+            return;
+          }
+          row.classList.add('done');
+          index += 1;
+          if (index >= lines.length) return;
+          // 换行必须另起一个元素：接着写上一行会把五行叠成一行
+          row = add(lines[index].slice(0, 1), false);
+          count = 1;
+          castingTimers.add(setTimeout(step, CASTING_LINE_MS));
+        };
+        step();
+      }
+
       async function cast(payload) {
         const slot = el('result-slot');
         try {
           // 先起卦、再显结果：跳过这一拍，结果就只是一次文本替换。
-          showCasting();
+          showCasting(payload.method);
           const data = await api('/cast', {
             method: 'POST',
             body: JSON.stringify({ ...payload, question: payload.question ?? el('question').value.trim() }),
           });
-          await wait(reducedMotion() ? 0 : 620);
+          // 留够三秒，让八卦环转满一圈、推演日志打完；直接跳结果就只是换了段文字。
+          await wait(reducedMotion() ? 0 : 3000);
+          stopCastingTyping();
           state.reading = data.reading;
           renderReading(data.reading);
           announce(`得卦 ${data.reading.hexagram.name}，${data.reading.verdict.label}`);
@@ -1436,8 +1545,9 @@
         );
       }
 
-      function showCasting() {
+      function showCasting(method) {
         const slot = el('result-slot');
+        stopCastingTyping();
         slot.replaceChildren();
         const card = document.createElement('div');
         card.className = 'card casting';
@@ -1445,8 +1555,11 @@
         card.innerHTML =
           baguaSvg() +
           '<div class="casting-bar"></div>' +
-          '<div class="casting-text">起 卦 中</div>';
+          '<div class="casting-text">起 卦 中</div>' +
+          // 逐字刷新的行不给读屏念，卡片只播「起 卦 中」
+          '<div class="casting-log" aria-hidden="true"></div>';
         slot.append(card);
+        typeCasting(card.querySelector('.casting-log'), CASTING_LINES[method] ?? CASTING_LINES.daily);
       }
 
       /* ---------- 摇卦 ---------- */

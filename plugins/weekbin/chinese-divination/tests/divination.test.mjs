@@ -602,3 +602,52 @@ test('投影只留一种居中方式', async () => {
   );
   assert.equal(transform, true, '投影应当靠 translateX(-50%) 居中，各帧也要一致');
 });
+
+/* ---------- 起卦推演日志 ---------- */
+// 打字机文案按起卦法分开写：漏一种就会静默落到兜底那一套，等于对用户说
+// 「你数起卦也是这么算的」。另外停留时长得够打完最后一行，否则结尾被砍。
+
+test('每种起卦法都有推演文案，不靠兜底顶替', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const table = /const CASTING_LINES = \{([\s\S]*?)\n      \};/.exec(client);
+  assert.ok(table, '客户端里找不到 CASTING_LINES');
+
+  const keys = [...table[1].matchAll(/^\s*(\w+):\s*\[/gm)].map((m) => m[1]);
+  const methods = [...new Set([...client.matchAll(/data-method="([a-z]+)"/g)].map((m) => m[1]))];
+  assert.ok(methods.length > 0, '页面上应当还有起卦法');
+
+  for (const method of methods) {
+    assert.ok(keys.includes(method), `「${method}」没有推演文案，会被兜底成别的起卦法`);
+  }
+});
+
+test('每法五句、无空行', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const table = /const CASTING_LINES = \{([\s\S]*?)\n      \};/.exec(client)[1];
+  const groups = [...table.matchAll(/(\w+):\s*\[([^\]]+)\]/g)];
+  assert.ok(groups.length > 0);
+
+  for (const [, key, body] of groups) {
+    const lines = [...body.matchAll(/'([^']*)'/g)].map((m) => m[1]);
+    assert.equal(lines.length, 5, `「${key}」应当是五句推演`);
+    for (const line of lines) {
+      assert.ok(line.trim().length > 0, `「${key}」有空行`);
+    }
+  }
+});
+
+test('停留三秒够打完任何一法的推演', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const table = /const CASTING_LINES = \{([\s\S]*?)\n      \};/.exec(client)[1];
+  const budget = /await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client);
+  assert.ok(budget, '找不到起卦后的等待时长');
+  const charMs = Number(/const CASTING_CHAR_MS = (\d+);/.exec(client)[1]);
+  const lineMs = Number(/const CASTING_LINE_MS = (\d+);/.exec(client)[1]);
+  assert.ok(charMs > 0 && lineMs > 0, '找不到打字机的字速与行距');
+
+  for (const [, key, body] of table.matchAll(/(\w+):\s*\[([^\]]+)\]/g)) {
+    const chars = [...body.matchAll(/'([^']*)'/g)].reduce((sum, m) => sum + m[1].length, 0);
+    const need = chars * charMs + (5 - 1) * lineMs;
+    assert.ok(need <= Number(budget[1]), `「${key}」要 ${need}ms 才打完，超过 ${budget[1]}ms 停留，末行会被砍`);
+  }
+});
