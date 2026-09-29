@@ -32,6 +32,7 @@ import {
 } from '../miniapp/node/divination.mjs';
 import { ReadingStore } from '../miniapp/node/store.mjs';
 import { responseTiming } from '../miniapp/node/xiang.mjs';
+import { hexagramYaoTexts, lineText } from '../miniapp/node/yao.mjs';
 import { detectTopic, godRelation, TOPIC_CLASSES } from '../miniapp/node/topics.mjs';
 import { generates, overcomes } from '../miniapp/node/divination.mjs';
 
@@ -697,4 +698,138 @@ test('八卦环在起卦那三秒里转得肉眼看得见', async () => {
     const deg = (Number(budget[1]) / 1000 / period) * 360;
     assert.ok(deg >= 30, `${name} ${period}s 一圈，停留期间只转 ${deg.toFixed(0)}°，等于没动`);
   }
+});
+
+/* ---------- 爻辞 ---------- */
+
+const YAO_POSITIONS = ['初', '二', '三', '四', '五', '上'];
+
+/** 拆出「爻题」「爻辞」；格式不符返回 null。 */
+function parseYao(entry) {
+  const match = /^(初|上)([九六])：(.+)$|^([九六])([二三四五])：(.+)$/.exec(entry);
+  if (!match) return null;
+  const atTop = match[1] !== undefined;
+  return {
+    number: atTop ? match[1] : match[5],
+    polarity: atTop ? match[2] : match[4],
+    text: (atTop ? match[3] : match[6]).trim(),
+  };
+}
+
+test('爻辞六十四卦每卦六条，共 384 条', () => {
+  assert.equal(HEXAGRAM_LIST.length, 64);
+  let count = 0;
+  for (let order = 1; order <= 64; order += 1) {
+    const rows = hexagramYaoTexts(order);
+    assert.ok(rows, `第 ${order} 卦没有爻辞`);
+    assert.equal(rows.length, 6, `第 ${order} 卦的爻辞不是六条`);
+    count += rows.length;
+  }
+  assert.equal(count, 384);
+  assert.equal(hexagramYaoTexts(0), null);
+  assert.equal(hexagramYaoTexts(65), null);
+});
+
+test('爻题标对了爻位，阴阳与卦象逐位吻合', () => {
+  for (let order = 1; order <= 64; order += 1) {
+    const hexagram = hexagramByOrder(order);
+    hexagramYaoTexts(order).forEach((entry, index) => {
+      const parsed = parseYao(entry);
+      assert.ok(parsed, `第 ${order} 卦第 ${index + 1} 爻格式不对：${entry}`);
+      assert.equal(parsed.number, YAO_POSITIONS[index], `第 ${order} 卦第 ${index + 1} 爻位标签错：${entry}`);
+      assert.ok(parsed.text.length > 0, `第 ${order} 卦第 ${index + 1} 爻辞为空`);
+      // 阳爻称九、阴爻称六，错一位就说明这一卦的数据串了行
+      const isYang = hexagram.key[index] === '1';
+      assert.equal(parsed.polarity, isYang ? '九' : '六', `${hexagram.name} ${parsed.number} 与卦象阴阳不符：${entry}`);
+    });
+  }
+});
+
+test('爻辞不残留繁体', () => {
+  const TRADITIONAL = '龍貞無見萬與東車馬鳥魚長門風飛貴進遠連覺語說';
+  for (let order = 1; order <= 64; order += 1) {
+    for (const entry of hexagramYaoTexts(order)) {
+      for (const char of TRADITIONAL) {
+        assert.ok(!entry.includes(char), `第 ${order} 卦爻辞残留繁体「${char}」：${entry}`);
+      }
+    }
+  }
+});
+
+test('名句锚定，改一个字就报红', () => {
+  const ANCHORS = [
+    [1, 1, '初九：潜龙勿用。'],
+    [1, 5, '九五：飞龙在天，利见大人。'],
+    [2, 1, '初六：履霜，坚冰至。'],
+    [23, 6, '上九：硕果不食，君子得舆，小人剥庐。'],
+    [38, 6, '上九：睽孤，见豕负涂，载鬼一车，先张之弧，后说之弧，匪寇婚媾。往，遇雨则吉。'],
+    [63, 5, '九五：东邻杀牛，不如西邻之禴祭，实受其福。'],
+    [64, 1, '初六：濡其尾，吝。'],
+  ];
+  for (const [order, position, expected] of ANCHORS) {
+    assert.equal(lineText(order, position), expected);
+  }
+  assert.equal(lineText(1, 0), null);
+  assert.equal(lineText(1, 7), null);
+});
+
+test('已／巳、乾／干各有其字，不随繁简转换走样', () => {
+  // 损初九是「已」（已经），革六二是「巳」（地支），两处曾被同一个来源弄反
+  assert.equal(lineText(41, 1), '初九：已事遄往，无咎，酌损之。');
+  assert.equal(lineText(49, 2), '六二：巳日乃革之，征吉，无咎。');
+  // 噬嗑的「乾」是「干」的通假，乾卦的「乾乾」表刚健，两处不能一并转成「干」
+  assert.equal(lineText(21, 4), '九四：噬乾胏，得金矢，利艰贞，吉。');
+  assert.equal(lineText(1, 3), '九三：君子终日乾乾，夕惕若，厉，无咎。');
+});
+
+test('排盘每一爻都带着爻辞，爻题随爻位走', () => {
+  const cases = [...SAMPLES().map(([, cast]) => cast), castByCoins([7, 7, 7, 7, 7, 7])];
+  for (const cast of cases) {
+    const reading = buildReading(cast);
+    const expected = hexagramYaoTexts(reading.hexagram.order);
+    assert.equal(reading.lines.length, 6);
+    reading.lines.forEach((line, index) => {
+      assert.equal(line.text, expected[index]);
+      assert.equal(line.text, lineText(reading.hexagram.order, line.position));
+      // 爻题初/上爻作「初九」，中间爻作「九二」，两种笔顺都要对上爻位与阴阳
+      assert.ok(line.title.includes(YAO_POSITIONS[index]), `爻位标签错：${line.title}`);
+      assert.ok(line.title.includes(line.value === 1 ? '九' : '六'), `阴阳标签错：${line.title}`);
+    });
+  }
+});
+
+test('解卦洞察里只露动爻那一条爻辞', () => {
+  let withMoving = 0;
+  let withoutMoving = 0;
+  // 六爻皆静的卦由 [7,7,7,7,7,7] 造：六个七全是少阳，乾为天，无动爻
+  const cases = [...SAMPLES().map(([, cast]) => cast), castByCoins([7, 7, 7, 7, 7, 7])];
+  for (const cast of cases) {
+    const reading = buildReading(cast);
+    const insight = reading.insights.find((item) => item.title === '动爻爻辞');
+    if (reading.movingLines.length === 0) {
+      assert.equal(insight, undefined, '六爻皆静时不该出现动爻爻辞');
+      withoutMoving += 1;
+      continue;
+    }
+    withMoving += 1;
+    assert.ok(insight, '有动爻却没有爻辞');
+    assert.equal(insight.text, reading.movingLines.map((line) => line.text).join('；'));
+    // 位置紧随卦象总断，不排在末尾
+    assert.equal(reading.insights[0].title, '卦象总断');
+    assert.equal(reading.insights[1].title, '动爻爻辞');
+  }
+  assert.ok(withMoving > 0, '样本里没有一个带动爻的卦');
+  assert.ok(withoutMoving > 0, '样本里没有一个六爻皆静的卦');
+});
+
+test('卦盘只把动爻那一条爻辞露出来', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.yao-line \{/.test(client), '缺少爻辞样式');
+  assert.ok(/className = 'yao-line serif anim-rise'/.test(client), '卦盘没有渲染爻辞块');
+  // 六爻全列会把卦盘压成字墙；这里必须按动爻过滤
+  assert.ok(
+    /lines \? lines\.filter\(\(line\) => line\.moving && line\.text\) : \[\]/.test(client),
+    '卦盘没有按动爻过滤爻辞',
+  );
+  assert.ok(/<span class="tag">动爻爻辞<\/span>/.test(client), '爻辞块缺少标题');
 });

@@ -78,9 +78,9 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red, and the 动爻's 爻辞 quoted under the 本卦 |
 | Right | 体卦/用卦 elements and directions, 世应, and the month's vitality |
-| 断语 | twelve sections, thirteen when a topic was recognised |
+| 断语 | thirteen sections, fourteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -309,12 +309,25 @@ is recognised, nothing is forced: the timing falls back to the 用卦 and says s
 > This element-to-topic table is **this package's own convention**, not a transmitted one. Plum
 > Blossom has no 六亲 用神 the way 六爻 divination does, and this package does not do 干支入卦.
 
-**Twelve sections, every time**
+**Thirteen sections, every time**
 
-卦象总断, 体用关系, 应期, 旺衰应期, 互卦 for the middle course, 变卦 for the outcome, 错卦 for
-the other side, 综卦 seen from the other position, 世应, 取象 of both trigrams, 爻位 for the
-moving line's position, and 方所 for the 后天八卦 directions. A recognised topic adds one more,
+卦象总断, 动爻爻辞, 体用关系, 应期, 旺衰应期, 互卦 for the middle course, 变卦 for the outcome,
+错卦 for the other side, 综卦 seen from the other position, 世应, 取象 of both trigrams, 爻位 for
+the moving line's position, and 方所 for the 后天八卦 directions. A recognised topic adds one more,
 所问之事, naming the topic, its 类神, and how that element stands to the 体卦.
+
+**动爻爻辞 — the line that actually moved**
+
+卦辞 states the whole hexagram's tendency; the 爻辞 states the situation on the line that moved,
+which is the one your question lands on. All 384 are stored, and the reading quotes the moving
+one's under the 本卦 — one line, not six, because six would bury the hexagram. 爻题 follows the
+traditional form (初九、六二、上六) and the 九 / 六 always agrees with whether that line is 阳 or 阴;
+the tests check all 384 against the hexagram diagrams, so a line that drifts out of place fails
+the suite.
+
+Two spellings that are easy to "simplify" away are pinned by tests: 损's 已事遄往 keeps 已
+(already) while 革's 巳日乃革之 keeps 巳 (the sixth earthly branch), and 噬嗑's 噬乾胏 borrows 乾
+for 干 while 乾卦's 终日乾乾 means something else entirely.
 
 **应期 — when it lands**
 
@@ -419,6 +432,7 @@ miniapp/miniapp.json          Payload roots, Node entry, page route, MCP endpoin
 miniapp/client/index.html     The page served at /divination
 miniapp/node/server.mjs       Node entry: routes, MCP mount, start(context) → { dispose }
 miniapp/node/hexagrams.mjs    Trigrams and the sixty-four hexagrams
+miniapp/node/yao.mjs           The 384 爻辞, cross-checked against the hexagram diagrams
 miniapp/node/xiang.mjs        Line positions and response timing
 miniapp/node/topics.mjs       Element-to-topic: question → topic → 类神
 miniapp/node/almanac.mjs      Ganzhi, the twelve offices, solar terms, zodiac

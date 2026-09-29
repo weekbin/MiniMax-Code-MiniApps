@@ -769,6 +769,23 @@
         color: var(--text);
       }
 
+      .yao-line {
+        margin: 10px 0 0;
+        padding: 8px 10px;
+        border-left: 2px solid var(--seal);
+        background: rgba(164, 44, 30, 0.05);
+        font-size: 15px;
+        line-height: 1.9;
+      }
+
+      .yao-line .tag {
+        display: block;
+        margin-bottom: 2px;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        color: var(--seal);
+      }
+
       .verdict {
         display: inline-flex;
         align-items: center;
@@ -1690,6 +1707,21 @@
         text.className = 'text-line serif';
         text.innerHTML = `<p style="margin:0">${hexagram.judgment}</p><p style="margin:0">${hexagram.image}</p>`;
         block.append(text);
+        // 爻辞只在动爻上露一条：六爻全列会把卦盘压成一堵字墙，动爻才是断的那一处。
+        const moving = lines ? lines.filter((line) => line.moving && line.text) : [];
+        if (moving.length > 0) {
+          const yao = document.createElement('div');
+          yao.className = 'yao-line serif anim-rise';
+          yao.innerHTML =
+            '<span class="tag">动爻爻辞</span>' +
+            moving
+              .map((line) => {
+                const body = line.text.slice(line.text.indexOf('：') + 1);
+                return `<p style="margin:0"><b>${escapeHtml(line.label)}</b>　${escapeHtml(body)}</p>`;
+              })
+              .join('');
+          block.append(yao);
+        }
         return block;
       }
 

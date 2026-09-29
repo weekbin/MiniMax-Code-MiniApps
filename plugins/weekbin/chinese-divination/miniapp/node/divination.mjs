@@ -23,6 +23,7 @@ import {
 } from './hexagrams.mjs';
 import { monthPillar, yearPillar, dayPillar, hourPillar } from './almanac.mjs';
 import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
+import { lineText } from './yao.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -47,6 +48,8 @@ export function overcomes(a, b) {
  * @property {number} sum 铜钱数 6-9，数字起卦与时间起卦为 null
  * @property {'老阴'|'少阳'|'少阴'|'老阳'|'静爻'} kind
  * @property {boolean} moving 是否动爻
+ * @property {string|null} text 爻辞原文「爻题：爻辞」
+ * @property {string|null} title 爻题，如「初九」
  */
 
 /**
@@ -89,8 +92,10 @@ function counterpart(position) {
  * @param {string} key 六位爻象串
  * @param {number[]} positions 动爻位，1 至 6
  * @param {Array<number|null>} sums 每爻对应的铜钱数
+ * @param {number} [order] 卦序 1 至 64，缺省则不带爻辞
+ * @returns {(MovingLine & { text: string|null, title: string|null })[]}
  */
-function buildLines(key, positions, sums) {
+function buildLines(key, positions, sums, order = 0) {
   const moving = new Set(positions);
   return [...key].map((line, index) => {
     const position = index + 1;
@@ -102,6 +107,7 @@ function buildLines(key, positions, sums) {
     if (isMoving) kind = value === 1 ? '老阳' : '老阴';
     else if (sum === 7) kind = '少阳';
     else if (sum === 8) kind = '少阴';
+    const text = order ? lineText(order, position) : null;
     return {
       position,
       label: POSITION_LABELS[index],
@@ -110,6 +116,8 @@ function buildLines(key, positions, sums) {
       sum,
       kind,
       moving: isMoving,
+      text,
+      title: text ? text.slice(0, text.indexOf('：')) : null,
     };
   });
 }
@@ -356,7 +364,7 @@ export function buildReading(cast, options = {}) {
   const now = options.now ?? new Date();
   const question = (options.question ?? '').trim();
   const { hexagram, positions, sums } = cast;
-  const lines = buildLines(hexagram.key, positions, sums);
+  const lines = buildLines(hexagram.key, positions, sums, hexagram.order);
   const movingLines = lines.filter((line) => line.moving);
   const hasChange = movingLines.length > 0;
 
@@ -414,6 +422,11 @@ export function buildReading(cast, options = {}) {
 
   const insights = [];
   insights.push({ title: '卦象总断', text: `本卦${hexagram.name}，${hexagram.judgment} ${hexagram.image}` });
+  // 卦辞说大势，爻辞才对着动的那一爻说话，所以把它排在紧随卦辞之后。
+  const yaoQuotes = movingLines.map((line) => line.text).filter(Boolean);
+  if (yaoQuotes.length > 0) {
+    insights.push({ title: '动爻爻辞', text: yaoQuotes.join('；') });
+  }
   if (topic && god) {
     insights.push({
       title: '所问之事',
