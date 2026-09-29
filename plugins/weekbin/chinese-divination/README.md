@@ -78,7 +78,7 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red, and the 动爻's 爻辞 quoted under the 本卦 |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
 | Right | 体卦/用卦 elements and directions, 世应, and the month's vitality |
 | 断语 | thirteen sections, fourteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
@@ -325,6 +325,16 @@ traditional form (初九、六二、上六) and the 九 / 六 always agrees with
 the tests check all 384 against the hexagram diagrams, so a line that drifts out of place fails
 the suite.
 
+**动爻象传 — why that line reads that way**
+
+The 爻辞 is the judgement; the 小象传 is the ground for it. All 384 are stored too, and the
+reading prints the moving line's underneath its 爻辞 in smaller type and appends it to the same
+断语 section — one place, not two. Cross-checking two editions turned up places where they
+disagree with each other and, in two spots, with the received text: 大有九四 needs 尫 (both
+editions print 彭, which the 爻辞 does not), and 困六三 splits across them — 蒺藜 from one,
+不祥 from the other. Those are pinned by tests, along with 需九五's 「酒食贞吉」, which the
+second edition expands to 「需于酒食」 against every other source.
+
 Two spellings that are easy to "simplify" away are pinned by tests: 损's 已事遄往 keeps 已
 (already) while 革's 巳日乃革之 keeps 巳 (the sixth earthly branch), and 噬嗑's 噬乾胏 borrows 乾
 for 干 while 乾卦's 终日乾乾 means something else entirely.
@@ -433,6 +443,7 @@ miniapp/client/index.html     The page served at /divination
 miniapp/node/server.mjs       Node entry: routes, MCP mount, start(context) → { dispose }
 miniapp/node/hexagrams.mjs    Trigrams and the sixty-four hexagrams
 miniapp/node/yao.mjs           The 384 爻辞, cross-checked against the hexagram diagrams
+miniapp/node/xiang-chuan.mjs    The 384 小象传, cross-checked between two editions
 miniapp/node/xiang.mjs        Line positions and response timing
 miniapp/node/topics.mjs       Element-to-topic: question → topic → 类神
 miniapp/node/almanac.mjs      Ganzhi, the twelve offices, solar terms, zodiac

@@ -786,6 +786,14 @@
         color: var(--seal);
       }
 
+      .yao-line em {
+        display: block;
+        margin-top: 2px;
+        font-style: normal;
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
       .verdict {
         display: inline-flex;
         align-items: center;
@@ -1674,6 +1682,13 @@
 
       /* ---------- 解卦渲染 ---------- */
 
+      /** 去掉「爻题：」前缀，只留正文。 */
+      function body(entry) {
+        if (!entry) return '';
+        const at = entry.indexOf('：');
+        return at < 0 ? entry : entry.slice(at + 1);
+      }
+
       function guaLines(hexagram, lines) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
@@ -1716,8 +1731,9 @@
             '<span class="tag">动爻爻辞</span>' +
             moving
               .map((line) => {
-                const body = line.text.slice(line.text.indexOf('：') + 1);
-                return `<p style="margin:0"><b>${escapeHtml(line.label)}</b>　${escapeHtml(body)}</p>`;
+                const say = body(line.text);
+                const why = line.xiang ? `<em>象曰：${escapeHtml(body(line.xiang))}</em>` : '';
+                return `<p style="margin:0"><b>${escapeHtml(line.label)}</b>　${escapeHtml(say)}${why}</p>`;
               })
               .join('');
           block.append(yao);

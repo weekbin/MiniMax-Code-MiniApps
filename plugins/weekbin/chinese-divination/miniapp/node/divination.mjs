@@ -24,6 +24,7 @@ import {
 import { monthPillar, yearPillar, dayPillar, hourPillar } from './almanac.mjs';
 import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
+import { lineXiang } from './xiang-chuan.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -50,6 +51,7 @@ export function overcomes(a, b) {
  * @property {boolean} moving 是否动爻
  * @property {string|null} text 爻辞原文「爻题：爻辞」
  * @property {string|null} title 爻题，如「初九」
+ * @property {string|null} xiang 小象传原文「爻题：象辞」
  */
 
 /**
@@ -93,7 +95,7 @@ function counterpart(position) {
  * @param {number[]} positions 动爻位，1 至 6
  * @param {Array<number|null>} sums 每爻对应的铜钱数
  * @param {number} [order] 卦序 1 至 64，缺省则不带爻辞
- * @returns {(MovingLine & { text: string|null, title: string|null })[]}
+ * @returns {(MovingLine & { text: string|null, title: string|null, xiang: string|null })[]}
  */
 function buildLines(key, positions, sums, order = 0) {
   const moving = new Set(positions);
@@ -118,8 +120,16 @@ function buildLines(key, positions, sums, order = 0) {
       moving: isMoving,
       text,
       title: text ? text.slice(0, text.indexOf('：')) : null,
+      xiang: order ? lineXiang(order, position) : null,
     };
   });
+}
+
+/** 去掉「爻题：」前缀，只留正文。 */
+function afterColon(entry) {
+  if (!entry) return '';
+  const at = entry.indexOf('：');
+  return at < 0 ? entry : entry.slice(at + 1);
 }
 
 function changedKey(lines) {
@@ -422,8 +432,12 @@ export function buildReading(cast, options = {}) {
 
   const insights = [];
   insights.push({ title: '卦象总断', text: `本卦${hexagram.name}，${hexagram.judgment} ${hexagram.image}` });
-  // 卦辞说大势，爻辞才对着动的那一爻说话，所以把它排在紧随卦辞之后。
-  const yaoQuotes = movingLines.map((line) => line.text).filter(Boolean);
+  // 卦辞说大势，爻辞才对着动的那一爻说话，所以把它排在紧随卦辞之后；象传跟在
+  // 同一段里，是这一爻「凭什么」的解释。
+  const yaoQuotes = movingLines.map((line) => {
+    const say = line.text ? `${line.text}　象曰：${afterColon(line.xiang)}` : '';
+    return say;
+  }).filter(Boolean);
   if (yaoQuotes.length > 0) {
     insights.push({ title: '动爻爻辞', text: yaoQuotes.join('；') });
   }

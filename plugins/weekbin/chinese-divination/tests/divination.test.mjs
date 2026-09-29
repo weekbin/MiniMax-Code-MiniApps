@@ -33,6 +33,7 @@ import {
 import { ReadingStore } from '../miniapp/node/store.mjs';
 import { responseTiming } from '../miniapp/node/xiang.mjs';
 import { hexagramYaoTexts, lineText } from '../miniapp/node/yao.mjs';
+import { hexagramXiangTexts, lineXiang } from '../miniapp/node/xiang-chuan.mjs';
 import { detectTopic, godRelation, TOPIC_CLASSES } from '../miniapp/node/topics.mjs';
 import { generates, overcomes } from '../miniapp/node/divination.mjs';
 
@@ -813,7 +814,10 @@ test('解卦洞察里只露动爻那一条爻辞', () => {
     }
     withMoving += 1;
     assert.ok(insight, '有动爻却没有爻辞');
-    assert.equal(insight.text, reading.movingLines.map((line) => line.text).join('；'));
+    assert.equal(insight.text.split('；').length, reading.movingLines.length);
+    for (const line of reading.movingLines) {
+      assert.ok(insight.text.includes(line.text), '断语没有引动爻的爻辞');
+    }
     // 位置紧随卦象总断，不排在末尾
     assert.equal(reading.insights[0].title, '卦象总断');
     assert.equal(reading.insights[1].title, '动爻爻辞');
@@ -832,4 +836,112 @@ test('卦盘只把动爻那一条爻辞露出来', async () => {
     '卦盘没有按动爻过滤爻辞',
   );
   assert.ok(/<span class="tag">动爻爻辞<\/span>/.test(client), '爻辞块缺少标题');
+});
+
+/* ---------- 小象传 ---------- */
+
+test('小象传六十四卦每卦六条，共 384 条', () => {
+  let count = 0;
+  for (let order = 1; order <= 64; order += 1) {
+    const rows = hexagramXiangTexts(order);
+    assert.ok(rows, `第 ${order} 卦没有小象传`);
+    assert.equal(rows.length, 6, `第 ${order} 卦的小象传不是六条`);
+    count += rows.length;
+  }
+  assert.equal(count, 384);
+  assert.equal(hexagramXiangTexts(0), null);
+  assert.equal(hexagramXiangTexts(65), null);
+});
+
+test('象传的爻题与爻辞逐条一致，阴阳与卦象吻合', () => {
+  for (let order = 1; order <= 64; order += 1) {
+    const hexagram = hexagramByOrder(order);
+    const yao = hexagramYaoTexts(order);
+    hexagramXiangTexts(order).forEach((entry, index) => {
+      const parsed = parseYao(entry);
+      assert.ok(parsed, `第 ${order} 卦第 ${index + 1} 爻象传格式不对：${entry}`);
+      assert.equal(parsed.number, YAO_POSITIONS[index]);
+      assert.equal(parsed.text.length > 0, true, `第 ${order} 卦第 ${index + 1} 爻象传为空`);
+      // 爻题必须与爻辞逐字相同，否则两处文本已经错位
+      const title = entry.slice(0, entry.indexOf('：'));
+      assert.equal(title, yao[index].slice(0, yao[index].indexOf('：')), `第 ${order} 卦第 ${index + 1} 爻题与爻辞不符`);
+      assert.equal(parsed.polarity, hexagram.key[index] === '1' ? '九' : '六', `${hexagram.name} ${parsed.number} 与卦象阴阳不符`);
+    });
+  }
+});
+
+test('象传不残留繁体', () => {
+  const TRADITIONAL = '龍貞無見萬與東車馬鳥魚長門風飛貴進遠連覺語說難願詳暉試誰諸備傷剛極陽當義聰聽絕積窮竄賢賤辭辯際順類飽馴愛憊';
+  for (let order = 1; order <= 64; order += 1) {
+    for (const entry of hexagramXiangTexts(order)) {
+      for (const char of TRADITIONAL) {
+        assert.ok(!entry.includes(char), `第 ${order} 卦象传残留繁体「${char}」：${entry}`);
+      }
+    }
+  }
+});
+
+test('对校时改掉的字，不许退回某一版的写法', () => {
+  const ANCHORS = [
+    // 底本句尾混进一个 markdown 星号，且多出底本没有的改写
+    [5, 2, '九二：需于沙，衍在中也。虽小有言，以吉终也。'],
+    [5, 5, '九五：酒食，贞吉，以中正也。'],
+    // 底本漏了「吉」，并把「渝安贞吉」读断了
+    [6, 4, '九四：复即命，渝安贞吉，不失也。'],
+    // 底本多出一句《易传》本没有的解说
+    [10, 3, '六三：眇能视，不足以有明也。跛能履，不足以与行也。咥人之凶，位不当也。'],
+    [17, 6, '上六：拘系之，上穷也。'],
+    [24, 1, '初九：不远之复，以修身也。'],
+    [36, 3, '九三：南狩之志，乃大得也。'],
+    // 两个来源都错：大有九四该用「尫」，与爻辞同；困六三「蒺藜」与「不祥」分属两源
+    [14, 4, '九四：匪其尫，无咎，明辨晰也。'],
+    [47, 3, '六三：据于蒺藜，乘刚也。入于其宫，不见其妻，不祥也。'],
+    [60, 2, '九二：不出门庭凶，失时极也。'],
+  ];
+  for (const [order, position, expected] of ANCHORS) {
+    assert.equal(lineXiang(order, position), expected);
+  }
+  assert.equal(lineXiang(1, 0), null);
+  assert.equal(lineXiang(1, 7), null);
+});
+
+test('排盘每一爻都带着象传，爻题与爻辞同源', () => {
+  const cases = [...SAMPLES().map(([, cast]) => cast), castByCoins([7, 7, 7, 7, 7, 7])];
+  for (const cast of cases) {
+    const reading = buildReading(cast);
+    const expected = hexagramXiangTexts(reading.hexagram.order);
+    reading.lines.forEach((line, index) => {
+      assert.equal(line.xiang, expected[index]);
+      assert.equal(line.xiang, lineXiang(reading.hexagram.order, line.position));
+      assert.equal(line.xiang.slice(0, line.xiang.indexOf('：')), line.title);
+    });
+  }
+});
+
+test('动爻爻辞一段里，爻辞在前、象传在后', () => {
+  const cases = [...SAMPLES().map(([, cast]) => cast), castByCoins([7, 7, 7, 7, 7, 7])];
+  let withMoving = 0;
+  for (const cast of cases) {
+    const reading = buildReading(cast);
+    const insight = reading.insights.find((item) => item.title === '动爻爻辞');
+    if (reading.movingLines.length === 0) {
+      assert.equal(insight, undefined);
+      continue;
+    }
+    withMoving += 1;
+    assert.ok(insight);
+    const expected = reading.movingLines
+      .map((line) => `${line.text}　象曰：${line.xiang.slice(line.xiang.indexOf('：') + 1)}`)
+      .join('；');
+    assert.equal(insight.text, expected);
+    assert.equal(reading.insights[1].title, '动爻爻辞');
+  }
+  assert.ok(withMoving > 0);
+});
+
+test('卦盘把象传排在爻辞下一行', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.yao-line em \{/.test(client), '缺少象传的样式');
+  assert.ok(/象曰：\$\{escapeHtml\(body\(line\.xiang\)\)\}/.test(client), '卦盘没有渲染象传');
+  assert.ok(/function body\(entry\)/.test(client), '缺少去爻题前缀的辅助函数');
 });
