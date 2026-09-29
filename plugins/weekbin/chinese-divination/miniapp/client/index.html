@@ -223,6 +223,68 @@
         animation: riseIn 320ms ease both;
       }
 
+      /* ---------- 卦气消长环 ----------
+         十二辟卦的爻象是固定的：阳（或阴）自初爻逐次长上来，一格一格，
+         走到对宫就是极盛。所以环上每一格的条数直接就是那一月的进度，
+         看得见「走到哪一步」，不必先懂这套学说。 */
+
+      .qiring {
+        display: block;
+        width: 100%;
+        max-width: 330px;
+        margin: 0 auto;
+        overflow: visible;
+      }
+
+      .qiring .cell-bar {
+        transition: opacity 300ms ease;
+      }
+
+      .qi-block {
+        margin-top: 16px;
+        padding: 14px 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-sunken, rgba(0, 0, 0, 0.015));
+        color: var(--text);
+      }
+
+      .qiring .month-label {
+        font-size: 7px;
+        fill: var(--text-muted);
+      }
+
+      .qiring .now-label {
+        font-size: 9.5px;
+        fill: var(--seal);
+        font-weight: 600;
+      }
+
+      .qiring .mark {
+        fill: var(--seal);
+      }
+
+      /* 当月那一格轻轻起伏，像轮转到这一格时它应声而动 */
+      @keyframes qiBreathe {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.55;
+        }
+      }
+
+      .qiring .now-sector {
+        animation: qiBreathe 2.6s ease-in-out infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .qiring .now-sector {
+          animation: none;
+        }
+      }
+
       /* ---------- 起卦推演中 ---------- */
 
       .casting {
@@ -1612,6 +1674,100 @@
         );
       }
 
+      const QI_RING = [
+        { b: '子', s: '复', n: 1, p: '息' }, { b: '丑', s: '临', n: 2, p: '息' },
+        { b: '寅', s: '泰', n: 3, p: '息' }, { b: '卯', s: '大壮', n: 4, p: '息' },
+        { b: '辰', s: '夬', n: 5, p: '息' }, { b: '巳', s: '乾', n: 6, p: '息' },
+        { b: '午', s: '姤', n: 1, p: '消' }, { b: '未', s: '遁', n: 2, p: '消' },
+        { b: '申', s: '否', n: 3, p: '消' }, { b: '酉', s: '观', n: 4, p: '消' },
+        { b: '戌', s: '剥', n: 5, p: '消' }, { b: '亥', s: '坤', n: 6, p: '消' },
+      ];
+
+      /**
+       * 十二辟卦消长环。
+       *
+       * 环分十二格，每格一卦。每格画 N 条短杠，N 就是那一月长了几爻——这是十二辟卦
+       * 最要紧的形状，也是整套学说唯一需要记住的东西。走满六格到对宫是极盛，此后
+       * 折回，从另一头再长一遍。一年就是一个来回。
+       *
+       * 当月那一格高亮；若本卦正在十二辟卦之中，用朱砂点标出它在环上的位置。
+       */
+      function qiRingSvg(qi) {
+        if (!qi) return '';
+        const C = 100;
+        const R = 58;          // 主环半径：环带要装得下最长六条杠，内圈才留得住中心的字
+        const now = qi.branch;
+        const selfIndex = qi.self
+          ? QI_RING.findIndex((m) => m.s === qi.self)
+          : -1;
+
+        const cells = QI_RING.map((m, i) => {
+          const deg = i * 30 - 90;
+          const at = deg * (Math.PI / 180);
+          const isNow = i === now;
+          const isSelf = i === selfIndex;
+
+          // 爻杠只在环带里向外长，六条最长时也不越过内圈，中心那几行字始终干净。
+          const bars = Array.from({ length: m.n }, (_, k) => {
+            const off = 5 + k * 4.2;
+            const bx = C + Math.cos(at) * (R + off);
+            const by = C + Math.sin(at) * (R + off);
+            const w = 13 - k * 0.9;
+            return (
+              `<rect class="cell-bar" x="${(bx - w / 2).toFixed(2)}" y="${(by - 1.9).toFixed(2)}" ` +
+              `width="${w.toFixed(2)}" height="3.8" rx="1.9" ` +
+              `transform="rotate(${i * 30} ${bx.toFixed(2)} ${by.toFixed(2)})" ` +
+              `fill="currentColor" opacity="${(0.42 + k * 0.095).toFixed(2)}"/>`
+            );
+          }).join('');
+
+          // 标签放在环带之外，卦名与地支上下两行，挤不到一起去。
+          const lx = C + Math.cos(at) * (R + 32);
+          const ly = C + Math.sin(at) * (R + 32);
+          return (
+            `<g class="${isNow ? 'now-sector' : ''}" opacity="${isNow ? 1 : 0.52}">` +
+            `<g color="var(--seal)">${bars}</g>` +
+            `<text class="${isNow ? 'now-label' : 'month-label'}" x="${lx.toFixed(2)}" ` +
+            `y="${(ly - 1).toFixed(2)}" text-anchor="middle">${escapeHtml(m.s)}` +
+            `<tspan font-size="5.6" dy="6.4">${escapeHtml(m.b)}</tspan></text>` +
+            (isSelf
+              ? `<circle class="mark" cx="${(C + Math.cos(at) * (R - 9)).toFixed(2)}" ` +
+                `cy="${(C + Math.sin(at) * (R - 9)).toFixed(2)}" r="2.6"/>`
+              : '') +
+            `</g>`
+          );
+        }).join('');
+
+        // 子午、卯酉是正对的两极，虚线拉到中心，一眼看出「走到对宫是极盛」。
+        const axes = [0, 3, 6, 9]
+          .map((a) => {
+            const at = (a * 30 - 90) * (Math.PI / 180);
+            const x1 = C + Math.cos(at) * (R - 3);
+            const y1 = C + Math.sin(at) * (R - 3);
+            const x2 = C + Math.cos(at) * 36;
+            const y2 = C + Math.sin(at) * 36;
+            return (
+              `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" ` +
+              `stroke="var(--border-strong)" stroke-width="0.8" stroke-dasharray="2 3"/>`
+            );
+          })
+          .join('');
+
+        return (
+          `<svg class="qiring" viewBox="0 0 200 200" role="img" ` +
+          `aria-label="十二辟卦消长环，当月主卦${escapeHtml(qi.lord)}">` +
+          `<circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--border)" stroke-width="1"/>` +
+          `<circle cx="100" cy="100" r="36" fill="none" stroke="var(--border)" stroke-width="0.8" opacity="0.5"/>` +
+          axes +
+          cells +
+          `<text x="100" y="92" text-anchor="middle" font-size="7" fill="var(--text-muted)">当月主卦</text>` +
+          `<text x="100" y="105" text-anchor="middle" font-size="12" fill="var(--seal)">${escapeHtml(qi.lord)}</text>` +
+          `<text x="100" y="117" text-anchor="middle" font-size="6.8" fill="var(--text-muted)">` +
+          `${qi.phase === '息' ? '阳气渐长' : '阴气渐盛'}</text>` +
+          `</svg>`
+        );
+      }
+
       function showCasting() {
         const slot = el('result-slot');
         stopCastingTyping();
@@ -1827,6 +1983,23 @@
           caution.setAttribute('role', 'note');
           caution.textContent = reading.advice.caution;
           right.append(caution);
+        }
+
+        // 卦气消长环放在断语之前：断语是结论，这个环是结论背后的时令坐标，
+        // 先看得到形状，再读「当月主卦是哪一卦」才不至于只是一句话。
+        if (reading.qi) {
+          const ring = document.createElement('div');
+          ring.className = 'qi-block anim-fade';
+          ring.innerHTML = qiRingSvg(reading.qi);
+          const note = document.createElement('p');
+          note.className = 'hint';
+          note.style.textAlign = 'center';
+          note.style.marginTop = '6px';
+          note.textContent = reading.qi.self
+            ? `环上朱砂点是你这一卦「${reading.qi.selfName}」在十二辟卦中的位置；当月主卦为${reading.qi.lord}`
+            : `本卦不在十二辟卦之列；环上高亮的是当月主卦${reading.qi.lord}`;
+          ring.append(note);
+          right.append(ring);
         }
 
         const ins = document.createElement('ul');

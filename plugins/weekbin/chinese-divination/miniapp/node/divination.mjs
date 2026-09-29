@@ -529,6 +529,18 @@ export function buildReading(cast, options = {}) {
     structure,
     verdict,
     topic: topic ? { key: topic.key, label: topic.label, element: topic.element, reason: topic.reason } : null,
+    qi: monthLord
+      ? {
+        branch: monthBranch,
+        lord: monthLord.name,
+        lordShort: monthLord.short,
+        phase: monthLord.phase,
+        yangCount: monthLord.yangCount,
+        self: selfQi ? selfQi.short : null,
+        selfName: selfQi ? selfQi.name : null,
+        selfPhase: selfQi ? selfQi.phase : null,
+      }
+      : null,
     timing: timing?.text ?? '',
     cadence: cast.cadence ?? null,
     insights,

@@ -368,6 +368,17 @@ the same 消长 side means the direction agrees with the season, opposite sides 
 against it and should slow down. Only twelve of the sixty-four are 辟卦; the other fifty-two are not
 forced into the scheme.
 
+**The 消长 ring — what that theory looks like**
+
+The twelve 辟卦 are abstract until you see them. The ring has twelve segments, one hexagram each,
+and each segment draws N short bars where N is how many lines that month has gained: 复 grows from
+one to 乾's six as yang reaches its height, then folds back and 姤 grows to 坤's six as yin does.
+One full turn is a year. The dashed diameters at 子午 and 卯酉 mark the two poles. The current month
+is highlighted; if your own hexagram is one of the twelve, a vermilion dot marks where it sits. The
+ring sits above the reading — the reading is the conclusion, the ring is the seasonal coordinate
+behind it, so the shape comes first and 「当月主卦是哪一卦」 stops being a bare sentence. With
+reduced motion on, the current segment stops pulsing.
+
 **应期 — when it lands**
 
 Taken from the 类神 when a topic was recognised, otherwise from the 用卦. It surfaces during the
@@ -437,7 +448,8 @@ to "打开灵签易占".
   建除 cycle, the nine-day period, the coin rules, the response timing table, each method's change
   cadence, the element-to-topic matching, and store round-trips. The classic texts are covered
   entry by entry: all 384 爻辞 are checked against the hexagram diagrams, all 384 小象传 against
-  their 爻题, and all 64 彖传 against the hexagram table. 70 passing.
+  their 爻题, and all 64 彖传 against the hexagram table. The twelve 辟卦 are checked against
+  both the month branches and the hexagram table. 77 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

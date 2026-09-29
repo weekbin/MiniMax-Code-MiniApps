@@ -1095,3 +1095,36 @@ test('断语里的卦气段说明当月主卦，并给出本卦的位置', () =>
   );
   assert.match(inJanuary.insights.find((i) => i.title === '卦气 · 当令主卦').text, /丑月当令主卦为地泽临/);
 });
+
+test('起卦带着卦气坐标，供页面画消长环', () => {
+  // 消长环画的是「走到哪一格」，数据得从 reading 出来，不能由页面自己再推一遍，
+  // 否则表改一处、环上还留着旧数。
+  const reading = buildReading(castByNumbers(1, 1), { now: new Date(2026, 8, 30) });
+  assert.ok(reading.qi, 'reading 上没有卦气坐标');
+  assert.equal(reading.qi.branch, monthPillar(2026, 9, 30).branch);
+  assert.equal(reading.qi.lord, monthQi(reading.qi.branch).name);
+  assert.equal(reading.qi.lordShort, monthQi(reading.qi.branch).short);
+  assert.ok(['息', '消'].includes(reading.qi.phase));
+  // 本卦非辟卦时卦气坐标照样要有——当月主卦照样要画在环上
+  const shiZhan = buildReading(castByNumbers(3, 4), { now: new Date(2026, 5, 10) });
+  assert.ok(shiZhan.qi, '卦气坐标不该因为本卦非辟卦就消失——当月主卦照样要画');
+  assert.equal(shiZhan.qi.lord, monthQi(shiZhan.qi.branch).name);
+  assert.equal(shiZhan.qi.self, null, '师卦不是十二辟卦，不该被标上位置');
+});
+
+test('消长环按十二格画出，并与卦气数据对得上', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.qiring \{/.test(client), '消长环没有样式');
+  assert.ok(/function qiRingSvg\(qi\)/.test(client), '没有消长环的绘制函数');
+  // 上一条只验了「函数存在」，函数写死了不调用照样能过——这里再钉一次调用点。
+  assert.ok(/if \(reading\.qi\) \{[\s\S]{0,320}?qiRingSvg\(reading\.qi\)/.test(client), '解读页没有真正把卦气坐标交给消长环绘制');
+  assert.ok(/if \(!qi\) return ''/.test(client), '消长环没有做空值保护');
+  // 十二格，一格一卦，名字必须与 guaqi.mjs 的表一致
+  const ring = /const QI_RING = \[([\s\S]*?)\];/.exec(client);
+  assert.ok(ring, '客户端没有十二辟卦的对照表');
+  const shorts = [...ring[1].matchAll(/s: '([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(shorts, TWELVE_MESSAGES.map((m) => m.short), '环上的卦名与卦气表对不上');
+  const branches = [...ring[1].matchAll(/b: '([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(branches, ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']);
+  assert.ok(/prefers-reduced-motion: reduce[\s\S]*?\.qiring \.now-sector \{\s*animation: none/.test(client), '消长环没有尊重系统的减少动效设置');
+});
