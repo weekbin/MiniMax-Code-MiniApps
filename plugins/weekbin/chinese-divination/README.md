@@ -79,7 +79,7 @@ every single time.
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, the 动爻's 爻辞 with its 象传 quoted under the 本卦; and, on the eighteen 六冲/六合 hexagrams, three thin arcs in the margin joining 初四、二五、三六 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, 爻之合 (合起, 合绊, 合好, 化扶 on each line that meets a combination), the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
 | 断语 | seventeen to twenty sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
@@ -801,6 +801,46 @@ clashing or all not: the ten 六冲 and the eight 六合, and the remaining fort
 There is no hexagram that clashes on one pair only, so there is no case for drawing a single arc —
 and the module-load check now holds that, not just 「one pair implies three」.
 
+**爻之合 — 合起, 合绊, 合好, 化扶**
+
+The 六冲/六合 section above is about the hexagram as a whole. The 六合 chapter has a second layer
+that lands on single lines, which this package had not implemented until now.
+
+The chapter states 「相合法有六」, and the six divide in two: the last three (卦逢六合, 六冲变六合,
+六合变六合) are whole-hexagram structures, already computed and already drawn as the three arcs
+beside the hexagram. The first three (日月合爻, 爻与爻合, 爻动化合) land line by line.
+「爻之合者，静而逢合，谓之合起；动而逢合，谓之合绊；爻与爻合谓之合好，爻动化合谓之化扶」 —
+the four names follow from the line's own motion and from where the combination comes from:
+
+| Name | When | The book's words |
+| --- | --- | --- |
+| 合起 | a still line combines with the day's or the month's branch | 「得合而起，即使爻值休囚亦有旺相之意」 |
+| 合绊 | a moving line combines with the day's or the month's branch | 「动逢合而绊住，反不能动之意」 |
+| 合好 | two lines combine, and **both are moving** | 「乃得他来合我，与我和好相助之意」 |
+| 化扶 | a moving line's transformed line turns back to combine with it | 「得他扶助之意」 |
+
+合好 carries an explicit limit: **「但有一爻不动，亦不为合」**. So a still line combining with a
+moving one is not counted as 合好. A later sentence in the same chapter, 「爻静或与日月动爻合者」,
+is punctuated two ways; read as 「与日月、动爻合者」 it would let a still line combine with a moving
+one, which contradicts the sentence above. This package takes the reading that can be checked and
+leaves the conflicting branch out, with the reasoning recorded in the code rather than papered over.
+
+合好 only takes pairs other than 初四, 二五, 三六 — those three belong to 卦逢六合 and are already
+drawn beside the hexagram, and listing them again here would be a second account to reconcile. Twenty
+of the sixty-four have such a further pair (雷火丰 pairs its first 卯 with its top 戌, 山泽损 pairs
+二四 and 三五), and 合好 is what fires on those.
+
+**This layer does not decide 吉凶, and that is the book drawing the line itself.** Three places in
+the chapter say so: 「然必用神有气相宜，用若失陷无益」, 「用神受克，六合有何益哉」, and at the very
+end 「宜合吉，不宜合凶」. So the reading reports the relation and the name only; the verdict stays
+with 用神 vitality. The 「合」 mark on the hexagram is muted like 暗动 and 冲散 and never takes 朱砂 —
+colour should not speak for something whose 吉凶 has not been settled.
+
+Measured over 365 days × 256 toss patterns (93,440 readings): about **81%** produce this section;
+合绊 52%, 化扶 30%, 合起 29%, 合好 16%, averaging 1.97 combined lines per reading and at most all
+six. 合起 and 合绊 both appear in the same reading about 12% of the time (one still line lifted while
+another moving line is held).
+
 **What is deliberately not here.** 卦身 and 世身 appear on most traditional charts, and this package
 draws neither. Not an oversight: 《增删卜易》 is the base text here, and removing them is stated as
 one of the book's own features — 「删除卦身世身、星煞本命，使人无歧路之虞」. 《卜筮全书》 and
@@ -1106,8 +1146,20 @@ would drop the red flipped lines from the eight slots), the derivation diagram's
 spacing stay scoped under .derive, the red self-slot rule is written after the bold 游归 rule at the
 same specificity, and the eight slots mark flipped lines but not the 世 (the hexagram to the left
 already boxes it in red).
+爻之合 is checked too. Nine checks: the 六合 table pairs the twelve branches without repeat or gap
+and the pairing is bidirectional; a day branch equal to the month branch counts once rather than
+twice; 合起 takes only still lines and 合绊 only moving ones, the two never overlapping; 合好
+requires both lines moving (a still-moving pair does not count, and exactly twenty of the sixty-four
+have a harmonizing pair outside 初四二五三六 — 雷火丰's first 卯 against its top 戌 gives the
+one-moving/one-still contrast); 化扶 requires a moving line whose transformed line combines back; the
+combined-line positions are exactly the union of the four paths; the reading names all four without
+deciding 吉凶 (both closing lines of the chapter are quoted verbatim); the hexagram gets a muted 「合」
+mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear; and MCP carries a
+`combine` field plus a 【逢合】 header line. A load-time check sweeps all sixty-four hexagrams across
+twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
+each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-174 passing.
+181 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

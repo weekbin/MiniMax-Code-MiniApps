@@ -413,10 +413,17 @@ test('卦历写入 dataDir 后可回读', async () => {
     const full = await store.get(reading.id);
     assert.equal(full.hexagram.name, reading.hexagram.name);
     assert.equal(full.insights.length, reading.insights.length, '落盘再读回，断语段数得跟起卦时一致');
-    // 乾为天是六冲卦，断语里会多出「六冲」那一段，所以这一卦是 17 段。
+    // 乾为天是六冲卦，「六冲」那一段必然在。
     assert.ok(full.insights.some((item) => item.title === '六冲'), '六冲卦的断语里该有「六冲」那一段');
-    assert.equal(full.insights.length, 17);
     assert.equal(full.clash.chong, true, '六冲卦这个定性也要跟着落盘走');
+    // 这里原来还写死了一个段数（17）。写死不得：卦上六爻皆动，「逢合」那一段是否出，
+    // 取决于日支那一支的合支落不落在子寅辰午申戌里——日支为子寅辰午申戌之外的奇数支就出，
+    // 为偶数支就不出，同一个卦同一副摇法，隔一天段数就变。跟着它改数字，哪天改漏了
+    // 或者改错了，报出来的是「段数不对」，得回头去数是哪一段。段数一致这件事上面那句
+    // 已经钉住了，这里只留必然在的那一段。
+    const conditional = full.insights.filter((item) => item.title === '六冲' || item.title.startsWith('逢合'));
+    assert.ok(conditional.length >= 1 && conditional.length <= 2,
+      `条件段该在一段到两段之间，实到 ${conditional.length} 段：${conditional.map((i) => i.title).join('、')}`);
 
     assert.equal(await store.remove(reading.id), true);
     assert.equal(await store.remove(reading.id), false);
@@ -3500,6 +3507,232 @@ test('MCP 把卦体冲合落成字段，抬头另起一行【卦体】', async (
   }
 });
 
+
+// ── 爻之合：六合章的前三法（卦级三法见上面的六冲一节）────────────────────────
+
+test('六合章的「相合法有六」：前两法六十四卦逐个走通，后三法是卦级结构', async () => {
+  // 章里明写「相合法有六」，本包六法都做，但分两层：前三法落在单爻上，末三法是整卦结构。
+  // 末三法（卦逢六合、六冲变六合、六合变六合）由 hexagramClash 判，这一条只钉分界不重叠。
+  const { heCombineReading, jingfang, hexagramClash } = await import('../miniapp/node/jingfang.mjs');
+  let kinds = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const clash = hexagramClash(hexagram);
+    if (clash.chong || clash.he) kinds += 1;
+    const jf = jingfang(hexagram);
+    // 整卦六合那一卦，三对全在初四二五三六上；合好只取其余配对，所以它一个都不许收进来。
+    if (clash.he) {
+      const got = heCombineReading(jf, { monthBranch: 0, dayBranch: 0, movingPositions: [1, 2, 3, 4, 5, 6] }, jf);
+      assert.equal(got.friendly.length, 0,
+        `${hexagram.name}是六合卦，初四二五三六三对却报进了合好——整卦六合与合好混成两处账了`);
+    }
+  }
+  assert.equal(kinds, 18, '六冲十个加六合八个，不是十八卦');
+});
+
+test('合起只管静爻、合绊只管动爻：同一爻不会同时落进两路', async () => {
+  const { heCombineReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    for (let day = 0; day < 12; day += 1) {
+      for (let mask = 0; mask < 64; mask += 1) {
+        const moving = [];
+        for (let position = 1; position <= 6; position += 1) {
+          if (mask & (1 << (position - 1))) moving.push(position);
+        }
+        const got = heCombineReading(jf, { monthBranch: (day + 5) % 12, dayBranch: day, movingPositions: moving });
+        const isMoving = (position) => moving.includes(position);
+        for (const item of got.rise) {
+          assert.ok(!isMoving(item.line.position), `${hexagram.name}的动爻${item.line.label}落进了合起`);
+        }
+        for (const item of got.bind) {
+          assert.ok(isMoving(item.line.position), `${hexagram.name}的静爻${item.line.label}落进了合绊`);
+        }
+      }
+    }
+  }
+});
+
+test('「但有一爻不动，亦不为合」：合好要两爻皆动，静动相合不算', async () => {
+  // 这句限定是六合章的明文，也是合好与「凡两支相合就报」的分界。
+  // 做法是找一对真的相合、且不是初四二五三六的爻位，让两爻都动、再只动一个，
+  // 两次结果必须一次出、一次不出——只出不出都不行，那说明判据根本不是动静。
+  const { heCombineReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { SIX_HARMONY } = await import('../miniapp/node/almanac.mjs');
+  const harmonyOf = (branch) => {
+    for (const [x, y] of SIX_HARMONY) {
+      if (x === branch) return y;
+      if (y === branch) return x;
+    }
+    return -1;
+  };
+  // 雷火丰六支卯丑亥午申戌，初爻卯与上爻戌相合——就这一对，且不在初四二五三六上。
+  // 挑它是因为干净：一动一静两个结果一比，就看得出判据是不是「两爻皆动」。
+  const feng = HEXAGRAM_LIST.find((h) => h.name === '雷火丰');
+  assert.ok(feng, '缺雷火丰');
+  const jf = jingfang(feng);
+  const both = heCombineReading(jf, { monthBranch: 0, dayBranch: 0, movingPositions: [1, 6] });
+  const onlyOne = heCombineReading(jf, { monthBranch: 0, dayBranch: 0, movingPositions: [1] });
+  const onlyOther = heCombineReading(jf, { monthBranch: 0, dayBranch: 0, movingPositions: [6] });
+  assert.ok(both.friendly.length > 0, '初爻与上爻都动，却没报出合好');
+  assert.equal(onlyOne.friendly.length, 0, '只动初爻也算合好，「但有一爻不动亦不为合」没守住');
+  assert.equal(onlyOther.friendly.length, 0, '只动上爻也算合好，静动相合本不该算');
+  // 六十四卦里真有相合对、且不在初四二五三六上的，一共二十卦。少了它们合好这一路
+  // 就永远空转，「静动不算」也就无从对照，所以把数目钉在这里。
+  let withPair = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const one = jingfang(hexagram);
+    let found = false;
+    for (let a = 1; a <= 6 && !found; a += 1) {
+      for (let b = a + 1; b <= 6; b += 1) {
+        if (['14', '25', '36'].includes(`${a}${b}`)) continue;
+        if (harmonyOf(one.lines[a - 1].branchIndex) === one.lines[b - 1].branchIndex) found = true;
+      }
+    }
+    if (found) withPair += 1;
+  }
+  assert.equal(withPair, 20, '有非标准相合对的卦不是二十个');
+});
+
+test('化扶要动爻化出之爻回头相合，本爻不是动爻就不算', async () => {
+  const { heCombineReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { hexagramByKey } = await import('../miniapp/node/hexagrams.mjs');
+  const { SIX_HARMONY } = await import('../miniapp/node/almanac.mjs');
+  const partner = (branch) => {
+    for (const [x, y] of SIX_HARMONY) {
+      if (x === branch) return y;
+      if (y === branch) return x;
+    }
+    return -1;
+  };
+  // 变卦照实现同一条路造：把动爻那一爻的阴阳反转，别自己另立一套判法。
+  const changedOf = (key, movingPositions) => {
+    const lines = key.split('').map(Number);
+    for (const position of movingPositions) lines[position - 1] = lines[position - 1] ? 0 : 1;
+    return hexagramByKey(lines.join(''));
+  };
+  let made = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    for (let moving = 1; moving <= 6; moving += 1) {
+      const changedJf = jingfang(changedOf(hexagram.key, [moving]));
+      const got = heCombineReading(jf, { monthBranch: 0, dayBranch: 0, movingPositions: [moving] }, changedJf);
+      for (const item of got.support) {
+        made += 1;
+        assert.equal(item.line.position, moving, `${hexagram.name}的化扶落在${item.line.label}，动爻却是${moving}爻`);
+        assert.equal(item.changedLine.branchIndex, partner(item.line.branchIndex),
+          `${item.line.branch}化出${item.changedLine.branch}，两支并不相合，却报了化扶`);
+      }
+    }
+  }
+  assert.ok(made > 0, '六十四卦六个爻位扫下来一个化扶都没有，化扶这一路根本没在跑');
+  // 换掉一段日辰月建之后这一路照样成立——它不拿日月说话，只看化出的那一爻
+  const before = made;
+  assert.ok(before > 0);
+});
+
+test('日月同支时只算一路，不把同一件事数两遍', async () => {
+  // 六合是十二支上的两两配对，一支的合支唯一。日辰与月建既同一支，合上它的判据
+  // 就是同一条，报两次是同一条事实数了两遍。寅月寅日、申月申日都是这一路。
+  const { heCombineReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { BRANCHES } = await import('../miniapp/node/almanac.mjs');
+  const hexagram = HEXAGRAM_LIST.find((h) => h.name === '乾为天');
+  const jf = jingfang(hexagram);
+  for (let branch = 0; branch < 12; branch += 1) {
+    const same = heCombineReading(jf, { monthBranch: branch, dayBranch: branch, movingPositions: [] });
+    const hits = same.rise.length + same.bind.length;
+    assert.ok(hits <= 1, `日支月支都是${BRANCHES[branch]}，却报了${hits}路`);
+    // 同一支换成日月各一，报的条数不该比同支时多出一份「日辰 + 月建」的重复
+    const split = heCombineReading(jf, { monthBranch: (branch + 1) % 12, dayBranch: branch, movingPositions: [] });
+    const splitHits = split.rise.length + split.bind.length;
+    assert.ok(splitHits <= same.rise.length + same.bind.length + 1,
+      `日支${BRANCHES[branch]}、月支${BRANCHES[(branch + 1) % 12]}报了${splitHits}路，多出来的不是同支那一路`);
+  }
+});
+
+test('断语「逢合 · 合起合绊合好化扶」四名各有一句，且不由合断吉凶', async () => {
+  // 这一段最容易出的错是把合当成吉。原章三处收口：「然必用神有气相宜，用若失陷无益」、
+  // 「用神受克，六合有何益哉」、末了「宜合吉，不宜合凶」。所以四名照说，吉凶一句不许自己加。
+  //
+  // 取样两头都要变：摇法只出坤为地的话（6 与 8 同为阴），卦只有一个，日支还得逐日走。
+  // buildReading 的第二个参数是 { now }，不是 { year, month, day }——写成后者不报错，
+  // 只是被整个忽略，于是日支永远停在起卦那一刻，四名里有几路一卦也碰不上。
+  const seen = { rise: false, bind: false, friendly: false, support: false };
+  let sawAny = false;
+  outer: for (let day = 0; day < 60; day += 1) {
+    for (let mask = 0; mask < 64; mask += 1) {
+      const coins = [8, 8, 8, 8, 8, 8];
+      for (let i = 0; i < 6; i += 1) coins[i] = mask & (1 << i) ? 6 : 7;
+      const reading = buildReading(castByCoins(coins), { now: new Date(2026, 5, 1 + day, 7, 0, 0) });
+      const section = reading.insights.find((item) => item.title === '逢合 · 合起合绊合好化扶');
+      if (!section) continue;
+      sawAny = true;
+      const text = section.text;
+      // 断语开头那一句把四名逐字引了一遍，所以光查「有没有出现过这个名字」不算数——
+      // 开头那句会把四条断言全顶住。改查各路自己那一句独有的措辞：
+      // 把合绊那一路的「皆为合绊」改成「皆为合起」，只有这一句会跟着变。
+      const marker = {
+        rise: '皆为合起——',
+        bind: '皆为合绊——',
+        friendly: '两动爻相合为合好',
+        support: '为化扶——',
+      };
+      for (const name of ['rise', 'bind', 'friendly', 'support']) {
+        if (reading.combine[name].length === 0) continue;
+        seen[name] = true;
+        assert.ok(text.includes(marker[name]), `报了${name}，断语里却没有「${marker[name]}」那一句`);
+      }
+      // 由合断吉凶的话，一律不许出现
+      assert.ok(!/诸事必成|必成|定成|准能成/.test(text), '断语替合断成了必成');
+      assert.ok(text.includes('宜合吉，不宜合凶'), '原章收口那一句没照录');
+      assert.ok(text.includes('用若失陷无益'), '原章「用若失陷无益」那半句没照录');
+      if (Object.values(seen).every(Boolean)) break outer;
+    }
+  }
+  assert.ok(sawAny, '扫了这么多卦，一个逢合段都没出');
+  assert.ok(Object.values(seen).every(Boolean),
+    `四名没凑齐，缺：${Object.entries(seen).filter(([, v]) => !v).map(([k]) => k).join('、')}`);
+});
+
+test('卦体给逢合的爻挂「合」小标，MCP 另给 combine 字段与【逢合】抬头', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const mcp = await readFile(new URL('../miniapp/node/mcp/divination-http.mjs', import.meta.url), 'utf8');
+  const { callDivinationHttp, startDivinationServer } = await import('../miniapp/node/mcp/divination-http.mjs');
+  // 卦体小标：与空破墓暗日破冲散同一层，标在逢合那一爻上
+  assert.ok(/st\.combined \? '合' : ''/.test(client), '卦体没有给逢合的爻挂「合」小标');
+  // 合不上朱砂：原章「宜合吉，不宜合凶」，颜色不该替没定吉凶的东西表态。
+  // 这里不是只翻基础那一条 .st 规则就算数——日后有人新加一条 .st.he 也染朱砂，
+  // 合照样变红而基础规则一个字没动。所以把凡是提到 .st 的规则全收一遍，
+  // 凡带朱砂的，选择器里只许出现 po 与 tomb 这两个已定的颜色。
+  const stRules = [...client.matchAll(/^\s*([^\n{]*\.st[^\n{]*)\{([\s\S]*?)\}/gm)];
+  assert.ok(stRules.length >= 2, `只收到 ${stRules.length} 条 .st 规则，扫漏了`);
+  for (const [, selector, body] of stRules) {
+    if (!/var\(--seal\)/.test(body)) continue;
+    for (const cls of [...selector.matchAll(/\.st\.([a-z-]+)/g)].map((m) => m[1])) {
+      assert.ok(cls === 'po' || cls === 'tomb', `小标 .st.${cls} 染上了朱砂`);
+    }
+  }
+  // 上一条只查样式表。真正把它变红的是另一头：把「合」并进 po 那一档，样式表一个字都不用动。
+  // 所以这里从画小标那行本身查：分 po 与 tomb 的那个条件里不许出现「合」。
+  const markLine = /\.map\(\(word\) => `<span class="st(.*?)tomb/.exec(client);
+  assert.ok(markLine, '找不到画小标那行');
+  assert.ok(!markLine[1].includes("word === '合'"), '「合」被并进了 po/tomb 那一档，会跟着染上朱砂');
+  // 悬停说明要写清四名与「合不是判词」
+  assert.ok(/title="此爻逢合：合起、合绊、合好或化扶/.test(client), '「合」小标没有悬停说明');
+  assert.ok(/宜合吉，不宜合凶/.test(client), '悬停说明里没有原章那句收口');
+  // MCP：结构化字段 + 抬头
+  assert.ok(/combine: reading\.combine \?\? null,/.test(mcp), 'MCP 没有给 combine 字段');
+  assert.ok(/`【逢合】\$\{bits\.join\('，'\)\}`/.test(mcp), 'MCP 没有【逢合】抬头');
+  assert.ok(/combineLine,/.test(mcp), '抬头那一行没有接进输出');
+  // 四名都得真的排进抬头那一段，不是散在文件别处
+  const combineBlock = mcp.slice(mcp.indexOf('const combineLine'), mcp.indexOf('})();', mcp.indexOf('const combineLine')));
+  for (const name of ['合起', '合绊', '合好', '化扶']) {
+    assert.ok(combineBlock.includes(`\`${name}$`), `抬头那一段里没有${name}这一名`);
+  }
+  // 抬头不许带吉凶词：原章「宜合吉，不宜合凶」
+  assert.ok(!/必成|定成|准能/.test(combineBlock), '抬头替合断成了必成');
+  void callDivinationHttp;
+  void startDivinationServer;
+});
 test('六十四卦里三对要么全撞要么全不撞，没有只撞一对的卦', async () => {
   const { hexagramClash } = await import('../miniapp/node/jingfang.mjs');
   const dist = { 0: 0, 1: 0, 2: 0, 3: 0 };

@@ -894,6 +894,127 @@ export function hexagramClash(hexagram, prepared) {
 /** 纳甲六爻的配对位：内卦初二三与外卦四五六错开一位，隔三位相配。 */
 const CLASH_PAIR_OFFSETS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
 
+/** 与之相合的那一支查不到时返回 -1。 */
+function branchHarmony(branch) {
+  for (const [x, y] of SIX_HARMONY) {
+    if (x === branch) return y;
+    if (y === branch) return x;
+  }
+  return -1;
+}
+
+/**
+ * 爻之合：落在单爻上的那三法，与卦级的三法各管一段。
+ *
+ * 出处：《增删卜易》卷一·六合章第十九。该章分两层，先说「合从何来」有六法，
+ * 再说「这一爻得叫什么」有四名：
+ *
+ *   「相合法有六：日月合爻者一也。爻与爻合者二也。爻动化合者三也。
+ *     卦逢六合四也。六冲卦变六合卦五也。六合卦变六合卦六也。」
+ *   「爻之合者，静而逢合，谓之合起；动而逢合，谓之合绊；
+ *     爻与爻合谓之合好，爻动化合谓之化扶。」
+ *
+ * 后三法（卦逢六合、六冲变六合、六合变六合）是整卦的结构，由 hexagramClash 判。
+ * 这里做的是前三法，逐爻落地，四名由这一爻的动静与合的来路定：
+ *
+ *   合起  静爻与日辰或月建相合 ——「爻静或与日月动爻合者，得合而起，
+ *         即使爻值休囚亦有旺相之意」
+ *   合绊  动爻与日辰或月建相合 ——「爻动或与日月动爻合者，谓之动逢合而绊住，
+ *         反不能动之意」
+ *   合好  两爻相合，且两爻皆动 ——「爻动与动爻相合，乃得他来合我，
+ *         与我和好相助之意」
+ *   化扶  动爻化出之爻回头与本爻相合 ——「爻动化出之爻回头相合者，谓之化扶，
+ *         得他扶助之意」
+ *
+ * **合好那一条有一句明文限定，两爻皆动才算**：「但有一爻不动，亦不为合」。
+ * 所以静爻与动爻相合本包不作合好——那一爻不动，恰恰是这一句排除掉的。
+ * 六合章后文另有「爻静或与日月动爻合者」一句，标点两读：读作「与日月、动爻合者」
+ * 则静爻也能与动爻成合，这与上句正面冲突。本包从可核的一读，
+ * 冲突那一支不取，在此记明取舍而不是含糊过去。
+ *
+ * **合好不算卦逢六合那三对。** 初四、二五、三六那三对相合是整卦的六合结构，
+ * 由 hexagramClash 判并画在卦体边上；这里两爻相合只取其余配对，免得一处事实
+ * 在卦体与断语里各记一次账。
+ *
+ * **本函数不定吉凶。** 同章把话收得很紧：「然必用神有气相宜，用若失陷无益」，
+ * 又说「用神受克，六合有何益哉」，末尾一句「宜合吉，不宜合凶」。合是关系不是判词，
+ * 吉凶仍归用神旺衰，所以这里只报出关系与名目。
+ *
+ * @param {Jingfang} jingfang 本卦
+ * @param {{ monthBranch: number, dayBranch: number, movingPositions: number[] }} calendar
+ * @param {Jingfang} [changedJingfang] 变卦；没有动爻时可略
+ * @returns {{
+ *   rise: readonly object[], bind: readonly object[], friendly: readonly object[],
+ *   support: readonly object[], hitPositions: readonly number[], hasAny: boolean,
+ * }}
+ */
+export function heCombineReading(jingfang, calendar, changedJingfang) {
+  const moving = new Set(calendar.movingPositions);
+  // 日月同支时（寅月寅日之类）只算一路。六合是十二支上的两两配对，一支的合支唯一，
+  // 日辰与月建既然是同一支，合上它的判据就是同一条，报两次是同一件事数了两遍。
+  const calendars = calendar.dayBranch === calendar.monthBranch
+    ? [{ name: '日辰', branchIndex: calendar.dayBranch }]
+    : [
+      { name: '日辰', branchIndex: calendar.dayBranch },
+      { name: '月建', branchIndex: calendar.monthBranch },
+    ];
+  const rise = [];
+  const bind = [];
+  const friendly = [];
+  const support = [];
+
+  for (const line of jingfang.lines) {
+    for (const source of calendars) {
+      if (branchHarmony(line.branchIndex) !== source.branchIndex) continue;
+      // 动静分两头：静爻得合而起，动爻得合而绊。名目不同，在此分派。
+      (moving.has(line.position) ? bind : rise).push(Object.freeze({
+        line,
+        source: source.name,
+        branch: BRANCH_ORDER[source.branchIndex],
+      }));
+    }
+  }
+
+  for (let a = 1; a <= 6; a += 1) {
+    for (let b = a + 1; b <= 6; b += 1) {
+      if (!moving.has(a) || !moving.has(b)) continue;
+      const lineA = jingfang.lines[a - 1];
+      const lineB = jingfang.lines[b - 1];
+      if (branchHarmony(lineA.branchIndex) !== lineB.branchIndex) continue;
+      // 初四、二五、三六那三对是整卦六合，不在这里再记一次。
+      if (CLASH_PAIR_OFFSETS.some(([x, y]) => (x === a && y === b) || (x === b && y === a))) continue;
+      friendly.push(Object.freeze({ lineA, lineB }));
+    }
+  }
+
+  if (changedJingfang) {
+    for (const position of calendar.movingPositions) {
+      const line = jingfang.lines[position - 1];
+      const changedLine = changedJingfang.lines[position - 1];
+      if (branchHarmony(line.branchIndex) !== changedLine.branchIndex) continue;
+      support.push(Object.freeze({ line, changedLine }));
+    }
+  }
+
+  const hit = new Set();
+  for (const item of rise) hit.add(item.line.position);
+  for (const item of bind) hit.add(item.line.position);
+  for (const item of friendly) {
+    hit.add(item.lineA.position);
+    hit.add(item.lineB.position);
+  }
+  for (const item of support) hit.add(item.line.position);
+  const hitPositions = [...hit].sort((a, b) => a - b);
+  return Object.freeze({
+    rise: Object.freeze(rise),
+    bind: Object.freeze(bind),
+    friendly: Object.freeze(friendly),
+    support: Object.freeze(support),
+    hitPositions: Object.freeze(hitPositions),
+    hasAny: rise.length > 0 || bind.length > 0 || friendly.length > 0 || support.length > 0,
+  });
+}
+
 // 六冲卦十个、六合卦八个，是传世名单里人人能背下来的两组卦；数目或名单对不上就是装卦错了。
 // 另有一处结构事实顺带钉住：三对里只要有一组相冲（相合），另两组必也相冲（相合）。所以六十四卦
 // 只有三种样子——三对皆冲、三对皆合、三对皆不相干，没有「只撞一对」的。客户端那层冲合连线正是
@@ -943,6 +1064,124 @@ for (let branch = 0; branch < 12; branch += 1) {
   if (generatesTo(ELEMENT_BY_BRANCH[branch], ELEMENT_BY_BRANCH[clashed])) {
     throw new Error(`日辰生扶校验不过：日支${BRANCH_ORDER[branch]}能生${BRANCH_ORDER[clashed]}，`
       + '则被日辰冲的静爻还能得日辰生扶，「暗动不靠日辰生扶」这条取舍得重核');
+  }
+}
+
+// 爻之合那一层的地基。六合是十二支上的两两配对，这个函数把「四名」的判定整个架在上面：
+// 配对若不严格互斥，「与谁合」就有两个答案，同一爻会落进两路，卦体上的小标也要打架。
+// 所以三件事在加载时钉死：表把十二支盖满、每一支的合支唯一、合是双向的。
+{
+  const seen = new Set();
+  for (let branch = 0; branch < 12; branch += 1) {
+    const partner = branchHarmony(branch);
+    if (partner < 0) {
+      throw new Error(`六合表校验不过：${BRANCH_ORDER[branch]}没有配到合支，表少了一组`);
+    }
+    if (seen.has(branch)) {
+      throw new Error(`六合表校验不过：${BRANCH_ORDER[branch]}被配了两次，表里有重复`);
+    }
+    seen.add(branch);
+    if (branchHarmony(partner) !== branch) {
+      throw new Error(`六合表校验不过：${BRANCH_ORDER[branch]}与${BRANCH_ORDER[partner]}相合，`
+        + `但${BRANCH_ORDER[partner]}的合支不是${BRANCH_ORDER[branch]}——合必须双向`);
+    }
+  }
+  // 配对既已互斥且双向，一个日辰支与一个月建支若不同支，不会有哪一支同时合于两者——
+  // 否则同一爻会同时落进日辰那一路和月建那一路，断语里就成了同一件事说两遍。
+  for (let day = 0; day < 12; day += 1) {
+    for (let month = 0; month < 12; month += 1) {
+      if (day === month) continue;
+      for (let branch = 0; branch < 12; branch += 1) {
+        if (branchHarmony(day) === branch && branchHarmony(month) === branch) {
+          throw new Error(`六合表校验不过：${BRANCH_ORDER[branch]}同时合于日支${BRANCH_ORDER[day]}`
+            + `与月支${BRANCH_ORDER[month]}，则「与谁合」有两个答案，四名里该落哪一路就定了`);
+        }
+      }
+    }
+  }
+  // 四路各自的成立条件，逐条对着结果核。这一段扫的是全部六十四卦配十二日辰配十二种动静，
+  // 只核「有没有」没有意义——四路里有三路本来就跟日辰无关——所以核的是每一路凭什么算数。
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    for (let day = 0; day < 12; day += 1) {
+      for (let month = 0; month < 12; month += 1) {
+        for (let mask = 0; mask < 64; mask += 1) {
+          const moving = [];
+          for (let position = 1; position <= 6; position += 1) {
+            if (mask & (1 << (position - 1))) moving.push(position);
+          }
+          const got = heCombineReading(jf, { monthBranch: month, dayBranch: day, movingPositions: moving });
+          const isMoving = (position) => moving.includes(position);
+          // 合起：静爻，且与日辰或月建那一支相合
+          for (const item of got.rise) {
+            if (isMoving(item.line.position)) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.line.label}是动爻，却落进合起`
+                + '——合起只管静爻，动爻逢日月那一路叫合绊');
+            }
+            const partner = branchHarmony(item.line.branchIndex);
+            if (partner !== day && partner !== month) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.line.label}报了合起，`
+                + `却既不合日支${BRANCH_ORDER[day]}也不合月支${BRANCH_ORDER[month]}`);
+            }
+          }
+          // 合绊：动爻，且与日辰或月建那一支相合
+          for (const item of got.bind) {
+            if (!isMoving(item.line.position)) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.line.label}是静爻，却落进合绊`
+                + '——合绊只管动爻，静爻逢日月那一路叫合起');
+            }
+            const partner = branchHarmony(item.line.branchIndex);
+            if (partner !== day && partner !== month) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.line.label}报了合绊，`
+                + `却既不合日支${BRANCH_ORDER[day]}也不合月支${BRANCH_ORDER[month]}`);
+            }
+          }
+          // 合好：两支相合，且两爻皆动，且不撞整卦六合那三对
+          for (const item of got.friendly) {
+            if (!isMoving(item.lineA.position) || !isMoving(item.lineB.position)) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.lineA.label}与${item.lineB.label}报了合好，`
+                + '其中有静爻——「但有一爻不动，亦不为合」');
+            }
+            if (branchHarmony(item.lineA.branchIndex) !== item.lineB.branchIndex) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.lineA.label}与${item.lineB.label}报了合好，`
+                + '两支却并不相合');
+            }
+            if (CLASH_PAIR_OFFSETS.some(([x, y]) => (x === item.lineA.position && y === item.lineB.position)
+              || (x === item.lineB.position && y === item.lineA.position))) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.lineA.label}与${item.lineB.label}是`
+                + '初四二五三六那一对，报了合好——那一对属整卦六合，不在这里再记一次');
+            }
+          }
+          // 化扶：本爻在动，且化出之爻回头与本爻相合
+          for (const item of got.support) {
+            if (!isMoving(item.line.position)) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.line.label}报了化扶，本爻却不是动爻`);
+            }
+            if (branchHarmony(item.line.branchIndex) !== item.changedLine.branchIndex) {
+              throw new Error(`逢合校验不过：${hexagram.name}的${item.line.label}报了化扶，`
+                + `变出的${item.changedLine.branch}却与本爻${item.line.branch}不相合`);
+            }
+          }
+          // 逢合爻位就是四路合起来的那几处，不多不少
+          const union = new Set();
+          for (const item of got.rise) union.add(item.line.position);
+          for (const item of got.bind) union.add(item.line.position);
+          for (const item of got.friendly) {
+            union.add(item.lineA.position);
+            union.add(item.lineB.position);
+          }
+          for (const item of got.support) union.add(item.line.position);
+          if (union.size !== got.hitPositions.length
+            || [...union].some((position) => !got.hitPositions.includes(position))) {
+            throw new Error(`逢合校验不过：${hexagram.name}（日支${BRANCH_ORDER[day]}、月支${BRANCH_ORDER[month]}、`
+              + `动爻${moving.join(',') || '无'}）卦体上标的逢合爻与四路实际报出的对不上`);
+          }
+          if (got.hasAny !== got.hitPositions.length > 0) {
+            throw new Error(`逢合校验不过：${hexagram.name}的 hasAny 与实际命中的爻位对不上`);
+          }
+        }
+      }
+    }
   }
 }
 

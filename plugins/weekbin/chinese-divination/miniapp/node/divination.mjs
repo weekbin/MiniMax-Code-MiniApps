@@ -28,7 +28,7 @@ import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
   voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui,
-  useGodCircle, dayClashReading, hexagramClash } from './jingfang.mjs';
+  useGodCircle, dayClashReading, heCombineReading, hexagramClash } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -553,8 +553,18 @@ export function buildReading(cast, options = {}) {
     insights.push({ title: '暗动 · 日破 · 冲散', text: dayClashText(clash, circle, calendar) });
   }
 
-  // 变卦的京房卦提前算出来：下面「六冲」那一段要判变卦是不是六冲/六合，化爻那一段也要用。
+  // 变卦的京房卦提前算出来：下面「六冲」那一段要判变卦是不是六冲/六合，
+  // 「逢合」那一段要拿变出的那一爻回头看，化爻那一段也要用。
   const changedJf = changed ? jingfang(changed) : null;
+
+  // 爻之合的另外三法。卦级那三法（卦逢六合、六冲变六合、六合变六合）在 hexagramClash 里，
+  // 已经画在卦体边上、也在「卦体冲合」那一格列出；这里补的是落在单爻上的三法，
+  // 按动静与来路分成合起、合绊、合好、化扶四名。排在暗动、六冲之后：
+  // 前一段拿日月对着爻看冲，后一段先认整卦的冲合，再落到单爻的合上。
+  const combine = heCombineReading(jf, calendar, changedJf);
+  if (combine.hasAny) {
+    insights.push({ title: '逢合 · 合起合绊合好化扶', text: heCombineText(combine, calendar) });
+  }
 
   // 六冲章的六种冲，前一路（日月冲爻）刚在上面逐爻算过，这里接着数剩下几路。
   // 触发条件取「卦体本身是六冲或六合」加「变卦是六冲」加「动爻变冲」——
@@ -640,6 +650,9 @@ export function buildReading(cast, options = {}) {
         dayBroken: clash.dayBroken.some((one) => one.position === line.position),
         // 冲散：动爻被日辰冲到。与暗动、日破互斥，三者不会同落一爻。
         pressed: pressedPositions.includes(line.position),
+        // 逢合：这一爻合于日月、与另一动爻相合、或动爻化出之爻回头相合，三路任一即是。
+        // 与上面那三个不互斥——冲的是被冲来的那一边，合的是被缠住的那一边，同一爻可以又逢冲又逢合。
+        combined: combine.hitPositions.includes(line.position),
         rescues: v.rescues,
         empties: v.empties,
       };
@@ -650,6 +663,15 @@ export function buildReading(cast, options = {}) {
       dark: darkPositions,
       dayBroken: clash.dayBroken.map((line) => line.position),
       pressed: pressedPositions,
+    },
+    // 爻之合那四名各是哪些爻。合起与合绊互斥（一爻要么静要么动），
+    // 合好与化扶可以与它们同落一爻。日月合爻最常见，合好要两爻皆动、化扶要动爻化出之爻
+    // 回头相合，都少得多。四路皆空时断语里不出这一段。
+    combine: {
+      rise: combine.rise.map((item) => [item.line.position, item.source]),
+      bind: combine.bind.map((item) => [item.line.position, item.source]),
+      friendly: combine.friendly.map((item) => [item.lineA.position, item.lineB.position]),
+      support: combine.support.map((item) => item.line.position),
     },
     // 六冲章那六种冲逐条对出来的结果。本卦逢六冲十五卦中的十卦、六合八卦，都是整卦的
     // 定性；变卦那两路与动爻变冲要等动起来才谈得上。爻位一律用数字，便于程序取用。
@@ -1143,6 +1165,62 @@ function dayClashText(clash, circle, calendar) {
     parts.push('「占以暗動福來而不知，禍來而不覺」是旧说，原作者在本章末尾就驳了它：'
       + '「吉凶之應於動，有急緩之應，則緩非此論，何當不知不覺，報應亦非緩也。」暗动不必当成迟缓。');
   }
+  return parts.join('');
+}
+
+/**
+ * 《增删卜易·六合章第十九》「爻之合者」那四名，逐名说清这一爻得了什么。
+ *
+ *   「爻之合者，静而逢合，谓之合起；动而逢合，谓之合绊；
+ *     爻与爻合谓之合好，爻动化合谓之化扶。」
+ *
+ * 四句各自的落点照原书：「爻静或与日月动爻合者，得合而起，即使爻值休囚亦有旺相之意」；
+ * 「爻动或与日月动爻合者，谓之动逢合而绊住，反不能动之意」；「爻动与动爻相合，乃得他来合我，
+ * 与我和好相助之意」；「爻动化出之爻回头相合者，谓之化扶，得他扶助之意」。
+ *
+ * **这一段不给吉凶，这是原书自己收的。** 同章三处：「然必用神有气相宜，用若失陷无益」、
+ * 「用神受克，六合有何益哉」、末了「宜合吉，不宜合凶」。所以只报关系与名目，
+ * 吉凶仍旧归用神旺衰那一路，不在这里替它表态。
+ *
+ * 卦级那三法不在这一段：卦逢六合、六冲变六合、六合变六合是整卦结构，由 clashKinds 出段、
+ * 卦体上另画三支合弧，两处都已列全，在这里再列一遍就成了第二份要人核对的账。
+ *
+ * @param {import('./jingfang.mjs').ReturnType<typeof import('./jingfang.mjs').heCombineReading>} combine
+ * @param {{ dayBranch: number, monthBranch: number }} calendar
+ * @returns {string}
+ */
+function heCombineText(combine, calendar) {
+  const parts = ['按《增删卜易·六合章第十九》「爻之合者，静而逢合，谓之合起；动而逢合，谓之合绊；'
+    + '爻与爻合谓之合好，爻动化合谓之化扶」：合落在这几爻上，分这么四名。'];
+  if (combine.rise.length > 0) {
+    const said = combine.rise
+      .map((item) => `${item.line.label}${item.line.branch}${item.line.element}合${item.source}${item.branch}`)
+      .join('、');
+    parts.push(`${said}皆为合起——静爻得合而起，原书说「即使爻值休囚亦有旺相之意」，`
+      + '起得来的是这一爻，不等于这件事就成。');
+  }
+  if (combine.bind.length > 0) {
+    const said = combine.bind
+      .map((item) => `${item.line.label}${item.line.branch}${item.line.element}合${item.source}${item.branch}`)
+      .join('、');
+    parts.push(`${said}皆为合绊——动爻被合住，原书说「反不能动之意」，动起来的事被绊在这里。`);
+  }
+  if (combine.friendly.length > 0) {
+    const said = combine.friendly
+      .map((item) => `${item.lineA.label}${item.lineA.branch}与${item.lineB.label}${item.lineB.branch}`)
+      .join('、');
+    parts.push(`${said}两动爻相合为合好——是他来合我，原书说「与我和好相助之意」。`
+      + '此处只取两爻皆动的那一路：同章「但有一爻不动，亦不为合」，有一爻静的算不上合。');
+  }
+  if (combine.support.length > 0) {
+    const said = combine.support
+      .map((item) => `${item.line.label}${item.line.branch}化出${item.changedLine.branch}回头相合`)
+      .join('、');
+    parts.push(`${said}为化扶——动爻化出去的那一爻回头来合本爻，原书说「得他扶助之意」。`);
+  }
+  // 原书把话收在这一句上，且收在吉凶之前。合不是判词，这一句照录，不替它翻成断语。
+  parts.push('以上只说合的关系，不据此断吉凶：同章说「然必用神有气相宜，用若失陷无益」，'
+    + '又说「用神受克，六合有何益哉」，末了一句「宜合吉，不宜合凶」——合吉合凶仍要看用神旺衰。');
   return parts.join('');
 }
 

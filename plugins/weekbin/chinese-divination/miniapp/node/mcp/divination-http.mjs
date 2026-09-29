@@ -154,6 +154,26 @@ function readingToText(reading) {
     if (clash.pressed.length > 0) bits.push(`冲散${clash.pressed.join('、')}爻`);
     return bits.length === 0 ? null : `【日冲】${bits.join('，')}`;
   })();
+  // 爻之合四名。这一行只报名目与爻位，不带吉凶：原章说「宜合吉，不宜合凶」，
+  // 「合」字进不了断语，所以抬头也不许替它表态。
+  const combineLine = (() => {
+    const combine = reading.combine;
+    if (!combine) return null;
+    const bits = [];
+    if (combine.rise.length > 0) {
+      bits.push(`合起${combine.rise.map(([p, source]) => `${p}爻合${source}`).join('、')}`);
+    }
+    if (combine.bind.length > 0) {
+      bits.push(`合绊${combine.bind.map(([p, source]) => `${p}爻合${source}`).join('、')}`);
+    }
+    if (combine.friendly.length > 0) {
+      bits.push(`合好${combine.friendly.map(([a, b]) => `${a}与${b}`).join('、')}`);
+    }
+    if (combine.support.length > 0) {
+      bits.push(`化扶${combine.support.join('、')}爻`);
+    }
+    return bits.length === 0 ? null : `【逢合】${bits.join('，')}`;
+  })();
   // 卦体冲合。六冲卦十个、六合卦八个，都是整卦的定性；变卦那两路要等动起来才谈得上。
   // 六十四卦里有四十六卦既不是六冲也不是六合，那种「不是」不值一行，不出。
   const clashLine = (() => {
@@ -179,6 +199,7 @@ function readingToText(reading) {
     `【京房】${jingfangLine}`,
     clashLine,
     dayClashLine,
+    combineLine,
     `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
     `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
     `【断语】\n${insights}`,
@@ -276,6 +297,10 @@ function callTool(name, args) {
         // 卦体冲合：六冲卦十个、六合卦八个，都是整卦的定性，一卦至多中一个；
         // 变卦那两路（六合变六冲、六冲变六冲）与动爻变冲要等动起来才谈得上。
         // 卦内零散爻与爻冲六十四卦里有三十卦都有，太常见，不单列开关，只给爻位对。
+        // 爻之合那四名各是哪些爻。合起/合绊是「合于日月」，按动静分两路，互不相交；
+        // 合好是两动爻相合（成对给出），化扶是动爻化出之爻回头相合（只给本爻位）。
+        // 四路皆空时是空对象，不占结构。卦级那三法在 clash 里，不在这里重复。
+        combine: reading.combine ?? null,
         clash: reading.clash,
         timing: reading.timing,
         disclaimer: DISCLAIMER,
