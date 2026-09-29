@@ -663,11 +663,20 @@ export function voidReading(line, calendar) {
   const mj = muJue(line.element);
   const isTomb = mj.mu === line.branchIndex;
 
-  // 下面只在这一爻确实逢空时才判真假；不逢空的爻不必多话。
+  // 下面只在「空」这一支上判真假。逢月破而不逢旬空时不算这一支——
+  // 但也不能就这么什么也不说：《增删卜易·月破章》「虽有日辰之生，亦不能生」，
+  // 逢冲只会把它冲得更伤，而同章旬空一篇又把「月破爲空」列在真空那几条里。
+  // 所以单逢月破的爻也作真空，只是它的空不是旬空那种「等出旬」，是「待出月」。
   if (!isVoid) {
+    if (!isBroken) {
+      return Object.freeze({
+        isVoid: false, isBroken, isTomb,
+        status: null, rescues: Object.freeze([]), empties: Object.freeze([]),
+      });
+    }
     return Object.freeze({
       isVoid: false, isBroken, isTomb,
-      status: null, rescues: Object.freeze([]), empties: Object.freeze([]),
+      status: '真空', rescues: Object.freeze([]), empties: Object.freeze(['逢月破']),
     });
   }
 
@@ -708,7 +717,23 @@ export function voidReading(line, calendar) {
 }
 
 /**
- * 旺相休囚死：同我为旺、我生为相、生我为休、克我为囚、我克为死。
+ * 旺相休囚死：月建为令，令生者相、生令者休、克令者囚、令克者死。
+ *
+ * 口诀里的「令」是月建，不是爻——这一层最容易读反。照口诀逐档落：
+ * 旺=与月建同我；相=月建生爻；休=爻生月建；囚=爻克月建；死=月建克爻。
+ * 拿寅卯木令核一遍：木旺、火相、水休、金囚、土死——与《增删卜易·四时旺相章》
+ * 逐月所列一致。早先这里把注释写成「克我为囚、我克为死」，那个「我」若指月建，
+ * 就正好把囚与死掉个个儿；若指爻，又与相、休两档相矛盾。两种读法都跟代码对不上，
+ * 注释已按口诀改正，代码一直是对的。
+ *
+ * 五档穷尽，且旺相（strong/good）与休囚死（weak/bad）二分干净——暗动与日破
+ * 就是拿这条线分的，见 dayClashReading。
+ *
+ * 另有一层本包**未做**：《增删卜易·四时旺相章》在四季土月（辰戌丑未为月建）另有
+ * 一条加减，说冲着月建的那一支按休囚论、另支尚有余气不作休囚。那一章在卷内另有章次，
+ * 且「不作休囚」之后并未交代该落到哪一档，照搬要靠猜，所以此处不并进来。旺相
+ * 在四季土月只按本表算，取舍已在 README 标明。
+ *
  * 放在这层是因为生克的 GENERATES / OVERCOMES 就在这里，挪到别处只会多出第二份口径。
  * @param {string} element 爻或卦的五行
  * @param {string} monthElement 当月月建的五行
@@ -719,5 +744,96 @@ export function vitality(element, monthElement) {
   if (generatesTo(element, monthElement)) return { key: '休', tone: 'weak' };
   if (overcomesTo(element, monthElement)) return { key: '囚', tone: 'bad' };
   return { key: '死', tone: 'bad' };
+}
+
+/**
+ * 暗动与日破：被日辰冲到的静爻，分旺衰两路。
+ *
+ * 出处为《增删卜易》卷一·暗动章第二十二，一句话把两路都定了：
+ *   「靜爻旺相日辰沖之爲暗動，靜爻休囚日辰沖之爲破。」
+ * 章节号以卷一目录为准作**第二十二**；传本正文在「增删卜易/22」一页题下亦作
+ * 「暗動章第二十二」。另有二手站把这章标作「025章」，是按全书篇序排的号，
+ * 与卷内章次不同，本包不从。
+ *
+ * 旺衰只有旺相休囚死五档，旺相归暗动、休囚归日破，两路互斥且穷尽——
+ * 所以这里不设第三种情形，也不留「无从判」的兜底。
+ *
+ * 三处取舍照实交代：
+ *
+ * 一、**动静只看真动爻**。被日辰冲的若本身发动，那是动爻逢冲，《易冒》另名「冲散」，
+ *    《增删卜易》归在动散章第二十三，不属本章，本包不并进来。
+ *
+ * 二、**判定严格照原章，不放宽**。后世与野鹤自己的卦例常把「得动爻生扶」的休囚静爻
+ *    也叫暗动——暗动章末尾那个「坤之师」卦例就是如此：未日冲动丑土，寅月土本囚，
+ *    按章中定义该作日破，原文却拿它来生金救用神。本包取**章中定义**那一路，
+ *    因为它是这一章自己写下的判语；把卦例的宽法补进定义，是拿个例改通例。
+ *    差在哪里说在 README，不装作没有。
+ *
+ * 三、**不并入旬空章的「有日建動爻生扶者不爲空」**。那一路指望日辰生扶本爻，
+ *    而日辰所冲之支与本爻只可能是同行或相克——六冲六对里丑未、辰戌同为土不生不克，
+ *    子午、寅申、卯酉、巳亥四对都是日辰克本爻，没有一对是日辰生本爻。下方加载时
+ *    把这一条钉死：若将来改了六冲表，这里先炸。暗动必旺相，旺相又已被旬空章的
+ *    「旺不爲空」收走，所以暗动与旬空那半边天然不冲突，也就不必去动 voidReading。
+ *
+ * @param {Jingfang} jingfang
+ * @param {{ monthBranch: number, dayBranch: number, movingPositions: number[] }} calendar
+ * @returns {{ dark: JingfangLine[], dayBroken: JingfangLine[] }}
+ */
+export function dayClashReading(jingfang, calendar) {
+  const monthElement = ELEMENT_BY_BRANCH[calendar.monthBranch];
+  const moving = new Set(calendar.movingPositions);
+  const clashed = branchClash(calendar.dayBranch);
+  const dark = [];
+  const dayBroken = [];
+  for (const line of jingfang.lines) {
+    if (moving.has(line.position)) continue;
+    if (line.branchIndex !== clashed) continue;
+    const tone = vitality(line.element, monthElement).tone;
+    (tone === 'strong' || tone === 'good' ? dark : dayBroken).push(line);
+  }
+  return Object.freeze({ dark: Object.freeze(dark), dayBroken: Object.freeze(dayBroken) });
+}
+
+// 日辰所冲之支永不可能生被冲的那一爻。上面第三条取舍整个建立在这句上，所以在这里钉死。
+for (let branch = 0; branch < 12; branch += 1) {
+  const clashed = branchClash(branch);
+  if (generatesTo(ELEMENT_BY_BRANCH[branch], ELEMENT_BY_BRANCH[clashed])) {
+    throw new Error(`日辰生扶校验不过：日支${BRANCH_ORDER[branch]}能生${BRANCH_ORDER[clashed]}，`
+      + '则被日辰冲的静爻还能得日辰生扶，「暗动不靠日辰生扶」这条取舍得重核');
+  }
+}
+
+/**
+ * 旺衰逐月表，直接抄《增删卜易·四时旺相章》，拿来给 vitality 钉桩。
+ *
+ * 八个月建各配一句原话：
+ *   「正月、二月木为旺，火为相，其余金、水、土俱为休囚」
+ *   「四月、五月火旺土相，其余俱作休囚」
+ *   「七月、八月金旺生水，水为相，其余俱作休囚」
+ *   「十月、十一月水生木，木为相，其余俱作休囚」
+ *
+ * 只钉这八个月。辰戌丑未四个月建不在表内：同章对四季另有一条加减，冲着月建的那支
+ * 按休囚论、另支尚有余气不作休囚，四支不再一视同仁。照那条办要补一档没有原话可依的
+ * 细分，本包未做（见 vitality 注释），所以这四个月建不进校验，免得拿一张不完整的表
+ * 去核一个更宽的算法。
+ */
+const FOUR_SEASONS_TONE = [
+  { branch: 2, 木: '旺', 火: '相', 土: '死', 金: '囚', 水: '休' },
+  { branch: 3, 木: '旺', 火: '相', 土: '死', 金: '囚', 水: '休' },
+  { branch: 5, 木: '休', 火: '旺', 土: '相', 金: '死', 水: '囚' },
+  { branch: 6, 木: '休', 火: '旺', 土: '相', 金: '死', 水: '囚' },
+  { branch: 8, 木: '死', 火: '囚', 土: '休', 金: '旺', 水: '相' },
+  { branch: 9, 木: '死', 火: '囚', 土: '休', 金: '旺', 水: '相' },
+  { branch: 11, 木: '相', 火: '死', 土: '囚', 金: '休', 水: '旺' },
+  { branch: 0, 木: '相', 火: '死', 土: '囚', 金: '休', 水: '旺' },
+];
+for (const row of FOUR_SEASONS_TONE) {
+  for (const element of ELEMENTS) {
+    const got = vitality(element, ELEMENT_BY_BRANCH[row.branch]).key;
+    if (got !== row[element]) {
+      throw new Error(`旺衰校验不过：《四时旺相章》${BRANCH_ORDER[row.branch]}月${element}爻作${row[element]}，`
+        + `实算出${got}。囚与死最易掉个个儿——令克者死、克令者囚，念反了就会错掉这两档`);
+    }
+  }
 }
 

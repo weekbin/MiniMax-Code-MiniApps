@@ -143,6 +143,16 @@ function readingToText(reading) {
         ? `；动爻去向 ${reading.transforms.map((t) => `${t.label}${t.relation}${t.jinTui ? `·${t.jinTui}` : ''}`).join('、')}`
         : '')
     : '【变卦】六爻皆静，无变卦';
+  // 静爻被日辰冲出来的暗动与日破，与世应并排放在抬头上：这两样都是「今天才有的处境」，
+  // 模型复述卦象时最常追问「有没有暗中动起来的爻」。两者皆空时不出这一行，不占版面。
+  const dayClashLine = (() => {
+    const clash = reading.dayClash;
+    if (!clash) return null;
+    const bits = [];
+    if (clash.dark.length > 0) bits.push(`暗动${clash.dark.join('、')}爻`);
+    if (clash.dayBroken.length > 0) bits.push(`日破${clash.dayBroken.join('、')}爻`);
+    return bits.length === 0 ? null : `【日冲静爻】${bits.join('，')}`;
+  })();
   return [
     `【起法】${reading.method}`,
     reading.question ? `【所问】${reading.question}` : '【所问】未填',
@@ -152,6 +162,7 @@ function readingToText(reading) {
     `【爻象】${lines}`,
     `【体用】体卦 ${reading.structure.body.name}${reading.structure.body.element}，用卦 ${reading.structure.use.name}${reading.structure.use.element}`,
     `【京房】${jingfangLine}`,
+    dayClashLine,
     `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
     `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
     `【断语】\n${insights}`,
@@ -159,7 +170,7 @@ function readingToText(reading) {
     `【忌】${reading.advice.avoid.join('、')}`,
     `【起卦依据】${basis}`,
     `【提示】${DISCLAIMER}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 /** @param {string} name @param {Record<string, unknown>} args */
@@ -237,6 +248,12 @@ function callTool(name, args) {
           jinTui: t.jinTui,
           marks: t.marks,
         })),
+        // 静爻被日辰冲出来的两种：旺相的作暗动，休囚的作日破。断语里已讲过一遍，
+        // Agent 要复述「今天有没有暗中动起来的爻」时不必再从正文里刨。
+        // 爻位数组，与 states 里的逐爻标记对得上；两者恒不相交。
+        dayClash: reading.dayClash
+          ? { dark: reading.dayClash.dark, dayBroken: reading.dayClash.dayBroken }
+          : null,
         timing: reading.timing,
         disclaimer: DISCLAIMER,
       },

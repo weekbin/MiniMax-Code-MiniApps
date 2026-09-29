@@ -2398,8 +2398,9 @@ test('用神段把元忌仇的所在、动静、旺衰摆开，并守住「勿�
   assert.ok(circle, '这一卦用神上了卦，该有这一圈');
   assert.deepEqual(circle.elements, { yuan: '水', ji: '金', chou: '土' }, '二爻木用神：水元金忌土仇');
   // 每一支都要报到「哪一爻、动不动、月建旺衰」——野鹤原话是「有元神動而生扶否？有忌神動而克害否？」
+  // 动静有三档：动、暗动、静。暗动是静爻被日辰冲出来的，与动爻分列（暗动章与动散章各管一路）。
   for (const [name, positions] of [['元神', circle.yuan], ['忌神', circle.ji], ['仇神', circle.chou]]) {
-    assert.ok(new RegExp(`${name}属${circle.elements[name === '元神' ? 'yuan' : name === '忌神' ? 'ji' : 'chou']}，见[\\s\\S]{0,40}（[动静]，于月建[旺相休囚死]）`).test(text),
+    assert.ok(new RegExp(`${name}属${circle.elements[name === '元神' ? 'yuan' : name === '忌神' ? 'ji' : 'chou']}，见[\\s\\S]{0,40}（(?:暗动|动|静)，于月建[旺相休囚死]）`).test(text),
       `${name}没报出所在与动静旺衰`);
   }
   assert.match(text, /勿以仇神即仇人也/, '漏了「勿以仇神即仇人也」这句');
@@ -2496,4 +2497,334 @@ test('MCP 把元忌仇那圈落成字段', async () => {
   // 三个位置不能在同一个爻位上撞车
   const all = [...circle.yuan, ...circle.ji, ...circle.chou];
   assert.equal(new Set(all).size, all.length, '元忌仇撞在同一爻上了');
+});
+
+/* ---------- 暗动与日破（《增删卜易·暗动章第二十二》） ---------- */
+
+/** 断语里「暗动 · 日破」那一段。 */
+const clashText = (reading) => {
+  const item = reading.insights.find((entry) => entry.title === '暗动 · 日破');
+  return item ? item.text : '';
+};
+
+test('暗动与日破按旺衰分两路：原章的坤之师卦例能一步步复现', async () => {
+  // 暗动章末尾那个卦例是本层最好的自证，因为它的每一环都写明了：寅月乙未日、占女痘、
+  // 坤之师，酉金子孙为用神，二爻巳火动而克金，未日冲动丑土、土动生金。
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const kun = hexagramByKey('000000');
+  assert.equal(kun.name, '坤为地', '这一例的本卦该是坤为地');
+  const jf = J.jingfang(kun);
+  // 世在上爻、应在三爻：八纯卦世六当，酉金子孙正持世，卯木官鬼为应，与原书所画对位
+  assert.equal(jf.palaceName, '坤宫');
+  assert.equal(jf.stage, '本宫');
+  assert.equal(jf.shi, 6);
+  assert.equal(jf.ying, 3);
+  assert.equal(jf.lines[5].relative, '子孙', '占女痘以子孙为用神，上爻该是子孙酉金');
+  assert.equal(jf.lines[5].branch, '酉');
+  // 二爻乙巳火发动，逢之变出地水师——「坤之师」由此而来
+  const changed = hexagramByKey('01' + kun.key.slice(2));
+  assert.equal(changed.name, '地水师', '坤之二爻发动该变出地水师');
+  assert.equal(jf.lines[1].branch, '巳');
+  // 未日冲动四爻癸丑土：六冲一对，未丑相冲
+  const { branchClash, BRANCHES, BRANCH_ELEMENTS } = await import('../miniapp/node/almanac.mjs');
+  assert.equal(branchClash(7), 1, '未日所冲该是丑');
+  assert.equal(jf.lines[3].branch, '丑');
+  // 这一卦里丑土在寅月（当令木）落休囚，所以按原章定义它是日破，不是暗动
+  assert.equal(J.vitality('土', BRANCH_ELEMENTS[2]).key, '死', '寅月土不当令');
+  const result = J.dayClashReading(jf, { monthBranch: 2, dayBranch: 7, movingPositions: [2] });
+  assert.deepEqual(result.dark.map((line) => line.position), [], '丑土在寅月休囚，不该判成暗动');
+  assert.deepEqual(result.dayBroken.map((line) => line.position), [4], '该作日破的是四爻丑土');
+  // 原书正是拿这一爻来生金救用神的——章中定义与卦例宽法在此处不一致。
+  // 本包取章中定义那一路（见 dayClashReading 注释第二条），所以这里钉住日破，
+  // 免得日后有人按卦例把定义放宽了，还以为跟书一致。
+  assert.equal(J.elementRelation('火', '土'), '生', '二爻巳火本生五爻丑土，卦例的救应由此来');
+  assert.equal(J.elementRelation('土', '金'), '生', '丑土生上爻酉金');
+  assert.equal(J.elementRelation('火', '金'), '克', '二爻巳火动而克用神酉金');
+});
+
+test('暗动只认静爻：被日辰冲到的若正在发动，不并进暗动与日破', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const { branchClash, BRANCHES } = await import('../miniapp/node/almanac.mjs');
+  let checked = 0;
+  // 乾为天六爻纳支互异；水雷屯、山水蒙、天山遁、地风升则有两爻纳支相同，
+  // 一次能点到两爻。两种都走一遍，后一种才验得到「只退自己那一爻」。
+  for (const order of [1, 3, 4, 11, 46]) {
+    const jf = J.jingfang(hexagramByOrder(order));
+    for (let day = 0; day < 12; day += 1) {
+      const clashed = branchClash(day);
+      const hit = jf.lines.filter((line) => line.branchIndex === clashed);
+      if (hit.length === 0) continue;
+      for (const line of hit) {
+        // 这一爻静着：总该落进暗动或日破之一
+        const still = J.dayClashReading(jf, { monthBranch: 0, dayBranch: day, movingPositions: [] });
+        const quiet = [...still.dark, ...still.dayBroken].map((one) => one.position);
+        assert.ok(quiet.includes(line.position), `${BRANCHES[day]}日冲${line.branch}，${line.label}静着却两路都不落`);
+        // 同一爻动起来：它就该从两路里退出去。动爻逢冲是「冲散」，归动散章，不在本章。
+        // 注意不能断言「两路全空」——水雷屯初爻与上爻同纳子，只把初爻设成动爻，
+        // 上爻还静着，它照样被同一天冲到。钉这一爻自己退出去才是对的。
+        const moving = J.dayClashReading(jf, { monthBranch: 0, dayBranch: day, movingPositions: [line.position] });
+        const left = [...moving.dark, ...moving.dayBroken].map((one) => one.position);
+        assert.ok(!left.includes(line.position), `${line.label}已经在动了，不该还留着暗动或日破`);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked >= 18, `只验到 ${checked} 个动静对照，用例太薄`);
+});
+
+test('暗动与日破互斥：纳支重的一卦两爻同落，不会有又有破', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 六十四卦里有二十二卦两爻纳支相同（如水雷屯初爻与上爻同子），日辰只冲一支，
+  // 于是能一次点到两爻。但纳支相同则五行必同、旺衰必同，两爻必同落一侧。
+  let sawPair = 0;
+  for (let order = 1; order <= HEXAGRAM_LIST.length; order += 1) {
+    const jf = J.jingfang(hexagramByOrder(order));
+    const counts = new Map();
+    for (const line of jf.lines) counts.set(line.branchIndex, (counts.get(line.branchIndex) || 0) + 1);
+    if ([...counts.values()].some((n) => n > 1)) sawPair += 1;
+    for (let month = 0; month < 12; month += 1) {
+      for (let day = 0; day < 12; day += 1) {
+        const r = J.dayClashReading(jf, { monthBranch: month, dayBranch: day, movingPositions: [] });
+        assert.ok(r.dark.length === 0 || r.dayBroken.length === 0,
+          `${hexagramByOrder(order).name} ${month}月${day}日既有暗动又有日破，同一支不可能两样都占`);
+        assert.ok(r.dark.length + r.dayBroken.length <= 2,
+          `${hexagramByOrder(order).name} 一日冲到的爻超过两个`);
+      }
+    }
+  }
+  assert.ok(sawPair >= 20, `纳支重复的卦只数出 ${sawPair} 卦，样本文档没跟上`);
+});
+
+test('元神暗动谓之喜，忌神暗动谓之忌，两路都指得出爻位', () => {
+  // 乾为天六爻纳支子寅辰午申戌。用神取四爻午火：木为元神、水为忌神、金为仇神。
+  const read = (date) => buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, date[0], date[1], 10, 30), question: '我该不该换工作' });
+  const circleOf = (r) => r.useGod.circle;
+  // 申日冲寅，寅木在亥子水令为相 → 二爻元神暗动
+  const yuan = read([10, 18]);
+  assert.deepEqual(yuan.dayClash.dark, [2], '二爻元神该暗动');
+  assert.deepEqual(yuan.dayClash.dayBroken, []);
+  assert.deepEqual(circleOf(yuan).yuan, [2], '二爻正是元神那一行');
+  assert.match(clashText(yuan), /元神二爻暗动来生用神[\s\S]*谓之喜/);
+  assert.match(clashText(yuan), /用神休囚得元神暗動以相生/);
+  // 午日冲子，子水在申酉金令为死 → 初爻忌神日破。这一句要指向忌神
+  const ji = read([0, 8]);
+  assert.deepEqual(ji.dayClash.dayBroken, [1], '初爻忌神该日破');
+  assert.deepEqual(circleOf(ji).ji, [1]);
+  assert.match(clashText(ji), /初爻正是忌神那一行/);
+  assert.match(clashText(ji), /忌神暗动[\s\S]*谓之忌|忌神日破|初爻水（于月建死）为日破/);
+
+  // 忌神暗动那一路另取一日：午日冲子，子在亥子令为休不取，换子月让水相
+  const jiDark = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, 7, 12, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(jiDark.dayClash.dark, [1], '初爻忌神该暗动');
+  assert.deepEqual(circleOf(jiDark).ji, [1], '初爻正是忌神那一行');
+  assert.match(clashText(jiDark), /忌神初爻暗动起来克害用神[\s\S]*谓之忌/);
+  assert.match(clashText(jiDark), /用神休囚無助，若遇忌神克害用神/);
+});
+
+test('用神不休囚时，把原书那层前提不齐的话点出来，不硬套', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 地风升初爻与四爻同纳丑土，未日冲动，丑土在丑月为旺，两爻一并暗动；
+  // 用神取三爻辛金，于丑月为相——不在原书「用神休囚」的前提下
+  const reading = buildReading(castByCoins([8, 7, 7, 8, 8, 8]),
+    { now: new Date(2026, 0, 9, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(reading.dayClash.dark, [1, 4], '这一例本该有两爻暗动，用例选错了');
+  const god = reading.useGod.picked;
+  assert.equal(god.label, '三爻');
+  const tone = J.vitality(god.element, reading.structure.monthElement).key;
+  assert.equal(tone, '相', '用神在丑月该是相，前提正是这一条不成立');
+  const text = clashText(reading);
+  assert.match(text, /那一层前提并不齐备/, '用神不休囚时没有把前提说出来');
+  assert.match(text, /本卦用神三爻于月建为相/, '没点明用神到底落在哪一档');
+});
+
+test('仇神暗动与圈外暗动都只报事实，原书未言的两路不替它定', () => {
+  // 寅日冲申，五爻申金在丑土令为相 → 五爻仇神暗动
+  const chou = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, 0, 16, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(chou.dayClash.dark, [5], '五爻仇神该暗动');
+  assert.deepEqual(chou.useGod.circle.chou, [5]);
+  assert.match(clashText(chou), /五爻正是仇神那一行/);
+  assert.match(clashText(chou), /仇神暗动归哪一支，原书未言，这里不替它定/);
+  assert.ok(!/谓之喜/.test(clashText(chou)), '仇神暗动被说成了喜');
+  assert.ok(!/谓之忌/.test(clashText(chou)), '仇神暗动被说成了忌');
+
+  // 辰日冲戌，上爻戌土在丑土令为旺 → 上爻既非元神也非忌神，更非仇神
+  const off = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, 0, 6, 10, 30), question: '我该不该换工作' });
+  assert.deepEqual(off.dayClash.dark, [6], '上爻该暗动');
+  const circle = off.useGod.circle;
+  assert.ok(!circle.yuan.includes(6) && !circle.ji.includes(6) && !circle.chou.includes(6),
+    '这一爻本来就不在那一圈上，用例选错了');
+  const text = clashText(off);
+  assert.match(text, /对别的爻暗动只说「有喜有忌」，没再分派吉凶/);
+  assert.ok(!/谓之喜|谓之忌/.test(text), '圈外的暗动也被派了吉凶');
+});
+
+test('用神定不下来时只摆暗动事实，不接喜忌那一半', () => {
+  // 妻财不上卦，用神取的是伏神，在卦外，元忌仇无从谈起
+  const reading = buildReading(castByCoins([6, 7, 6, 7, 6, 7]),
+    { now: new Date(2026, 0, 12, 10, 30), question: '我该不该换工作' });
+  assert.equal(reading.useGod.circle, null, '这一例本该没有那一圈');
+  assert.ok(reading.dayClash.dark.length > 0, '这一例本该有暗动，用例落空了');
+  const text = clashText(reading);
+  assert.match(text, /暗动章第二十二/);
+  assert.ok(!/谓之喜|谓之忌/.test(text), '没有圈却派了暗动的吉凶');
+  assert.ok(!/正是元神|正是忌神|正是仇神/.test(text), '没有圈却点了身份');
+});
+
+test('一卦两爻暗动时整行合说，旺衰不必逐爻重报', () => {
+  // 地风升初爻与四爻同纳丑土，未日冲动，丑土在丑月为旺，两爻一并暗动
+  const reading = buildReading(castByCoins([8, 7, 7, 8, 8, 8]),
+    { now: new Date(2026, 0, 9, 10, 30), question: '我该不该换工作' });
+  assert.equal(reading.hexagram.name, '地风升');
+  assert.deepEqual(reading.dayClash.dark, [1, 4], '初爻与四爻同纳丑土，该一并暗动');
+  const text = clashText(reading);
+  assert.match(text, /初爻土（于月建旺）、四爻土（于月建旺）皆为暗动/);
+  assert.match(text, /元神那一行在初爻、四爻都占着/);
+  assert.ok(!/正是元神那一行。正是元神/.test(text), '同一行被逐爻重复报了一遍');
+});
+
+test('逐爻状态里暗动与日破各自标在那一爻上，且与结构化字段对得上', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  let sawDark = 0;
+  let sawBroken = 0;
+  for (let month = 0; month < 12; month += 1) {
+    for (let day = 1; day <= 28; day += 7) {
+      const reading = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+        { now: new Date(2026, month, day, 10, 30), question: '我该不该换工作' });
+      const jf = J.jingfang(reading.hexagram);
+      for (const st of reading.states) {
+        const line = jf.lines[st.position - 1];
+        const isMoving = reading.movingLines.some((one) => one.position === st.position);
+        if (st.dark) {
+          sawDark += 1;
+          assert.ok(reading.dayClash.dark.includes(st.position), `逐爻标了暗动，dayClash.dark 里却没有${st.position}`);
+          assert.ok(!isMoving, `${line.label}是动爻，不该标暗动`);
+          assert.ok(['旺', '相'].includes(J.vitality(line.element, reading.structure.monthElement).key),
+            `${line.label}在月建不旺相，标不出暗动`);
+        }
+        if (st.dayBroken) {
+          sawBroken += 1;
+          assert.ok(reading.dayClash.dayBroken.includes(st.position), `逐爻标了日破，dayClash.dayBroken 里却没有${st.position}`);
+          assert.ok(!isMoving, `${line.label}是动爻，不该标日破`);
+          assert.ok(['休', '囚', '死'].includes(J.vitality(line.element, reading.structure.monthElement).key),
+            `${line.label}在月建不休囚，标不出日破`);
+        }
+        // 旬空那套不受影响：暗动必旺相，早被「旺不爲空」收走，两边不该打架
+        if (st.dark && st.void) {
+          assert.equal(st.voidKind, '假空', `${line.label}既暗动又真空的话，旺相与真空打起来了`);
+        }
+      }
+    }
+  }
+  assert.ok(sawDark > 5, `只验到 ${sawDark} 处暗动，样本文档没铺开`);
+  assert.ok(sawBroken > 5, `只验到 ${sawBroken} 处日破，样本文档没铺开`);
+});
+
+test('卦体把暗动与日破标在各自那一爻，暗动不上朱砂', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function guaLines(');
+  const body = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(/st\.dark \? '暗'/.test(body), '卦体没标暗动');
+  assert.ok(/st\.dayBroken \? '日破'/.test(body), '卦体没标日破');
+  // 暗动不进朱砂名单。这条要直接钉在造 span 那一句上：暗动的吉凶要看它落在元神
+  // 还是忌神头上，卦体这一格未必是那两行，替它表态就是编。改名单时最容易漏在这里——
+  // 只查 CSS 的话，.st.po 与 .st 两条规则一个字都不会动，测试照样全绿。
+  const span = body.slice(body.indexOf('.map((word) =>'), body.indexOf('.join(\'\');'));
+  assert.ok(span.includes("word === '日破'"), '日破该与月破同列朱砂');
+  assert.ok(!span.includes("word === '暗'"), '暗动不该列进朱砂名单');
+  // 窗口要切到这条规则的收尾——按固定字数切会把后面 .role.god（也是朱砂）算进来
+  const rule = (selector) => {
+    const from = client.indexOf(selector);
+    assert.ok(from >= 0, `CSS 里找不到 ${selector}`);
+    return client.slice(from, client.indexOf('\n      }', from));
+  };
+  assert.ok(/var\(--seal\)/.test(rule('.gua-line .rel .st.po,')), '日破该与月破一样用朱砂');
+  const base = rule('.gua-line .rel .st {');
+  assert.ok(!/var\(--seal\)/.test(base), '暗动不该染朱砂');
+});
+
+test('用神段把暗动单列一档，不并进动爻也不并进静爻', () => {
+  // 三爻在这一日暗动，正是仇神那一行
+  const reading = buildReading(castByNumbers(3, 1),
+    { now: new Date(2026, 0, 12, 10, 0), question: '这批货该不该进' });
+  assert.deepEqual(reading.dayClash.dark, [3], '这一例本该三爻暗动，用例选错了');
+  const circle = reading.useGod.circle;
+  assert.ok(circle.chou.includes(3), '三爻正是仇神那一行');
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  assert.ok(/三爻（暗动，于月建[旺相]）/.test(text), `用神段没把三爻报成暗动：${text}`);
+  // 并进动或并进静都不行：暗动章与动散章各管一路，原书里它是独立的一档
+  assert.ok(!/三爻（动，/.test(text), '暗动被并进了动爻');
+  assert.ok(!/三爻（静，/.test(text), '暗动被并进了静爻');
+});
+
+test('MCP 把暗动与日破落成字段，抬头那一行只在该有的时候出', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  const call = async () => {
+    let raw = '';
+    const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+    await handleMcpRequest({
+      response,
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: { question: '我该不该换工作', method: 'numbers', upper: 7, lower: 7 } } },
+    });
+    return raw;
+  };
+  const raw = await call();
+  const parsed = JSON.parse(raw);
+  const sc = parsed.result.structuredContent;
+  assert.ok(sc.dayClash, 'MCP 没给 dayClash');
+  assert.ok(Array.isArray(sc.dayClash.dark));
+  assert.ok(Array.isArray(sc.dayClash.dayBroken));
+  for (const position of [...sc.dayClash.dark, ...sc.dayClash.dayBroken]) {
+    assert.ok(position >= 1 && position <= 6, `爻位越界：${position}`);
+  }
+  assert.equal(sc.dayClash.dark.filter((p) => sc.dayClash.dayBroken.includes(p)).length, 0,
+    '暗动与日破落在了同一个爻位上');
+  if (sc.dayClash.dark.length > 0 || sc.dayClash.dayBroken.length > 0) {
+    assert.match(parsed.result.content[0].text, /【日冲静爻】/, '抬头没出日冲静爻那一行');
+  } else {
+    assert.ok(!/【日冲静爻】/.test(parsed.result.content[0].text), '没有暗动日破却出了那一行');
+  }
+});
+
+test('月破单独出现也作真空，且不再劝人「等逢冲」', async () => {
+  // 《增删卜易·旬空章》把「月破爲空」列在真空那几条里，所以只逢月破、不逢旬空的爻
+  // 也该作真空；而《月破章》「虽有日辰之生，亦不能生」——冲救不了它，只会让它伤得更重。
+  // 早先这里返回 status null，断语落到「暂看不出真假，等出旬或逢冲之日再定」，
+  // 那半句正是在劝人等一个救不回来的东西。
+  const reading = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, 0, 1, 10, 30), question: '我该不该换工作' });
+  const god = reading.useGod.picked;
+  const st = reading.states.find((one) => one.position === god.position);
+  assert.ok(st.broken, '这一例用神本该逢月破，用例选错了');
+  assert.equal(st.void, false, '这一例本该不逢旬空，否则验的不是「单逢月破」这条路');
+  assert.equal(st.voidKind, '真空', '单逢月破的爻该作真空');
+  assert.deepEqual(st.empties, ['逢月破']);
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  assert.match(text, /月破[^。]*是真空/, '月破没被判成真空');
+  assert.ok(!/逢冲/.test(text.split('是真空')[1] || ''), '月破这一句还在劝人等逢冲——冲救不了月破');
+  assert.match(text, /待出月、逢值再论/, '月破该说清待出月、逢值再论');
+  // 标记里已经点过「月破」这个名，理由里不必再说第二遍
+  assert.ok(!/月破[^，。]*，且逢月破/.test(text), '「月破」与「逢月破」重复说了一遍');
+
+  // 旬空而不月破时，「逢冲」仍然是可以等的——出旬与逢冲都救得了它
+  const voidOnly = buildReading(castByCoins([7, 7, 7, 7, 7, 7]),
+    { now: new Date(2026, 0, 10, 10, 30), question: '我该不该换工作' });
+  const vst = voidOnly.states.find((one) => one.position === voidOnly.useGod.picked.position);
+  assert.ok(vst.void && !vst.broken, '这一例本该只逢旬空');
+  const vtext = voidOnly.insights.find((item) => item.title === '用神').text;
+  assert.match(vtext, /等出旬逢值或逢冲再论/, '旬空而不月破时，把「逢冲」也砍掉了');
+});
+
+test('旬空又逢月破时，理由里既有月破也有季令之空', () => {
+  const reading = buildReading(castByCoins([8, 8, 8, 8, 8, 8]),
+    { now: new Date(2026, 8, 27, 10, 30), question: '我该不该换工作' });
+  const st = reading.states.find((one) => one.position === reading.useGod.picked.position);
+  assert.ok(st.void && st.broken, '这一例本该旬空又逢月破，用例选错了');
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  assert.match(text, /旬空又月破/, '两样都逢时该两个名都点');
+  assert.ok(!/，且逢月破/.test(text), '「月破」已在标记里，理由里不该再重复');
+  assert.match(text, /且[^，。]*令正空/, '漏掉了季令正空那条真空的理由');
 });
