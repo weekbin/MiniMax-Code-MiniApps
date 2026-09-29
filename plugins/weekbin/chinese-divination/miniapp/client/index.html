@@ -284,10 +284,11 @@
         letter-spacing: 0.12em;
       }
 
-      /* 推演日志：定高，免得最后一行还在打字、下面就换成结果，页面跳一下 */
+      /* 推演日志：定高，免得最后一行还在打字、下面就换成结果，页面跳一下。
+       * 高度按最长的一种起卦（时辰起卦六步加首尾）留。 */
       .casting-log {
         width: min(320px, 100%);
-        min-height: 130px;
+        min-height: 190px;
         font-size: 13px;
         line-height: 1.8;
         color: var(--text-muted);
@@ -1400,26 +1401,54 @@
         announce('已取两数，可直接起卦');
       });
 
-      /* 起卦推演日志。四种起卦法取数来源本来就不同，步骤也该不同——
-       * 抄一套通用的就成了假动作。铜钱那条按引擎的算式写：三背为九老阳，三字为六老阴。 */
-      const CASTING_LINES = {
-        daily: ['年月日三数相加', '除以八，余数定上卦', '加上时辰数，定下卦', '总数除以六，余数定动爻', '体用相参，吉凶自见'],
-        time: ['取当下时辰', '年月日时四数相加', '除以八，余数定上卦', '加时数定下卦，除六取动爻', '体用相参，吉凶自见'],
-        numbers: ['取所报两数', '第一数除八，定上卦', '第二数除八，定下卦', '两数相加除六，定动爻', '体用相参，吉凶自见'],
-        coins: ['六爻既成', '三背为老阳，三字为老阴', '动爻既出，变卦随之', '体用相生相克', '吉凶自此而生'],
-      };
+      /* 起卦推演日志。写死一套文案，用户连起三卦看到的是同一段话，那不叫在算。
+       * 所以逐行取自引擎 reading.details——本次的年月日、时辰、所报两数、六次掷钱
+       * 都在里面，每次都不一样。首尾两句措辞轮换，同卦重起也不至于一模一样。*/
+      const CASTING_OPENERS = ['依数取卦', '观象推演', '静心起卦', '循数而行'];
+      const CASTING_CLOSERS = [
+        (name) => `成${name}卦，静候其断`,
+        (name) => `${name}卦既定，休咎在人为`,
+        (name) => `得${name}，看体用生克`,
+        (name) => `${name}卦已成，参互错综`,
+      ];
 
       const castingTimers = new Set();
-      // 一法五句，按下面这两个速度打完约 2.8 秒，落在 3 秒停留里，末尾还能留一口气
-      const CASTING_CHAR_MS = 48;
-      const CASTING_LINE_MS = 150;
+      const CASTING_LINE_MS = 120;
+      const CASTING_BUDGET_MS = 2900; // 三秒里留 100ms，末行打完还能喘口气
+      const CASTING_BASE_CHAR_MS = 20; // 选行按最快速度估，保证选出来的都放得下
+      const CASTING_CHAR_MIN = 20; // 再快也不至于像在刷屏
+      const CASTING_CHAR_MAX = 55; // 再慢也不至于像在蹦字
+
+      const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+      /** 拼这次的推演行：一句引子 + 引擎算好的取数步骤 + 一句收尾。
+       *  字太多就从头截断，保证打得完。 */
+      function castingLines(reading) {
+        const lines = [pick(CASTING_OPENERS)];
+        let used = lines[0].length * CASTING_BASE_CHAR_MS + CASTING_LINE_MS;
+        for (const step of reading?.details ?? []) {
+          const cost = step.value.length * CASTING_BASE_CHAR_MS + CASTING_LINE_MS;
+          if (used + cost > CASTING_BUDGET_MS) break;
+          lines.push(step.value);
+          used += cost;
+        }
+        lines.push(pick(CASTING_CLOSERS)(reading?.hexagram?.name ?? ''));
+        return lines;
+      }
+
+      /** 字少就打得慢些，把这段停留填满；字多才提速。一头倒都不好。 */
+      function castingSpeed(lines) {
+        const chars = lines.reduce((sum, text) => sum + text.length, 0);
+        const room = CASTING_BUDGET_MS - (lines.length - 1) * CASTING_LINE_MS;
+        return Math.min(CASTING_CHAR_MAX, Math.max(CASTING_CHAR_MIN, Math.floor(room / chars)));
+      }
 
       function stopCastingTyping() {
         for (const id of castingTimers) clearTimeout(id);
         castingTimers.clear();
       }
 
-      /** 逐字打五行推演。打完一行换下一行，光标只留在还没打完的那行上。 */
+      /** 逐字打这几句。打完一行换下一行，光标只留在还没打完的那行上。 */
       function typeCasting(log, lines) {
         const add = (text, done) => {
           const row = document.createElement('div');
@@ -1432,6 +1461,7 @@
           lines.forEach((text) => add(text, true));
           return;
         }
+        const charMs = castingSpeed(lines);
         let index = 0;
         let row = add(lines[0].slice(0, 1), false);
         let count = 1;
@@ -1440,13 +1470,13 @@
           count += 1;
           row.textContent = text.slice(0, count);
           if (count < text.length) {
-            castingTimers.add(setTimeout(step, CASTING_CHAR_MS));
+            castingTimers.add(setTimeout(step, charMs));
             return;
           }
           row.classList.add('done');
           index += 1;
           if (index >= lines.length) return;
-          // 换行必须另起一个元素：接着写上一行会把五行叠成一行
+          // 换行必须另起一个元素：接着写上一行会把几句叠成一行
           row = add(lines[index].slice(0, 1), false);
           count = 1;
           castingTimers.add(setTimeout(step, CASTING_LINE_MS));
@@ -1458,11 +1488,13 @@
         const slot = el('result-slot');
         try {
           // 先起卦、再显结果：跳过这一拍，结果就只是一次文本替换。
-          showCasting(payload.method);
+          const log = showCasting();
           const data = await api('/cast', {
             method: 'POST',
-            body: JSON.stringify({ ...payload, question: payload.question ?? el('question').value.trim() }),
+            body: JSON.stringify({ ...payload, question: payload.question ?? el('question').trim() }),
           });
+          // 取数结果到了才知道这卦算出什么，推演日志照着它现编，不是预先摆好的一段话。
+          if (log?.isConnected) typeCasting(log, castingLines(data.reading));
           // 留够三秒，让八卦环转满一圈、推演日志打完；直接跳结果就只是换了段文字。
           await wait(reducedMotion() ? 0 : 3000);
           stopCastingTyping();
@@ -1545,7 +1577,7 @@
         );
       }
 
-      function showCasting(method) {
+      function showCasting() {
         const slot = el('result-slot');
         stopCastingTyping();
         slot.replaceChildren();
@@ -1559,7 +1591,7 @@
           // 逐字刷新的行不给读屏念，卡片只播「起 卦 中」
           '<div class="casting-log" aria-hidden="true"></div>';
         slot.append(card);
-        typeCasting(card.querySelector('.casting-log'), CASTING_LINES[method] ?? CASTING_LINES.daily);
+        return card.querySelector('.casting-log');
       }
 
       /* ---------- 摇卦 ---------- */

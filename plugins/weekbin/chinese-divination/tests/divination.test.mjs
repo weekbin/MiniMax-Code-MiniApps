@@ -603,51 +603,81 @@ test('投影只留一种居中方式', async () => {
   assert.equal(transform, true, '投影应当靠 translateX(-50%) 居中，各帧也要一致');
 });
 
+
 /* ---------- 起卦推演日志 ---------- */
-// 打字机文案按起卦法分开写：漏一种就会静默落到兜底那一套，等于对用户说
-// 「你数起卦也是这么算的」。另外停留时长得够打完最后一行，否则结尾被砍。
+// 用户连起三卦都看到同一段话，那不叫在算。所以日志的每一步都取自引擎
+// reading.details——本次的年月日、时辰、所报两数、六次掷钱都在里面。
+// 下面把客户端的拼行与调速函数摘出来求值，用四法真实起卦跑一遍。
 
-test('每种起卦法都有推演文案，不靠兜底顶替', async () => {
+function loadCasting(client) {
+  const cut = (start, end) => {
+    const i = client.indexOf(start);
+    assert.ok(i >= 0, `客户端里找不到 ${start}`);
+    const j = client.indexOf(end, i);
+    assert.ok(j >= 0, `客户端里找不到 ${start} 的结尾`);
+    return client.slice(i, j + end.length);
+  };
+  const code = [
+    cut('const CASTING_OPENERS = [', '];'),
+    cut('const CASTING_CLOSERS = [', '];'),
+    ...['CASTING_LINE_MS', 'CASTING_BUDGET_MS', 'CASTING_BASE_CHAR_MS', 'CASTING_CHAR_MIN', 'CASTING_CHAR_MAX']
+      .map((name) => cut(`const ${name} = `, ';')),
+    cut('const pick = ', ';'),
+    cut('function castingLines(reading) {', '\n      }'),
+    cut('function castingSpeed(lines) {', '\n      }'),
+  ].join('\n');
+  return new Function(`${code}\nreturn { castingLines, castingSpeed, CASTING_OPENERS, CASTING_CLOSERS };`)();
+}
+
+const SAMPLES = () => [
+  ['每日一卦', castDaily(new Date('2026-09-30T01:20:00+08:00'))],
+  ['时间起卦', castByTime(new Date('2026-09-30T01:20:00+08:00'))],
+  ['数字起卦', castByNumbers(37, 24)],
+  ['铜钱摇卦', castByCoins([7, 8, 7, 8, 9, 6])],
+];
+
+test('推演的每一步都来自这次的真实取数', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
-  const table = /const CASTING_LINES = \{([\s\S]*?)\n      \};/.exec(client);
-  assert.ok(table, '客户端里找不到 CASTING_LINES');
+  const { castingLines } = loadCasting(client);
 
-  const keys = [...table[1].matchAll(/^\s*(\w+):\s*\[/gm)].map((m) => m[1]);
-  const methods = [...new Set([...client.matchAll(/data-method="([a-z]+)"/g)].map((m) => m[1]))];
-  assert.ok(methods.length > 0, '页面上应当还有起卦法');
-
-  for (const method of methods) {
-    assert.ok(keys.includes(method), `「${method}」没有推演文案，会被兜底成别的起卦法`);
+  for (const [name, cast] of SAMPLES()) {
+    const reading = buildReading(cast);
+    const lines = castingLines(reading);
+    const steps = reading.details.map((d) => d.value);
+    const shown = lines.filter((line) => steps.includes(line));
+    assert.ok(shown.length > 0, `${name} 的推演里应当有引擎给的取数步骤`);
+    assert.ok(lines.length >= 3, `${name} 推演只有 ${lines.length} 行，太单薄`);
   }
 });
 
-test('每法五句、无空行', async () => {
+test('换个时辰、换组数重起，日志就跟着换', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
-  const table = /const CASTING_LINES = \{([\s\S]*?)\n      \};/.exec(client)[1];
-  const groups = [...table.matchAll(/(\w+):\s*\[([^\]]+)\]/g)];
-  assert.ok(groups.length > 0);
+  const { castingLines } = loadCasting(client);
 
-  for (const [, key, body] of groups) {
-    const lines = [...body.matchAll(/'([^']*)'/g)].map((m) => m[1]);
-    assert.equal(lines.length, 5, `「${key}」应当是五句推演`);
-    for (const line of lines) {
-      assert.ok(line.trim().length > 0, `「${key}」有空行`);
-    }
-  }
+  const before = castingLines(buildReading(castByTime(new Date('2026-09-30T01:20:00+08:00'))));
+  const later = castingLines(buildReading(castByTime(new Date('2026-09-30T05:20:00+08:00'))));
+  const other = castingLines(buildReading(castByNumbers(11, 7)));
+  assert.notDeepEqual(before, later, '时辰不同，日志不该逐字相同');
+  assert.notDeepEqual(before, other, '报的两数不同，日志不该逐字相同');
 });
 
-test('停留三秒够打完任何一法的推演', async () => {
+test('首尾措辞各有多个候选，同卦重起也不至于一模一样', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
-  const table = /const CASTING_LINES = \{([\s\S]*?)\n      \};/.exec(client)[1];
-  const budget = /await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client);
-  assert.ok(budget, '找不到起卦后的等待时长');
-  const charMs = Number(/const CASTING_CHAR_MS = (\d+);/.exec(client)[1]);
+  const { CASTING_OPENERS, CASTING_CLOSERS } = loadCasting(client);
+  assert.ok(CASTING_OPENERS.length >= 3, `开场白只有 ${CASTING_OPENERS.length} 个候选`);
+  assert.ok(CASTING_CLOSERS.length >= 3, `收尾只有 ${CASTING_CLOSERS.length} 个候选`);
+});
+
+test('四法起卦，日志都在三秒内打完', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const { castingLines, castingSpeed } = loadCasting(client);
+  const budget = Number(/await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client)[1]);
   const lineMs = Number(/const CASTING_LINE_MS = (\d+);/.exec(client)[1]);
-  assert.ok(charMs > 0 && lineMs > 0, '找不到打字机的字速与行距');
 
-  for (const [, key, body] of table.matchAll(/(\w+):\s*\[([^\]]+)\]/g)) {
-    const chars = [...body.matchAll(/'([^']*)'/g)].reduce((sum, m) => sum + m[1].length, 0);
-    const need = chars * charMs + (5 - 1) * lineMs;
-    assert.ok(need <= Number(budget[1]), `「${key}」要 ${need}ms 才打完，超过 ${budget[1]}ms 停留，末行会被砍`);
+  for (const [name, cast] of SAMPLES()) {
+    const lines = castingLines(buildReading(cast));
+    const chars = lines.reduce((sum, text) => sum + text.length, 0);
+    const total = chars * castingSpeed(lines) + (lines.length - 1) * lineMs;
+    assert.ok(total <= budget, `${name} 要 ${total}ms，超过 ${budget}ms，末行会被砍`);
   }
 });
