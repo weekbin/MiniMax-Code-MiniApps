@@ -863,6 +863,13 @@
         white-space: nowrap;
       }
 
+      /* 用神是「你所问的这一件事」落在哪一爻，与世应的主客不是一回事，另用实底 */
+      .gua-line .rel .role.god {
+        background: var(--seal);
+        color: var(--surface, #fff);
+        font-weight: 600;
+      }
+
       .gua-line .pos {
         font-size: 11px;
         color: var(--text-subtle);
@@ -2201,7 +2208,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2215,6 +2222,7 @@
           // 纳甲一列：干支、五行、六亲、身份。装不上（互错综四卦）就不出这一列，
           // 宁可少一列也不要六爻全空着占地方。
           const na = jingfang && jingfang.lines ? jingfang.lines[position - 1] : null;
+          const isGod = useGodPosition === position;
           row.innerHTML =
             `<span class="pos">${names[6 - position]}</span>` +
             `<span class="bars">${isYang ? '<i></i>' : '<i></i><i></i>'}</span>` +
@@ -2224,6 +2232,7 @@
                 `<span class="ganzhi">${escapeHtml(na.stem + na.branch + na.element)}</span>` +
                 `<span class="qin">${escapeHtml(na.relative)}</span>` +
                 (na.role ? `<span class="role">${na.role}</span>` : '') +
+                (isGod ? '<span class="role god">用</span>' : '') +
                 `</span>`
               : '');
           wrap.append(row);
@@ -2231,7 +2240,7 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2240,7 +2249,7 @@
           `<h3 class="serif">${hexagram.name}</h3>` +
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2293,7 +2302,7 @@
 
         const left = document.createElement('div');
         left.className = 'gua-block reveal';
-        left.append(guaBlock(reading.hexagram, reading.lines, '本卦', reading.jingfang));
+        left.append(guaBlock(reading.hexagram, reading.lines, '本卦', reading.jingfang, reading.useGod && reading.useGod.picked ? reading.useGod.picked.position : null));
         if (reading.changed) {
           const changed = document.createElement('div');
           changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang));
@@ -2312,6 +2321,7 @@
           ['生克', `${reading.verdict.key} → ${reading.verdict.label}`],
           ['主客', `体在${s.shi.label}，用在${s.ying.label}`],
           jf ? ['六亲世应', `${jf.palaceName}${jf.stage}卦 · 世${jf.shi}爻持${jf.lines[jf.shi - 1].relative} · 应${jf.ying}爻为${jf.lines[jf.ying - 1].relative}`] : null,
+          reading.useGod ? ['用神', `取${reading.useGod.present.join('、')}${reading.useGod.picked ? ` · ${reading.useGod.picked.label}（${reading.useGod.why}）` : ' · 不上卦'}`] : null,
           ['月令旺衰', `当令 ${s.monthElement} · 体 ${s.bodyVitality} · 用 ${s.useVitality}`],
         ].filter(Boolean);
         for (const [term, value] of rows) {

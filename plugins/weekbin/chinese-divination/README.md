@@ -79,8 +79,8 @@ every single time.
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, the month's vitality, the four-derivation diagram, and the 消长 ring |
-| 断语 | fourteen sections, fifteen when a topic was recognised, with 【动爻爻辞】 as the second |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神, the month's vitality, the four-derivation diagram, and the 消长 ring |
+| 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -154,7 +154,7 @@ for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdic
 【所问之事】所问归「事业功名」，类神取火。…类神火生体卦土，所问之事对你有补益。
 【应期】事业功名类神属火，旺在巳午，相在辰戌丑未。…
 【体用关系】体卦土生用卦金，是我耗自己去成全对方。…
-(fourteen sections, then 宜/忌, the numbers used, and the disclaimer)
+(sixteen sections, then 宜/忌, the numbers used, and the disclaimer)
 ```
 
 **`divination_hexagram_lookup` — search the sixty-four**
@@ -319,12 +319,12 @@ is recognised, nothing is forced: the timing falls back to the 用卦 and says s
 > Blossom has no 六亲 用神 the way 六爻 divination does, so 京房's 六亲 and 纳甲 are given as a
 > separate layer (see 「京房一层」 below) and never rewrite the 体用 verdict.
 
-**Fourteen sections, every time**
+**Fifteen sections, every time**
 
 卦象总断, 动爻爻辞, 体用关系, 旺衰应期, 卦气 for the month's governing hexagram, 互卦 for the
 middle course, 变卦 for the outcome, 错卦 for the other side, 综卦 seen from the other position,
-六亲世应, 主客, 取象 of both trigrams, 爻位 for the moving line's position, and 方所 for the 后天八卦
-directions. A recognised topic adds one more, 所问之事, naming the topic, its 类神, and how that
+六亲世应, 用神, 主客, 取象 of both trigrams, 爻位 for the moving line's position, and 方所 for the
+后天八卦 directions. A recognised topic adds one more, 所问之事, naming the topic, its 类神, and how that
 element stands to the 体卦.
 
 **动爻爻辞 — the line that actually moved**
@@ -425,6 +425,41 @@ palace and generation, who the 世 and 应 lines are, how they stand to each oth
 moving line falls on — with what each 亲 covers. The 变卦 gets its own palace and generation; it never
 inherits the 本卦's.
 
+**用神 — which line your question falls on**
+
+The 六亲 sit there until a question points at one of them. The first step of 六爻 reading is 取用神:
+ask what this is about, take that 亲 as the 用神. This one **has transmitted rules behind it**, unlike
+the element-to-topic table above, which is this package's own convention.
+
+| The question | 用神 | Source |
+| --- | --- | --- |
+| 财运, 买卖, 失物 | 妻财 | the 财 line is what the querent can actually get hold of |
+| 事业功名, 官司 | 官鬼 | 官鬼 is the post, the boss, the legal action; if you overcome 官鬼 you win |
+| 学业文书, 房产车契 | 父母 | 父母 is documents, grades, licences, contracts |
+| 感情, 婚恋 | 妻财 (male querent), 官鬼 (female querent) | 《增删卜易》: 男测婚以财为用，女测婚以官为用 |
+| 疾病 | 官鬼 for the illness, 子孙 for the remedy | 子孙 overcomes 官鬼; a strong 子孙 means the illness recedes |
+| 出行寻物 | 妻财 | the thing sought counts as 财; to seek a *person* you pick by the relationship, which this package will not guess for you |
+
+Two deliberate restraints:
+
+- **婚恋 is gender-dependent and this package will not guess the querent's gender**, so both 妻财
+  and 官鬼 are reported and the querent picks the one that applies. Picking for them would be
+  deciding their gender for them.
+- **占病 takes two lines** (the illness and the remedy) and likewise reports both without choosing
+  between them. Choosing would be reading their illness for them.
+
+The line-picking order is deliberately reduced to two steps: **a moving line first, otherwise the one
+nearest the 世爻**. Transmitted practice is finer — if both move take the stronger one, if both are
+still take the stronger or the one at 世/应 — and it also weighs the day branch, the void, and the
+tomb. This package has none of those inputs, so it does not invent a rule that looks complete and
+cannot be checked. "Nearest" is the plain distance in line positions.
+
+When no 用神 appears on the hexagram at all, tradition takes the **伏神** from the palace's first
+hexagram and reads it together with the 飞神 and whether it can emerge. That is another layer this
+package has not built, so it says 「不上卦」 and names what is missing rather than inventing one.
+
+On the diagram the 用神 line carries a **solid red badge**, against the outlined 世/应 boxes.
+
 **卦气 · 当令主卦 — which hexagram holds the month**
 
 Han-dynasty 易学 assigns twelve hexagrams to the twelve months, called the 十二辟卦: 复 rules 子月
@@ -523,7 +558,9 @@ to "打开灵签易占".
 return. The 京房 layer is checked on nine more counts: the palace order against the transmitted
 table, 归魂's and 游魂's flipped lines, the eight 纳支歌诀 clauses, branches following the
 trigram's polarity, the 六亲 mapping, 世应 pairing without overflow, the reading and diagram
-call sites, both lookup levels, and 主客 always straddling the two trigrams. 91 passing.
+call sites, both lookup levels, and 主客 always straddling the two trigrams. 用神 is checked on
+four more counts: the nine topics against their sources, the line-picking order, 婚恋 refusing
+to pick for the querent, and 用神不上卦 refusing to invent. 95 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

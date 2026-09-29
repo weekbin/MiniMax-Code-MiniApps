@@ -26,7 +26,7 @@ import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
-import { jingfang, shiYingRelation, RELATIVE_MEANING } from './jingfang.mjs';
+import { jingfang, pickUseGod, shiYingRelation, elementRelation, RELATIVE_MEANING } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -515,6 +515,16 @@ export function buildReading(cast, options = {}) {
     ].filter(Boolean).join(''),
   });
 
+  // 用神：问何事取何亲。六亲摆在那里只是摆着，落到「你问的这一件事」上才算用上了。
+  const movingPositions = movingLines.map((line) => line.position);
+  const useGod = topic ? pickUseGod(jf, topic.god.relatives, movingPositions) : null;
+  insights.push({
+    title: '用神',
+    text: useGod
+      ? useGodText(topic, useGod, jf, movingPositions)
+      : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。',
+  });
+
   // 「世应」这两个字留给京房那边：世爻恒由本卦的宫与世次定，与动爻无关。梅花这一层
   // 讲的是我与事，说「主客」才不打架——同一段解读里出现两个不同的世爻位会看糊涂。
   // 对应爻是初应四、二应五、三应上，来回都跨内卦与外卦，所以主客恒分居两卦，
@@ -557,6 +567,16 @@ export function buildReading(cast, options = {}) {
     structure,
     jingfang: jf,
     changedJingfang: changed ? jingfang(changed) : null,
+    useGod: useGod
+      ? {
+          topic: topic.key,
+          relatives: useGod.relatives,
+          present: useGod.present,
+          absent: useGod.absent,
+          picked: useGod.picked,
+          why: useGod.why,
+        }
+      : null,
     verdict,
     topic: topic ? { key: topic.key, label: topic.label, element: topic.element, reason: topic.reason } : null,
     qi: monthLord
@@ -577,6 +597,50 @@ export function buildReading(cast, options = {}) {
     details: cast.detail,
     advice,
   };
+}
+
+/** 用神与世爻的关系：世爻是我，用神是所求之事，两者的生克讲「这件事对我是什么」。 */
+const GOD_SHI_TONE = Object.freeze({
+  生: '世爻生用神，用神得扶，所求之事有底子。',
+  被生: '用神生世爻，反是我被这件事牵着走，多主我出力多过收成。',
+  克: '世爻克用神，这件事在我压制之下，主动权在握但要费力气。',
+  被克: '用神克世爻，这件事压着我，宜守不宜攻。',
+  同气: '用神与世爻同气，所求之事与我的处境同一路数，顺势为宜。',
+});
+
+/** 用神那一段。候选不止一亲时只各报所在，不替求测者择。 */
+function useGodText(topic, god, jingfang, movingPositions) {
+  const moving = new Set(movingPositions);
+  const where = (name) => god.all.filter((line) => line.relative === name)
+    .map((line) => `${line.label}${moving.has(line.position) ? '（动）' : ''}`)
+    .join('、');
+  const head = `所问为${topic.label}，${topic.god.reason}`;
+
+  // 一亲都不上卦：传统要取伏神连带飞神再判，属另一层。如实说明，不硬编。
+  if (!god.picked && god.present.length === 0) {
+    return `${head}卦中${god.relatives.join('、')}一亲也不见，属用神不上卦。传统要从本宫首卦取伏神、连带飞神与出伏一并再判，本包暂未做到这一层，只把「不上卦」摆在这里。`;
+  }
+
+  // 候选不止一亲：婚恋分男女（byGender），本包不认得求测者性别；疾病是病症与医药
+  // 两头看。两种情形都只报所在，不硬择其一——择了就等于替人认了性别或认了病势。
+  if (god.relatives.length > 1) {
+    const rows = god.present.map((name) => `${name}见于${where(name)}`).join('；');
+    const tail = topic.god.relate && god.present.length === 2
+      ? `${topic.god.relate}`
+      : topic.god.byGender ? '对照自己那一亲取用。' : '';
+    return `${head}卦中${rows}。${god.present.length < god.relatives.length ? `${god.absent.join('、')}不上卦。` : ''}${tail}`;
+  }
+
+  const picked = god.picked;
+  const parts = [head, `卦中${god.present[0]}见于${where(god.present[0])}。`];
+  if (god.all.length > 1) {
+    parts.push(`两现，按${god.why}取${picked.label}。`);
+  }
+  const relation = elementRelation(jingfang.lines[jingfang.shi - 1].element, picked.element);
+  parts.push(picked.position === jingfang.shi
+    ? '用神恰在世爻之上，所求之事就在自己身上。'
+    : `用神与世爻${relation}——${GOD_SHI_TONE[relation]}`);
+  return parts.join('');
 }
 
 function buildAdvice(verdict) {

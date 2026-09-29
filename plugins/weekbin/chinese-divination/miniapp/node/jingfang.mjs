@@ -248,3 +248,66 @@ export const RELATIVE_MEANING = Object.freeze({
   妻财: '财物、货物、妻与所求之利',
   官鬼: '官职、名位、夫婿、忧患与阻挠',
 });
+
+/**
+ * 取用神：在卦中锁定代表所问之事的那一爻。
+ *
+ * 择爻次序本包从简为两条：**动爻优先，其次取近世爻者**。传世取法更细，两爻俱动时
+ * 取旺相者、俱静时取旺相或临世应者，还要看日辰、旬空、墓库——那些本包不具条件，
+ * 就不硬凑一条像模像样却无法核验的规则。近世取绝对爻位差，不带旺衰，是能核验的那条。
+ *
+ * 用神不上卦（六亲一个也没出现在卦里）时，传统要从本宫首卦取伏神。伏神要连带飞神、
+ * 出伏与否一并判，属另一层，本包此处只如实说「不上卦」，不硬编。
+ *
+ * @param {Jingfang} jingfang
+ * @param {readonly string[]} relatives 用神取哪几个六亲
+ * @param {readonly number[]} movingPositions 动爻位
+ * @returns {{
+ *   relatives: readonly string[],
+ *   present: readonly string[],
+ *   absent: readonly string[],
+ *   picked: JingfangLine | null,
+ *   all: readonly JingfangLine[],
+ *   why: string,
+ * }}
+ */
+export function pickUseGod(jingfang, relatives, movingPositions = []) {
+  const moving = new Set(movingPositions);
+  const all = jingfang.lines.filter((line) => relatives.includes(line.relative));
+  const present = relatives.filter((name) => all.some((line) => line.relative === name));
+  const absent = relatives.filter((name) => !present.includes(name));
+
+  if (all.length === 0) {
+    return Object.freeze({ relatives, present, absent, picked: null, all, why: '不上卦' });
+  }
+  // 候选不止一亲时**不择**：婚恋分男女，本包不认得求测者性别；疾病是病症与医药
+  // 两头看，择了其一就等于替人认了性别或认了病势。只报各亲所在，取舍交回断语。
+  if (relatives.length > 1) {
+    return Object.freeze({ relatives, present, absent, picked: null, all, why: '两亲各看各的' });
+  }
+  if (all.length === 1) {
+    return Object.freeze({ relatives, present, absent, picked: all[0], all, why: '卦中独一' });
+  }
+
+  const animated = all.filter((line) => moving.has(line.position));
+  const pool = animated.length > 0 ? animated : all;
+  const why = animated.length > 0 ? '动爻优先' : '近世爻者';
+  // 绝对爻位差，不带旺衰判断
+  let picked = pool[0];
+  for (const line of pool) {
+    if (Math.abs(line.position - jingfang.shi) < Math.abs(picked.position - jingfang.shi)) {
+      picked = line;
+    }
+  }
+  return Object.freeze({ relatives, present, absent, picked, all, why });
+}
+
+/** 任两个五行之间的关系，说人话用。from 生 to 为「生」。 */
+export function elementRelation(from, to) {
+  if (from === to) return '同气';
+  if (generatesTo(from, to)) return '生';
+  if (generatesTo(to, from)) return '被生';
+  if (overcomesTo(from, to)) return '克';
+  if (overcomesTo(to, from)) return '被克';
+  return '无涉';
+}

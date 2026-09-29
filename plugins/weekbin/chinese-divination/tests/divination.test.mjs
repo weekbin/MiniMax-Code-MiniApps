@@ -412,7 +412,7 @@ test('卦历写入 dataDir 后可回读', async () => {
 
     const full = await store.get(reading.id);
     assert.equal(full.hexagram.name, reading.hexagram.name);
-    assert.equal(full.insights.length, 14);
+    assert.equal(full.insights.length, 15);
 
     assert.equal(await store.remove(reading.id), true);
     assert.equal(await store.remove(reading.id), false);
@@ -1443,15 +1443,17 @@ test('卦体把六亲与世应画出来，不只是数据里有', async () => {
   assert.ok(/\.rel/.test(body) && /na\.relative/.test(body), '卦体没画六亲');
   assert.ok(/na\.role/.test(body), '卦体没标世应');
   assert.ok(/jingfang\.lines\[position - 1\]/.test(body), '卦体没按爻位取纳甲');
+  assert.ok(/isGod/.test(body) && /role god/.test(body), '卦体没标用神');
   // 本卦与变卦都要传进去，且是从 reading 上取的
   const render = client.slice(client.indexOf('left.append(guaBlock'));
   assert.ok(
-    /guaBlock\(reading\.hexagram, reading\.lines, '本卦', reading\.jingfang\)/.test(render),
-    '解读页本卦没把京房数据传进卦体',
+    /guaBlock\(reading\.hexagram, reading\.lines, '本卦', reading\.jingfang, reading\.useGod/.test(render),
+    '解读页本卦没把京房数据与用神传进卦体',
   );
   assert.ok(/guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang\)/.test(render), '解读页变卦没传京房数据');
   // 右栏摘要也得有这一行
   assert.ok(/\['六亲世应',/.test(client), '右栏没有六亲世应摘要');
+  assert.ok(/\['用神',/.test(client), '右栏没有用神摘要');
   assert.ok(/\['主客',/.test(client), '右栏仍把体用那层叫世应');
   // 卦库详情页也要装上，同一根代码两个地方都传
   assert.ok(/guaLines\(item, null, item\.palace \|\| null\)/.test(client), '卦库详情页没把京房数据传进卦体');
@@ -1481,4 +1483,115 @@ test('查卦给宫位与世应，full 档再给六亲全表', async () => {
   assert.ok(/^六亲：/m.test(fullText), 'full 档缺六亲全表');
   assert.ok(/丙辰土父母/.test(fullText), 'full 档六亲没带干支');
   assert.ok(briefText.length < fullText.length, 'full 档没有比 brief 档长');
+});
+
+// ── 用神 ─────────────────────────────────────────────────────────────────
+
+test('问何事取何亲为用神，取法有传世出处', async () => {
+  const { TOPIC_CLASSES, detectTopic } = await import('../miniapp/node/topics.mjs');
+  // 逐条核对取法，不靠印象：问财取妻财、求职取官鬼、文书取父母、医药取子孙、
+  // 官司取官鬼、失物取妻财；婚恋分男女；占病是官鬼为病症、子孙为医药两头看。
+  const expected = {
+    财运: ['妻财'],
+    事业功名: ['官鬼'],
+    感情: ['妻财', '官鬼'],
+    婚恋: ['妻财', '官鬼'],
+    疾病: ['官鬼', '子孙'],
+    学业文书: ['父母'],
+    房产车契: ['父母'],
+    官讼是非: ['官鬼'],
+    出行寻物: ['妻财'],
+  };
+  for (const topic of TOPIC_CLASSES) {
+    assert.deepEqual(topic.god.relatives, expected[topic.label], `${topic.label} 的用神取法不对`);
+    assert.ok(topic.god.reason && topic.god.reason.length > 8, `${topic.label} 的取法没有给出处`);
+  }
+  // 分男女的必须写明依据，也必须写明不替人认性别
+  const marriage = TOPIC_CLASSES.find((t) => t.label === '婚恋');
+  assert.ok(marriage.god.byGender, '婚恋没标分男女');
+  assert.ok(/增删卜易/.test(marriage.god.reason), '婚恋的取法没有引《增删卜易》');
+  // 关键词仍走原来的匹配
+  assert.equal(detectTopic('这单生意能赚钱吗').label, '财运');
+  assert.equal(detectTopic('明天面试能过吗').label, '事业功名');
+  assert.equal(detectTopic('这病能好么').label, '疾病');
+});
+
+test('用神择爻：动爻优先，其次近世', async () => {
+  const { pickUseGod } = await import('../miniapp/node/jingfang.mjs');
+  const { jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { hexagramByOrder } = await import('../miniapp/node/hexagrams.mjs');
+  const h = jingfang(hexagramByOrder(1)); // 乾为天：子孙妻财父母官鬼兄弟父母，世6
+  // 卦中独一
+  const single = pickUseGod(h, ['妻财'], []);
+  assert.equal(single.all.length, 1);
+  assert.equal(single.picked.position, 2);
+  assert.equal(single.why, '卦中独一');
+
+  // 两现：都不动时取近世爻者。乾为天父母在三、六爻，而世爻正是六爻——
+  // 六爻距离为零，三爻差三位，所以取六爻。
+  const both = pickUseGod(h, ['父母'], []);
+  assert.equal(both.all.length, 2);
+  assert.equal(both.why, '近世爻者');
+  assert.equal(both.picked.position, 6, '父爻在 3、6 爻，世 6，应取距离为零的 6 爻');
+
+  // 两现：动爻优先，哪怕动的那个不是近世爻
+  const animated = pickUseGod(h, ['父母'], [3]);
+  assert.equal(animated.why, '动爻优先');
+  assert.equal(animated.picked.position, 3, '有动爻就该取动的那个，不管远近');
+
+  // 候选不止一亲时不择：择了就等于替求测者认了性别或认了病势
+  const twoGods = pickUseGod(h, ['妻财', '官鬼'], []);
+  assert.equal(twoGods.picked, null, '两亲并列时不该硬择用神');
+  assert.equal(twoGods.why, '两亲各看各的');
+  assert.deepEqual(twoGods.present, ['妻财', '官鬼']);
+
+  // 不上卦
+  const missing = pickUseGod(h, ['子子孙孙'], []);
+  assert.equal(missing.picked, null);
+  assert.equal(missing.why, '不上卦');
+  assert.deepEqual(missing.absent, ['子子孙孙']);
+});
+
+test('断语给出用神，且分男女与不上卦都不硬编', () => {
+  // 财运：一亲，取得到，说清取哪一爻、与世爻什么关系
+  const wealth = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29), question: '这单生意能赚钱吗' });
+  const wg = wealth.insights.find((item) => item.title === '用神');
+  assert.ok(wg, '断语里没有「用神」');
+  assert.ok(/所问为财运/.test(wg.text), '用神段没点出事类');
+  assert.ok(/求财取妻财/.test(wg.text), '用神段没给出取法依据');
+  assert.ok(wealth.useGod && wealth.useGod.picked, '财运应有取到的用神');
+  assert.deepEqual(wealth.useGod.relatives, ['妻财']);
+  const godLine = wealth.useGod.picked;
+  assert.ok(wg.text.includes(godLine.label), '用神段没点出所取的那一爻');
+  assert.ok(/用神与世爻|用神恰在世爻之上/.test(wg.text), '用神段没说用神与世爻的关系');
+
+  // 婚恋分男女：只各报所在，不替人择——择了就等于替求测者认了性别
+  const love = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29), question: '跟他会不会复合' });
+  assert.equal(love.useGod.picked, null, '婚恋不该硬择用神');
+  const lg = love.insights.find((item) => item.title === '用神');
+  assert.ok(/对照自己那一亲取用/.test(lg.text), '婚恋没把取舍交回求测者');
+  assert.ok(/增删卜易/.test(lg.text), '婚恋用神段没引出处');
+  // 两亲都在时要把所在都列出来
+  for (const name of love.useGod.present) {
+    const label = love.jingfang.lines.filter((l) => l.relative === name).map((l) => l.label);
+    for (const item of label) assert.ok(lg.text.includes(item), `婚恋用神段没列出${name}在${item}`);
+  }
+
+  // 没写问题就明说取不出，不硬套
+  const bare = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29) });
+  assert.equal(bare.useGod, null);
+  assert.match(bare.insights.find((item) => item.title === '用神').text, /未写所问何事/);
+});
+
+test('用神不上卦时不编，如实说是缺哪一层', () => {
+  // 疾病取官鬼与子孙两头；若卦中子孙不上卦，要写明是哪一亲不上，
+  // 而不是随便挑一亲当用神。
+  const reading = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29), question: '这病能好么' });
+  assert.deepEqual(reading.useGod.relatives, ['官鬼', '子孙']);
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  for (const name of reading.useGod.absent) {
+    assert.ok(text.includes(name), `没说清${name}不上卦`);
+    assert.ok(text.includes('不上卦'), '没写「不上卦」三个字');
+  }
+  assert.ok(!/取.{0,4}爻。/.test(text) || reading.useGod.picked === null, '不上卦时不该宣称取了哪一爻');
 });

@@ -184,6 +184,17 @@ function callTool(name, args) {
         hexagram: { name: reading.hexagram.name, order: reading.hexagram.order },
         changed: reading.changed ? { name: reading.changed.name, order: reading.changed.order } : null,
         verdict: { label: reading.verdict.label, key: reading.verdict.key },
+        useGod: reading.useGod
+          ? {
+              relatives: reading.useGod.relatives,
+              present: reading.useGod.present,
+              absent: reading.useGod.absent,
+              picked: reading.useGod.picked
+                ? { label: reading.useGod.picked.label, relative: reading.useGod.picked.relative, branch: reading.useGod.picked.branch, element: reading.useGod.picked.element, position: reading.useGod.picked.position }
+                : null,
+              why: reading.useGod.why,
+            }
+          : null,
         timing: reading.timing,
         disclaimer: DISCLAIMER,
       },
