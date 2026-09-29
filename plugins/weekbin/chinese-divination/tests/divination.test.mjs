@@ -1459,7 +1459,7 @@ test('卦体把六亲与世应画出来，不只是数据里有', async () => {
   assert.ok(/reading\.useGod\.hidden/.test(render), '解读页本卦没把伏神传进卦体');
   // 变卦要把化爻传进去，才标得出哪一格是由本卦动爻变过来的
   assert.ok(
-    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,200}?reading\.transforms \|\| \[\][\s\S]{0,80}?\)\)/.test(render),
+    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,200}?reading\.transforms \|\| \[\][\s\S]{0,200}?\)\)/.test(render),
     '解读页变卦没传京房数据与化爻',
   );
   // 六冲/六合那枚小标，本卦与变卦都要传——变卦也可能是六冲卦，那正是「六合变六冲」
@@ -3238,6 +3238,10 @@ test('卦体给六冲/六合挂一枚小标，淡字不上朱砂；右栏另有�
   const head = block.slice(0, block.indexOf('block.append(title)'));
   assert.ok(/\(tag \? `<span class="gua-tag"/.test(head), 'guaBlock 没把 tag 那一枚画到标题上');
   assert.ok(/>\$\{tag\}<\/span>/.test(head), '卦体冲合那枚小标没把 tag 的字写进去');
+  // 钉在两个调用点上：函数算对了、调用点不把 tag 传进去，卦面上照样什么都没有。
+  // 只钉 clashTag 函数体的话，本卦那枚照样在，变卦那枚没了测试也不会红。
+  assert.match(client, /clashTag\(reading, '本卦'\)/, '本卦那个卦体没去问要不要挂小标');
+  assert.match(client, /clashTag\(reading, '变卦'\)/, '变卦那个卦体没去问要不要挂小标');
   const rule = client.slice(client.indexOf('.gua-title .gua-tag {'));
   const css = rule.slice(0, rule.indexOf('}'));
   assert.ok(/var\(--text-subtle\)/.test(css), '卦体冲合那枚小标该用淡字');
@@ -3308,4 +3312,110 @@ test('MCP 把卦体冲合落成字段，抬头另起一行【卦体】', async (
   for (const pair of pairs) {
     assert.equal(pair.kind, '冲', '艮为山三对都该判成冲');
   }
+});
+
+test('六十四卦里三对要么全撞要么全不撞，没有只撞一对的卦', async () => {
+  const { hexagramClash } = await import('../miniapp/node/jingfang.mjs');
+  const dist = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  let chong = 0;
+  let he = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const kept = hexagramClash(hexagram).pairs.filter((pair) => pair.kind);
+    dist[kept.length] += 1;
+    if (hexagramClash(hexagram).chong) chong += 1;
+    if (hexagramClash(hexagram).he) he += 1;
+  }
+  // 客户端那层连线就是照这条画的：要么画满三条，要么一条不画，没有「只画一条」这一路。
+  // 写成断言，是免得哪天真出了半截的卦体，还照着「全撞或全不撞」的说法往下写。
+  assert.equal(dist[1], 0, '竟有只撞一对的卦，连线会画出半截');
+  assert.equal(dist[2], 0, '竟有只撞两对的卦，连线会画出半截');
+  assert.equal(dist[3], chong + he, '全撞的卦数该等于六冲加六合');
+  assert.equal(dist[0], HEXAGRAM_LIST.length - chong - he);
+  assert.equal(chong, 10);
+  assert.equal(he, 8);
+});
+
+test('「三对皆撞」那两条自校验是活的，数目也不是从表里推的', async () => {
+  const source = await readFile(new URL('../miniapp/node/jingfang.mjs', import.meta.url), 'utf8');
+  const block = source.slice(source.indexOf('const chongNames = [];'));
+  const guard = block.slice(0, block.indexOf('// 日辰所冲之支永不可能生'));
+  // 判成六冲六合的必须三对全撞。不钉这一条，配对位表里少配一组时
+  // 「三对皆撞」会跟着松成「两对皆撞」，而上面那条分布断言仍会通过。
+  assert.match(guard, /if \(clash\.chong && chongPairs !== pairCount\)/, '六冲那三对全撞的校验不在了');
+  assert.match(guard, /if \(clash\.he && hePairs !== pairCount\)/, '六合那三对全撞的校验不在了');
+  assert.doesNotMatch(guard, /if \(false/, '自校验被短路了，等于没写');
+  // 三对就是初四、二五、三六，数目是定义的一部分。从表里推的话表里少一组，
+  // 它跟着少一个，上面那两条又白检了。
+  assert.match(guard, /const pairCount = 3;/, '「三对」的数目被改成从表里推了');
+  assert.doesNotMatch(guard, /const pairCount = CLASH_PAIR_OFFSETS\.length/,
+    '「三对」的数目不能从表里推');
+});
+
+test('冲合连线画在两列之间的空隙里，不占卦面宽度', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 量行高要元素挂在页面上。卦盘是整块拼好才挂的，挂着的时候量出来全是 0，
+  // 那时候画的弧是空图——所以只能先记下来，等挂上再回来取尺寸。
+  // 不撞的那对不画：不按 kind 过滤的话，六十四卦每卦都画出三条弧，全不撞的也画。
+  const pairsFn = client.slice(client.indexOf('function clashPairs('));
+  const pairsBody = pairsFn.slice(0, pairsFn.indexOf('\n      function '));
+  assert.ok(/\(clash\.pairs \|\| \[\]\)\.filter\(\(pair\) => pair\.kind\)/.test(pairsBody),
+    'clashPairs 没有只留下真撞上的那几对');
+  const lines = client.slice(client.indexOf('function guaLines('));
+  const linesBody = lines.slice(0, lines.indexOf('\n      function '));
+  assert.ok(/clashPairs\(clash\)/.test(linesBody), 'guaLines 没过 clashPairs 挑要画的那几对');
+  assert.ok(/wrap\.ribbon = \{/.test(linesBody), 'guaLines 没把要画的弧先记在元素上');
+  assert.ok(!/clashRibbon\(wrap,/.test(linesBody), 'guaLines 里直接画弧，量不到尺寸，画出来是空图');
+  const mount = client.slice(client.indexOf('function mountClashRibbons('));
+  // 这一段要切到下一个函数为止：切到文件末尾的话，后面 clashRibbon 的定义本身也含
+  // 「clashRibbon(wrap)」这几个字，调用点被拿掉测试照样绿。
+  const mountBody = mount.slice(0, mount.indexOf('\n      function ', mount.indexOf('(') + 10));
+  assert.ok(/querySelectorAll\('\.gua-lines'\)/.test(mountBody) && /clashRibbon\(wrap\)/.test(mountBody),
+    '挂上页面后没人回来把弧画出来');
+  // 钉在真正挂载的那一行：扫了但没人在挂载之后调，卦面上照样什么都没有
+  const reading = client.slice(client.indexOf('function renderReading('));
+  assert.ok(/slot\.append\(card\);\s*\n\s*mountClashRibbons\(card\);/.test(reading),
+    '卦盘挂上页面之后没有回头画弧');
+
+  // 弧不能从卦面宽度里扣。爻画那格是 1fr，扣一次变卦里「回头生 + 应 + 六亲 + 干支」
+  // 那一行就被压到看不见，阴阳都读不出来；所以它探到两列之间的空隙里去。
+  const ribbon = client.slice(client.indexOf('.clash-ribbon {'));
+  const css = ribbon.slice(0, ribbon.indexOf('}'));
+  const gutter = Number(/right:\s*-\s*(\d+)px/.exec(css)?.[1]);
+  assert.ok(gutter > 0, '冲合连线没探到卦面外头去');
+  assert.ok(!/\.gua-lines\.has-ribbon/.test(client), '不该从卦面上匀宽度出来');
+  // 不给 viewBox，一个用户单位就是一个 CSS 像素，量出来的行高才能直接当坐标用
+  const draw = client.slice(client.indexOf('function clashRibbon('));
+  assert.ok(!/setAttribute\('viewBox'/.test(draw), '给了 viewBox，坐标系就跟量出来的行高对不上了');
+
+  // 起点与弧高加起来要装得进那道空隙。行高约二十一，三对里每对都差三格，约六十三。
+  const start = Number(/const x = width \+ (\d+);/.exec(draw)?.[1]);
+  const base = Number(/const bulge = (\d+) \+/.exec(draw)?.[1]);
+  const perPx = Number(/const bulge = \d+ \+ Math\.abs\(y2 - y1\) \/ (\d+);/.exec(draw)?.[1]);
+  // 起点必须在卦面右缘之外，弧才落不到纳甲那一列的字上
+  assert.ok(start > 0, '弧的起点摆回卦面里了，会盖住纳甲那几列字');
+  const reach = start + base + 63 / perPx;
+  assert.ok(reach < gutter, `弧最远鼓到 ${reach}px，探出空隙 ${gutter}px，会盖到右栏的字`);
+
+  // 冲与合同一支淡线，不分色：这层只说哪两支配在一起，不替它们表态吉凶
+  const arc = client.slice(client.indexOf('.clash-ribbon .clash-arc {'));
+  const arcCss = arc.slice(0, arc.indexOf('}'));
+  assert.ok(/var\(--text-subtle\)/.test(arcCss), '冲合连线该用淡字');
+  assert.ok(!/var\(--seal\)/.test(arcCss), '冲合连线不该染朱砂');
+  // 盖在卦面上，不能挡住点选与悬停
+  assert.ok(/pointer-events:\s*none/.test(css), '冲合连线会挡住底下卦面的点选');
+  // 弧上不挂字：三对叫什么右栏那一格已经列全
+  assert.ok(!/clash-arc-label/.test(client), '弧上不该再挂一串字');
+  // 每条弧挂个标题，写清是哪两支配在一起。建了 title 不挂上去等于没写，
+  // 所以「建」和「挂」两句都钉。
+  assert.ok(/createElementNS\(svgNS, 'title'\)/.test(draw), '弧上没有标题');
+  assert.ok(/path\.append\(title\)/.test(draw), '标题建了没挂到弧上');
+  assert.ok(/pair\.kind/.test(draw), '标题里没写冲还是合');
+  assert.ok(/jingfang\.lines\[pair\.lower - 1\]\.branch/.test(draw), '标题里没写出是哪两支');
+
+  // 本卦挂自己的三对，变卦挂变出来那一卦的
+  assert.ok(/clashTag\(reading, '本卦'\),\s*\n\s*reading\.clash,/.test(reading),
+    '本卦那层弧没接上本卦的冲合数据');
+  assert.ok(/\{ pairs: reading\.clash\.changedPairs \|\| \[\] \}/.test(reading),
+    '变卦那层弧没接上变卦的冲合数据');
 });

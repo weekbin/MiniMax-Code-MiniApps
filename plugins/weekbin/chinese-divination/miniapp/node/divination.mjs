@@ -667,6 +667,15 @@ export function buildReading(cast, options = {}) {
         upper: pair.upper.position,
         kind: pair.kind,
       })),
+      // 变卦那三对同样给出去：卦体上本卦与变卦各画一组冲合连线，六冲变六冲那一路
+      // 才看得见「两头都是三对皆冲」，而不是只在本卦上出。
+      changedPairs: (changedJf
+        ? hexagramClash(changed, changedJf).pairs
+        : []).map((pair) => ({
+        lower: pair.lower.position,
+        upper: pair.upper.position,
+        kind: pair.kind,
+      })),
     },
     useGod: useGod
       ? {

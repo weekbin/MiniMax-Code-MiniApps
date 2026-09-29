@@ -78,7 +78,7 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, the 动爻's 爻辞 with its 象传 quoted under the 本卦; and, on the eighteen 六冲/六合 hexagrams, three thin arcs in the margin joining 初四、二五、三六 |
 | Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
 | 断语 | seventeen to twenty sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
@@ -750,6 +750,28 @@ The chapter also writes the pattern up hard in both directions — 六合变六�
 So a 六冲卦 on its own is not bad news, and this package does not colour it as such: on the diagram
 the 六冲 and 六合 marks are thin and muted, never red.
 
+**The pairing, drawn.** 「初四、二五、三六」 is the one rule in this chapter that is easier to see
+than to read. Pair the lines at the same height and not one of the sixty-four hexagrams comes out
+六冲; pair them three apart and the ten and the eight fall out on their own. So the diagram draws
+it: three thin arcs in the margin, each joining one pair, bowing away from the hexagram. They show
+the thing the prose keeps having to insist on — the two branches that come together are always
+three rows apart, never side by side.
+
+The arcs sit in the gutter between the two columns, not in the hexagram. That is deliberate and it
+cost something to find: the bars are a `1fr` track, so any width reserved for the arcs comes straight
+out of them, and on the 变卦 the row carrying 回头生 + 应 + 六亲 + 干支 is already the widest — one
+reserved column wide enough for the arcs and that row's bars collapse to nothing, at which point the
+line no longer reads as 阴 or 阳 at all. Putting them in the gutter costs the diagram nothing.
+
+There is no label on the arcs. The three pairs are already spelled out in the right-hand 卦体冲合
+row, and a second copy to check against the first is a second thing to get wrong. Each arc carries a
+`<title>` naming its two branches, which is what a screen reader and anyone reading the source get.
+
+The arcs appear on eighteen hexagrams and on no others, because the three pairs come out either all
+clashing or all not: the ten 六冲 and the eight 六合, and the remaining forty-six draw nothing at all.
+There is no hexagram that clashes on one pair only, so there is no case for drawing a single arc —
+and the module-load check now holds that, not just 「one pair implies three」.
+
 **What is deliberately not here.** 卦身 and 世身 appear on most traditional charts, and this package
 draws neither. Not an oversight: 《增删卜易》 is the base text here, and removing them is stated as
 one of the book's own features — 「删除卦身世身、星煞本命，使人无歧路之虞」. 《卜筮全书》 and
@@ -1034,7 +1056,12 @@ counted as both, each of the four reportable ways placed on a real reading, 爻�
 六冲卦 and never opening a section on its own, the 用神-conditional half applied at 旺 and at 囚 and
 declined when the 用神 is not settled, the 近病/久病 rule quoted without a side picked, the
 官讼 clause joined only when the matter really is 官讼是非, and the diagram plus MCP carrying it.
-163 passing.
+The margin arcs are checked too: that they are drawn only after the diagram is on the page (measuring
+row heights while the node is still detached yields an empty picture), that they take their width from
+the gutter rather than out of the hexagram, that the arc's reach still fits inside that gutter, that
+they are muted and never red, that they do not intercept clicks, and that each one names its two
+branches. The client tests read the source, since there is no DOM in the test runner.
+166 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

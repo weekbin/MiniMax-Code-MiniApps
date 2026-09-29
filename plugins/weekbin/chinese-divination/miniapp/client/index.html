@@ -1124,6 +1124,35 @@
         opacity: 0.85;
       }
 
+      /* 冲合连线：把初四、二五、三六三对画成跨过卦面的弧。这一层画的是「隔三位相配」
+         那条规矩本身——同高去配，六十四卦里一个六冲卦也出不来。 */
+      .gua-lines {
+        position: relative;
+      }
+
+      /* 弧不占卦面的宽度，从右边探出去画在两列之间那道空隙里（.reading 的 gap 是 22px）。
+         匀宽度出来是不行的：爻画那格是 1fr，扣掉就短一截，而变卦里「回头生 + 应 + 六亲 +
+         干支」那一行本来就占得最满，扣一次就被压到看不见，阴阳都读不出来。
+         放进空隙里既不挤卦面，位置也像传统刻本上的旁批，就在那儿批一句「此二支相配」。 */
+      .clash-ribbon {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: -22px;
+        pointer-events: none;
+        overflow: visible;
+      }
+
+      /* 冲与合同一支淡线，不分色：这层只说「哪两支配在一起」，不替它们表态吉凶。 */
+      .clash-ribbon .clash-arc {
+        fill: none;
+        stroke: var(--text-subtle);
+        stroke-width: 1;
+        stroke-linecap: round;
+        opacity: 0.6;
+      }
+
       .text-line {
         margin: 6px 0 0;
         font-size: 14px;
@@ -2291,7 +2320,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle, clash) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2362,7 +2391,73 @@
               : '');
           wrap.append(row);
         }
+        // 卦盘是整块拼好才挂进页面的，挂着的时候行高、爻画宽度一律量成 0，弧线就画不出来。
+        // 所以这里只把要画的那几对记在元素上，等挂上页面再回来取尺寸落笔。
+        const ribbon = clashPairs(clash);
+        if (ribbon.length > 0) wrap.ribbon = { pairs: ribbon, jingfang };
         return wrap;
+      }
+
+      // 卦里有几对地支真的撞上了。不撞的那对（既不合也不冲）不画，撞上了的才画。
+      function clashPairs(clash) {
+        if (!clash) return [];
+        return (clash.pairs || []).filter((pair) => pair.kind);
+      }
+
+      // 挂进页面之后才量得准。扫一遍，量到多少画多少。
+      function mountClashRibbons(root) {
+        for (const wrap of root.querySelectorAll('.gua-lines')) {
+          if (wrap.ribbon) clashRibbon(wrap);
+        }
+      }
+
+      // 冲合连线：把初四、二五、三六三对画成跨过卦面的三条弧。
+      //
+      // 这一层专画「隔三位相配」那条规矩。纳甲把内外两卦的起支错开一位，所以一爻的
+      // 对位在它下面第三位，不在同高——同高去配，六十四卦里一个六冲卦也出不来。
+      // 光看文字记不住，看图一眼就明白：撞在一起的那两支永远差三格，不是对称的。
+      // 六十四卦里三对要么全撞、要么全不撞：全撞的十八卦是六冲十个加六合八个，画三条弧；
+      // 全不撞的四十六卦一个标也不画。没见过只撞一对的，所以不存在「只画一条」这一路。
+      // 弧一律朝右鼓，鼓进两列之间那道空隙里，卦面一格宽度都不占。
+      // 弧上不挂字：三对叫什么右栏「卦体冲合」那一格已经列全，弧只管把两爻接上，
+      // 再挂三串字就成了另一份要人核对的账。
+      // 冲与合同用一支淡线，不分色：颜色不该替没定吉凶的东西表态。
+      // is-chong / is-he 两个 class 留着不为上色，是给 DOM 和查源码的人一眼分出哪支是冲。
+      function clashRibbon(wrap) {
+        const { pairs, jingfang } = wrap.ribbon;
+        delete wrap.ribbon;
+        if (!jingfang || !jingfang.lines) return;
+        const rowOf = (position) => wrap.querySelector(`.gua-line[data-pos="${position}"]`);
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const width = wrap.clientWidth;
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('class', 'clash-ribbon');
+        svg.setAttribute('aria-hidden', 'true');
+        // 不给 viewBox：没有 viewBox 时一个用户单位就是一个 CSS 像素，坐标直接照着量出来的
+        // 行高写，盒子大小全交给 CSS 的 left/right/top/bottom，宽度不必在这边再抄一遍。
+        for (const pair of pairs) {
+          const lower = rowOf(pair.lower);
+          const upper = rowOf(pair.upper);
+          if (!lower || !upper) continue;
+          // 起点摆在卦面右缘外一点，弧朝右鼓进空隙，不会盖住纳甲那一列的字
+          const x = width + 3;
+          const y1 = lower.offsetTop + lower.offsetHeight / 2;
+          const y2 = upper.offsetTop + upper.offsetHeight / 2;
+          const mid = (y1 + y2) / 2;
+          // 弯多少随两爻相隔几格：三对里每一对都差三位，弧高一样，画出来三条弧是平行的，
+          // 中点各差一格，不会交叠。
+          const bulge = 7 + Math.abs(y2 - y1) / 12;
+          const path = document.createElementNS(svgNS, 'path');
+          path.setAttribute('d', `M ${x} ${y1} Q ${x + bulge} ${mid} ${x} ${y2}`);
+          path.setAttribute('class', `clash-arc ${pair.kind === '冲' ? 'is-chong' : 'is-he'}`);
+          // 弧本身 pointer-events 关着，标题是留给读屏与查源码的人看的，不假装能悬停。
+          const title = document.createElementNS(svgNS, 'title');
+          title.textContent =
+            `${jingfang.lines[pair.lower - 1].branch}${pair.kind}${jingfang.lines[pair.upper - 1].branch}`;
+          path.append(title);
+          svg.append(path);
+        }
+        wrap.append(svg);
       }
 
       // 右栏那格「卦体冲合」。只在断语真要出「六冲」那一段时才露——卦内零散两爻相冲
@@ -2400,7 +2495,7 @@
         return null;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms, circle, tag) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms, circle, tag, clash) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2410,7 +2505,7 @@
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>` +
           (tag ? `<span class="gua-tag" title="${tag === '六冲' ? '初四、二五、三六三对地支两两相冲' : '初四、二五、三六三对地支两两相合'}">${tag}</span>` : '');
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle, clash));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2490,11 +2585,13 @@
           null,
           (reading.useGod && reading.useGod.circle) || null,
           clashTag(reading, '本卦'),
+          reading.clash,
         ));
         if (reading.changed) {
           const changed = document.createElement('div');
           changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang,
-            null, [], [], null, reading.transforms || [], null, clashTag(reading, '变卦')));
+            null, [], [], null, reading.transforms || [], null, clashTag(reading, '变卦'),
+            reading.clash ? { pairs: reading.clash.changedPairs || [] } : null));
           left.append(changed);
         }
         body.append(left);
@@ -2631,6 +2728,7 @@
         card.append(save);
 
         slot.append(card);
+        mountClashRibbons(card);
       }
 
       async function saveReading(reading, button, noteInput) {

@@ -865,11 +865,16 @@ export function hexagramClash(hexagram, prepared) {
 const CLASH_PAIR_OFFSETS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
 
 // 六冲卦十个、六合卦八个，是传世名单里人人能背下来的两组卦；数目或名单对不上就是装卦错了。
-// 另有一处结构事实顺带钉住：三对里只要有一组相冲（相合），另两组必也相冲（相合）。
-// 两者都在下面核，任一条不合就在这里抛，不留一个能算错的判定。
+// 另有一处结构事实顺带钉住：三对里只要有一组相冲（相合），另两组必也相冲（相合）。所以六十四卦
+// 只有三种样子——三对皆冲、三对皆合、三对皆不相干，没有「只撞一对」的。客户端那层冲合连线正是
+// 照这条画的：要么画满三条，要么一条不画。
+// 三条都在下面核，任一条不合就在这里抛，不留一个能算错的判定。
 {
   const chongNames = [];
   const heNames = [];
+  // 三对就是初四、二五、三六，这个数目是定义的一部分，不能从表里推：
+  // 从表里推的话表里少配一组，数目跟着少一个，下面那两条「三对皆撞」就跟着松了。
+  const pairCount = 3;
   for (const hexagram of HEXAGRAM_LIST) {
     const clash = hexagramClash(hexagram);
     if (clash.chong) chongNames.push(hexagram.name);
@@ -883,6 +888,15 @@ const CLASH_PAIR_OFFSETS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
     if ((hePairs > 0) !== clash.he) {
       throw new Error(`六合校验不过：${hexagram.name}只有${hePairs}对合，却判成非六合——`
         + '「一组合则三组皆合」这条结构事实不成立，配对位或六合表有问题');
+    }
+    // 上两条只钉住「有没有」，这里再钉住「是不是三对」：判成六冲六合的必须三对全撞。
+    if (clash.chong && chongPairs !== pairCount) {
+      throw new Error(`六冲校验不过：${hexagram.name}判成六冲，撞上的却只有${chongPairs}对，`
+        + `不是三对全撞。配对位或纳甲表有问题，连线会画出半截的卦体`);
+    }
+    if (clash.he && hePairs !== pairCount) {
+      throw new Error(`六合校验不过：${hexagram.name}判成六合，撞上的却只有${hePairs}对，`
+        + `不是三对全撞。配对位或六合表有问题，连线会画出半截的卦体`);
     }
   }
   if (chongNames.length !== 10) {
