@@ -26,6 +26,7 @@ import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
+import { jingfang, shiYingRelation, RELATIVE_MEANING } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -419,8 +420,8 @@ export function buildReading(cast, options = {}) {
   const structure = {
     body: { key: bodyKey, name: body.name, element: body.element, nature: body.nature, image: body.image, direction: body.direction, position: bodyIsLower ? '内卦（下卦）' : '外卦（上卦）' },
     use: { key: useKey, name: use.name, element: use.element, nature: use.nature, image: use.image, direction: use.direction, position: bodyIsLower ? '外卦（上卦）' : '内卦（下卦）' },
-    shi: { position: primaryPosition, label: POSITION_LABELS[primaryPosition - 1], role: '世爻 · 体卦' },
-    ying: { position: shiyinPosition, label: POSITION_LABELS[shiyinPosition - 1], role: '应爻 · 用卦' },
+    shi: { position: primaryPosition, label: POSITION_LABELS[primaryPosition - 1], role: '动爻 · 体卦' },
+    ying: { position: shiyinPosition, label: POSITION_LABELS[shiyinPosition - 1], role: '配爻 · 用卦' },
     monthElement,
     bodyVitality: bodyVitality.key,
     useVitality: useVitality.key,
@@ -491,9 +492,36 @@ export function buildReading(cast, options = {}) {
     title: '综卦 · 反求',
     text: `综卦为${inverted.name}，是此事的倒影：换到对方的位置看，往往能看出自己忽略的条件。${inverted.image}`,
   });
+  // 京房一层：本卦定宫定世次，六爻各装纳甲与六亲。世爻是我、应爻是对方，
+  // 世应之间的生克讲的是「我跟这个人」，与上面体用讲的「我跟这件事」不是一回事。
+  const jf = jingfang(hexagram);
+  const shiLine = jf.lines[jf.shi - 1];
+  const yingLine = jf.lines[jf.ying - 1];
+  const shengke = shiYingRelation(shiLine.element, yingLine.element);
+  const movingRelatives = movingLines
+    .map((line) => jf.lines[line.position - 1])
+    .filter((line) => line.relative)
+    .map((line) => `${line.label}${line.relative}`);
+  const uniqueRelatives = [...new Set(movingRelatives.map((item) => item.replace(/^.*?爻/u, '')))];
   insights.push({
-    title: '世应',
-    text: `世爻在${POSITION_LABELS[primaryPosition - 1]}，代表求测者自身；应爻在${POSITION_LABELS[shiyinPosition - 1]}，代表对方或所测之事。世为己、应为彼，世应${bodyIsLower ? '同在下卦，主事在自身、主动权在你' : '分居上下，主需借外力推动'}。`,
+    title: '六亲世应',
+    text: [
+      `${jf.palaceName}${jf.stage}卦，属${jf.element}。世爻${shiLine.label}持${shiLine.relative}，应爻${yingLine.label}为${yingLine.relative}。`,
+      shengke ? `${shengke.text}。` : '',
+      movingRelatives.length > 0
+        ? `动爻${movingRelatives.join('、')}，事落在${uniqueRelatives.join('、')}上：${uniqueRelatives.map((name) => RELATIVE_MEANING[name]).filter(Boolean).join('；')}。`
+        : '六爻皆静，无动爻，身份格局照旧。',
+      jf.stage === '游魂' || jf.stage === '归魂' ? jf.stageMeaning : '',
+    ].filter(Boolean).join(''),
+  });
+
+  // 「世应」这两个字留给京房那边：世爻恒由本卦的宫与世次定，与动爻无关。梅花这一层
+  // 讲的是我与事，说「主客」才不打架——同一段解读里出现两个不同的世爻位会看糊涂。
+  // 对应爻是初应四、二应五、三应上，来回都跨内卦与外卦，所以主客恒分居两卦，
+  // 不存在「同在一卦」的情形，这里只陈事实，趋势的话留给体用关系与取象两段。
+  insights.push({
+    title: '主客',
+    text: `体卦在${POSITION_LABELS[primaryPosition - 1]}，是我；用卦在${POSITION_LABELS[shiyinPosition - 1]}，是所测之事。世为己、应为彼，两爻相隔三位，恒分居内卦与外卦。`,
   });
   insights.push({
     title: '取象',
@@ -527,6 +555,8 @@ export function buildReading(cast, options = {}) {
     lines,
     movingLines,
     structure,
+    jingfang: jf,
+    changedJingfang: changed ? jingfang(changed) : null,
     verdict,
     topic: topic ? { key: topic.key, label: topic.label, element: topic.element, reason: topic.reason } : null,
     qi: monthLord

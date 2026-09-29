@@ -78,9 +78,9 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 世应, the month's vitality, the four-derivation diagram, and the 消长 ring |
-| 断语 | thirteen sections, fourteen when a topic was recognised, with 【动爻爻辞】 as the second |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, the month's vitality, the four-derivation diagram, and the 消长 ring |
+| 断语 | fourteen sections, fifteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -146,6 +146,7 @@ for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdic
 【变卦】火天大有（上卦 离、下卦 乾）
 【爻象】初爻 静爻、二爻 静爻、三爻 静爻、四爻 老阴、五爻 静爻、上爻 静爻
 【体用】体卦 艮土，用卦 乾金
+【京房】艮宫二世卦，属土；世爻二爻持官鬼，应爻五爻为兄弟
 【月令旺衰】当令 金，体 休、用 旺
 【吉凶】凶 —— 凶：宜守
 【断语】
@@ -153,7 +154,7 @@ for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdic
 【所问之事】所问归「事业功名」，类神取火。…类神火生体卦土，所问之事对你有补益。
 【应期】事业功名类神属火，旺在巳午，相在辰戌丑未。…
 【体用关系】体卦土生用卦金，是我耗自己去成全对方。…
-(thirteen sections, then 宜/忌, the numbers used, and the disclaimer)
+(fourteen sections, then 宜/忌, the numbers used, and the disclaimer)
 ```
 
 **`divination_hexagram_lookup` — search the sixty-four**
@@ -177,6 +178,7 @@ left out by default with a note at the end. Pass `detail: full` when you want it
 【地山谦】第 15 卦，⚋⚋⚋⚊⚋⚋，上坤下艮
 卦辞：亨，君子有终。
 象辞：地中有山，谦；君子以裒多益寡，称物平施。
+京房：兑宫五世卦（属金），世五爻持子孙，应二爻为官鬼
 互卦 雷水解，错卦 天泽履，综卦 雷地豫
 
 （以上省去了彖传原文；需要时传 detail="full" 补上。）
@@ -314,13 +316,14 @@ marriage cannot flip from 凶 to 吉 — only the 应期 months and the 取象 e
 is recognised, nothing is forced: the timing falls back to the 用卦 and says so.
 
 > This element-to-topic table is **this package's own convention**, not a transmitted one. Plum
-> Blossom has no 六亲 用神 the way 六爻 divination does, and this package does not do 干支入卦.
+> Blossom has no 六亲 用神 the way 六爻 divination does, so 京房's 六亲 and 纳甲 are given as a
+> separate layer (see 「京房一层」 below) and never rewrite the 体用 verdict.
 
-**Thirteen sections, every time**
+**Fourteen sections, every time**
 
 卦象总断, 动爻爻辞, 体用关系, 旺衰应期, 卦气 for the month's governing hexagram, 互卦 for the
 middle course, 变卦 for the outcome, 错卦 for the other side, 综卦 seen from the other position,
-世应, 取象 of both trigrams, 爻位 for the moving line's position, and 方所 for the 后天八卦
+六亲世应, 主客, 取象 of both trigrams, 爻位 for the moving line's position, and 方所 for the 后天八卦
 directions. A recognised topic adds one more, 所问之事, naming the topic, its 类神, and how that
 element stands to the 体卦.
 
@@ -383,6 +386,44 @@ visible rather than stated. The four are not four parallel conclusions but four 
 question. The derivations are themselves under test — 互 really is 2-3-4 and 3-4-5, 错 really
 inverts, 综 really reverses, 变 moves only what moved — so a wrong line in the diagram fails the
 suite.
+
+**京房一层 — 六亲, 世应, 纳甲**
+
+A layer that runs beside Plum Blossom rather than inside it. Plum Blossom takes the trigram holding
+the moving line as the 体 and reads **me against this matter**; 京房 takes the palace and the
+generation to read what each of the six lines *is* — which line is me (世), which is the other party
+(应), and which person's what each line is under the five phases. The two answer different questions,
+so 世应 belongs to 京房 and the Plum Blossom section is called 主客: two different 世爻 positions in
+one reading is simply confusing.
+
+The eight palaces and their generations come from the 《京氏易传》, and this package **derives them
+rather than transcribing a table**: change the first line for 一世, the first two for 二世, the first
+three for 三世, the first four for 四世, the first five for 五世; flip the fifth-generation hexagram's
+fourth line back for 游魂; then draw 游魂's lower three lines back for 归魂. The derived result is
+checked against the transmitted palace order hexagram by hexagram, and all sixty-four match. 归魂 is
+the clause people get wrong — it returns 游魂's *lower* three lines, so relative to the palace hexagram
+only the fifth line differs. Written as "flip the fourth and fifth", the 归魂 column of all eight
+palaces silently becomes another palace's 二世 hexagram, and a test pins that on its own.
+
+纳支 follows the 纳支歌诀 that has been in use for two thousand years (乾金甲子外壬午、坎水戊寅外戊申、
+艮土丙辰外丙戌、震木庚子外庚午、巽木辛丑外辛未、离火己卯外己酉、坤土乙未外癸丑、兑金丁巳外丁亥),
+checked line by line. **The branches follow the trigram, not the palace**: 山水蒙 belongs to 离宫
+(a 阴 palace), but its lower 艮 and upper 坎 are both 阳, so all six of its lines take 阳 branches. The
+六亲 take the palace's own element as "me" — what generates me is 父母, what I generate is 子孙, what
+overcomes me is 官鬼, what I overcome is 妻财, and my own element is 兄弟; the element comes from the
+branch, not from the 纳音.
+
+世爻 sits on the first line for 一世, the second for 二世, and so on, on the top line for a pure
+palace hexagram, the fourth for 游魂 and the third for 归魂. 应爻 **pairs** with it three positions
+away: 1 with 4, 2 with 5, 3 with 6, and back round. Taking that as a plain "世 + 3" sends a pure
+palace hexagram or a 五世 hexagram to the eighth or ninth line, which do not exist — a test pins
+exactly that.
+
+On the hexagram itself, the 纳甲 column sits to the right of the bars: 干支 fixes the element, 六亲
+fixes the identity, and 世 and 应 each get a red box. The reading gains a 六亲世应 section naming the
+palace and generation, who the 世 and 应 lines are, how they stand to each other, and which 亲 the
+moving line falls on — with what each 亲 covers. The 变卦 gets its own palace and generation; it never
+inherits the 本卦's.
 
 **卦气 · 当令主卦 — which hexagram holds the month**
 
@@ -479,7 +520,10 @@ to "打开灵签易占".
   entry by entry: all 384 爻辞 are checked against the hexagram diagrams, all 384 小象传 against
   their 爻题, and all 64 彖传 against the hexagram table. The twelve 辟卦 are checked against
   both the month branches and the hexagram table, and the four derivations against their own rules, and the casting timing against the typing budget, and the lookup default plus its explicit full-text
-return. 82 passing.
+return. The 京房 layer is checked on nine more counts: the palace order against the transmitted
+table, 归魂's and 游魂's flipped lines, the eight 纳支歌诀 clauses, branches following the
+trigram's polarity, the 六亲 mapping, 世应 pairing without overflow, the reading and diagram
+call sites, both lookup levels, and 主客 always straddling the two trigrams. 91 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
@@ -519,6 +563,7 @@ miniapp/node/yao.mjs           The 384 爻辞, cross-checked against the hexagra
 miniapp/node/xiang-chuan.mjs    The 384 小象传, cross-checked between two editions
 miniapp/node/tuan.mjs           The 64 彖传, cross-checked between two editions
 miniapp/node/guaqi.mjs          The twelve 辟卦, one per month branch
+miniapp/node/jingfang.mjs       京房's eight palaces, 纳支歌诀, 六亲, 世应
 miniapp/node/xiang.mjs        Line positions and response timing
 miniapp/node/topics.mjs       Element-to-topic: question → topic → 类神
 miniapp/node/almanac.mjs      Ganzhi, the twelve offices, solar terms, zodiac

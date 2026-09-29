@@ -18,6 +18,7 @@ import {
 } from '../divination.mjs';
 import { HEXAGRAM_LIST, hexagramSymbol, invertedHexagram, mutualHexagram, oppositeHexagram } from '../hexagrams.mjs';
 import { almanac } from '../almanac.mjs';
+import { jingfang } from '../jingfang.mjs';
 
 const SERVER_INFO = Object.freeze({ name: 'chinese-divination', version: '1.0.0' });
 
@@ -72,7 +73,7 @@ const TOOLS = Object.freeze([
   tool(
     'divination_hexagram_lookup',
     '查六十四卦',
-    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、象辞与互错综三卦，用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。默认只给这些：卦辞与象辞说得出这卦是什么，三卦说得出它连着什么。真要看彖传原文时传 detail="full"，那部分动辄六十字，连查几卦就淹掉了要紧的话。',
+    '按卦名、上下卦或关键字检索六十四卦，返回卦辞、象辞、所属宫位与世应六亲、互错综三卦。用户问「谦卦什么意思」「水雷屯怎么解」时用这个，不要起新卦。默认只给这些：卦辞与象辞说得出这卦是什么，宫位与世应说得出它是谁，三卦说得出它连着什么。真要看彖传原文与六亲全表时传 detail="full"，那部分动辄六十字，连查几卦就淹掉了要紧的话。',
     {
       type: 'object',
       properties: {
@@ -129,6 +130,11 @@ function readingToText(reading) {
   const insights = reading.insights.map((item) => `【${item.title}】${item.text}`).join('\n');
   const basis = reading.details.map((item) => `${item.label} ${item.value}`).join('；');
   const topic = reading.topic ? `所问事类：${reading.topic.label}，类神五行 ${reading.topic.element}。` : '所问未落到已知事类，应期按用卦推。';
+  // 抬头就给宫与世应：这是模型复述卦象时最常要用的两个身份，埋在断语里要它自己去找。
+  const jf = reading.jingfang;
+  const shiLine = jf.lines[jf.shi - 1];
+  const yingLine = jf.lines[jf.ying - 1];
+  const jingfangLine = `${jf.palaceName}${jf.stage}卦，属${jf.element}；世爻${shiLine.label}持${shiLine.relative}，应爻${yingLine.label}为${yingLine.relative}`;
   return [
     `【起法】${reading.method}`,
     reading.question ? `【所问】${reading.question}` : '【所问】未填',
@@ -137,6 +143,7 @@ function readingToText(reading) {
     reading.changed ? `【变卦】${reading.changed.name}（上卦 ${reading.changed.upper.name}、下卦 ${reading.changed.lower.name}）` : '【变卦】六爻皆静，无变卦',
     `【爻象】${lines}`,
     `【体用】体卦 ${reading.structure.body.name}${reading.structure.body.element}，用卦 ${reading.structure.use.name}${reading.structure.use.element}`,
+    `【京房】${jingfangLine}`,
     `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
     `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
     `【断语】\n${insights}`,
@@ -204,6 +211,19 @@ function callTool(name, args) {
         )
       : HEXAGRAM_LIST;
     const picked = hits.slice(0, limit);
+    // 宫位与世应各一行就够说明「这卦是谁」，六亲全表连干支约三十字，压到 full 里。
+    const palaceLine = (item) => {
+      const jf = jingfang(item);
+      const shi = jf.lines[jf.shi - 1];
+      const ying = jf.lines[jf.ying - 1];
+      return `${jf.palaceName}${jf.stage}卦（属${jf.element}），世${shi.label}持${shi.relative}，应${ying.label}为${ying.relative}`;
+    };
+    const relativesLine = (item) => {
+      const jf = jingfang(item);
+      return jf.lines
+        .map((line) => `${line.stem}${line.branch}${line.element}${line.relative}${line.role ? `持${line.role}` : ''}`)
+        .join('　');
+    };
     const text = picked
       .map((item) =>
         [
@@ -211,6 +231,8 @@ function callTool(name, args) {
           `卦辞：${item.judgment}`,
           detail === 'full' ? `彖传：${item.tuan}` : null,
           `象辞：${item.image}`,
+          `京房：${palaceLine(item)}`,
+          detail === 'full' ? `六亲：${relativesLine(item)}` : null,
           `互卦 ${mutualHexagram(item).name}，错卦 ${oppositeHexagram(item).name}，综卦 ${invertedHexagram(item).name}`,
         ]
           .filter(Boolean)

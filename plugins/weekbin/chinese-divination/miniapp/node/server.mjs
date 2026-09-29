@@ -15,6 +15,7 @@ import {
 } from './divination.mjs';
 import { HEXAGRAM_LIST, TRIGRAMS, hexagramSymbol, invertedHexagram, mutualHexagram, oppositeHexagram } from './hexagrams.mjs';
 import { MAX_NOTE, MAX_QUESTION, ReadingStore, clamp } from './store.mjs';
+import { jingfang } from './jingfang.mjs';
 import { handleMcpRequest } from './mcp/divination-http.mjs';
 
 /** @typedef {import('./miniapp-api.js').MiniAppContext} MiniAppContext */
@@ -123,6 +124,8 @@ async function handle(request, response, clientEntry, store) {
         judgment: hexagram.judgment,
         tuan: hexagram.tuan,
         image: hexagram.image,
+        // 与 jingfang() 同形，客户端卦体那一列直接拿来渲染，不必再转一次
+        palace: jingfang(hexagram),
         mutual: mutualHexagram(hexagram).name,
         opposite: oppositeHexagram(hexagram).name,
         inverted: invertedHexagram(hexagram).name,

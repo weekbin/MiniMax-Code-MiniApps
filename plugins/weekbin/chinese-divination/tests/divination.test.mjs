@@ -240,15 +240,16 @@ test('每日一卦同日同结果', () => {
   assert.deepEqual(first.movingLines.map((line) => line.position), second.movingLines.map((line) => line.position));
 });
 
-test('体用生克定吉凶，世应相隔三位', () => {
+test('体用生克定吉凶，主客相隔三位', () => {
   // 动爻在四爻以上，体卦为上卦
   const reading = buildReading(castByNumbers(1, 8), { now: new Date(2026, 8, 29) });
   assert.ok(reading.structure.shi.position >= 1 && reading.structure.shi.position <= 6);
   const gap = Math.abs(reading.structure.shi.position - reading.structure.ying.position);
   assert.equal(gap, 3);
-  // 世应角色固定
-  assert.match(reading.structure.shi.role, /世爻/);
-  assert.match(reading.structure.ying.role, /应爻/);
+  // 「世应」两个字归京房：世爻由宫与世次定，梅花这层只说主客。
+  assert.match(reading.structure.shi.role, /动爻/);
+  assert.match(reading.structure.ying.role, /配爻/);
+  assert.ok(!/世爻|应爻/.test(reading.structure.shi.role + reading.structure.ying.role));
   assert.ok(['大吉', '吉', '凶'].includes(reading.verdict.label));
   assert.match(reading.verdict.summary, /^(大吉|吉|平|凶|大凶)：/);
 });
@@ -273,7 +274,7 @@ test('解读给出互错综三卦与完整断语', () => {
   assert.ok(reading.advice.suitable.length > 0);
   assert.ok(reading.advice.avoid.length > 0);
   assert.ok(reading.details.length > 0);
-  for (const title of ['卦象总断', '体用关系', '旺衰应期', '互卦 · 过程', '变卦 · 结果', '错卦 · 旁支', '综卦 · 反求', '世应', '取象']) {
+  for (const title of ['卦象总断', '体用关系', '旺衰应期', '互卦 · 过程', '变卦 · 结果', '错卦 · 旁支', '综卦 · 反求', '六亲世应', '主客', '取象']) {
     assert.ok(reading.insights.some((item) => item.title === title), `缺少断语：${title}`);
   }
 });
@@ -411,7 +412,7 @@ test('卦历写入 dataDir 后可回读', async () => {
 
     const full = await store.get(reading.id);
     assert.equal(full.hexagram.name, reading.hexagram.name);
-    assert.equal(full.insights.length, 13);
+    assert.equal(full.insights.length, 14);
 
     assert.equal(await store.remove(reading.id), true);
     assert.equal(await store.remove(reading.id), false);
@@ -1230,7 +1231,7 @@ test('查卦默认省去彖传，要原文时显式要', async () => {
     'detail 档位没有在 inputSchema 里声明',
   );
   assert.ok(
-    /detail="full"/.test(mcp) && /彖传原文时传/.test(mcp),
+    /detail="full"/.test(mcp) && /彖传原文/.test(mcp),
     '工具描述没有告诉 Agent 什么时候该要彖传',
   );
   // brief 档下彖传整条不能出现，full 档下必须出现
@@ -1277,4 +1278,207 @@ test('查卦默认省去彖传，要原文时显式要', async () => {
   assert.ok(!shortText.includes('彖传：'), 'brief 档里仍带着彖传原文');
   assert.ok(longText.includes('彖传：'), 'full 档里没有彖传原文');
   assert.ok(shortText.length < longText.length, 'brief 档没有比 full 档短');
+});
+
+// ── 京房一层：八宫、纳甲、六亲、世应 ──────────────────────────────────────
+
+test('八宫卦序由爻变推出，六十四卦与传世卦序逐一对上', async () => {
+  // 传世八宫卦序是查来的，但本包不抄表——由八纯卦按《京氏易传》的爻变规则推。
+  // 这条把推导结果跟传世表硬对一遍：规则一改，这里立刻红。
+  const { jingfang, palaceOf } = await import('../miniapp/node/jingfang.mjs');
+  const expected = {
+    乾: ['乾为天', '天风姤', '天山遁', '天地否', '风地观', '山地剥', '火地晋', '火天大有'],
+    兑: ['兑为泽', '泽水困', '泽地萃', '泽山咸', '水山蹇', '地山谦', '雷山小过', '雷泽归妹'],
+    离: ['离为火', '火山旅', '火风鼎', '火水未济', '山水蒙', '风水涣', '天水讼', '天火同人'],
+    震: ['震为雷', '雷地豫', '雷水解', '雷风恒', '地风升', '水风井', '泽风大过', '泽雷随'],
+    巽: ['巽为风', '风天小畜', '风火家人', '风雷益', '天雷无妄', '火雷噬嗑', '山雷颐', '山风蛊'],
+    坎: ['坎为水', '水泽节', '水雷屯', '水火既济', '泽火革', '雷火丰', '地火明夷', '地水师'],
+    艮: ['艮为山', '山火贲', '山天大畜', '山泽损', '火泽睽', '天泽履', '风泽中孚', '风山渐'],
+    坤: ['坤为地', '地雷复', '地泽临', '地天泰', '雷天大壮', '泽天夬', '水天需', '水地比'],
+  };
+  const stageNames = ['本宫', '一世', '二世', '三世', '四世', '五世', '游魂', '归魂'];
+  const byPalace = new Map();
+  for (const hexagram of HEXAGRAM_LIST) {
+    const { palace, stage } = palaceOf(hexagram);
+    if (!byPalace.has(palace.name)) byPalace.set(palace.name, new Map());
+    byPalace.get(palace.name).set(stage.name, hexagram.name);
+  }
+  assert.equal(byPalace.size, 8, '不是八宫');
+  for (const [trigram, names] of Object.entries(expected)) {
+    const table = byPalace.get(`${trigram}宫`);
+    assert.ok(table, `缺 ${trigram}宫`);
+    for (let index = 0; index < names.length; index += 1) {
+      assert.equal(table.get(stageNames[index]), names[index], `${trigram}宫${stageNames[index]}推出岔了`);
+    }
+  }
+  // 六十四卦各归一宫，不重不漏
+  assert.equal(new Set(HEXAGRAM_LIST.map((h) => jingfang(h).palaceName + jingfang(h).stage)).size, 64);
+});
+
+test('归魂是只变第五爻，不是变第四、五爻', async () => {
+  // 这一句最容易记错：游魂卦把下三爻收回来，净效果只剩第五爻被变。
+  // 写成变第四、五爻的话，八宫的归魂卦整列会变成别宫的二世卦。
+  const { palaceOf } = await import('../miniapp/node/jingfang.mjs');
+  const 乾宫 = HEXAGRAM_LIST.filter((h) => palaceOf(h).palace.name === '乾宫');
+  const gui = 乾宫.find((h) => palaceOf(h).stage.name === '归魂');
+  assert.equal(gui.name, '火天大有');
+  // 火天大有 = 111101，本宫乾为天 = 111111，只有第五爻不同
+  const base = HEXAGRAM_LIST.find((h) => h.name === '乾为天').key;
+  const differ = (key) => [...key].flatMap((bit, index) => (bit === base[index] ? [] : [index + 1]));
+  assert.deepEqual(differ(gui.key), [5], '归魂相对本宫被变的爻位不对');
+  // 游魂（晋）则要变初、二、三、五爻
+  const you = 乾宫.find((h) => palaceOf(h).stage.name === '游魂');
+  assert.deepEqual(differ(you.key), [1, 2, 3, 5], '游魂相对本宫被变的爻位不对');
+});
+
+test('纳支照纳支歌诀，八纯卦内外首支逐条对上', async () => {
+  const { jingfang } = await import('../miniapp/node/jingfang.mjs');
+  // 「乾金甲子外壬午，坎水戊寅外戊申，艮土丙辰外丙戌，震木庚子外庚午，
+  //   巽木辛丑外辛未，离火己卯外己酉，坤土乙未外癸丑，兑金丁巳外丁亥」
+  const song = {
+    乾为天: ['甲子', '壬午'], 坎为水: ['戊寅', '戊申'], 艮为山: ['丙辰', '丙戌'],
+    震为雷: ['庚子', '庚午'], 巽为风: ['辛丑', '辛未'], 离为火: ['己卯', '己酉'],
+    坤为地: ['乙未', '癸丑'], 兑为泽: ['丁巳', '丁亥'],
+  };
+  for (const [name, [inner, outer]] of Object.entries(song)) {
+    const jf = jingfang(HEXAGRAM_LIST.find((h) => h.name === name));
+    assert.equal(jf.lines[0].stem + jf.lines[0].branch, inner, `${name} 内卦首支不符歌诀`);
+    assert.equal(jf.lines[3].stem + jf.lines[3].branch, outer, `${name} 外卦首支不符歌诀`);
+  }
+});
+
+test('纳支随经卦阴阳，不随卦宫阴阳', async () => {
+  // 山水蒙属离宫（阴宫），但下艮上坎都是阳卦，故六爻全纳阳支。写成按宫分阴阳就错了。
+  const { jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { TRIGRAMS } = await import('../miniapp/node/hexagrams.mjs');
+  const yangBranch = new Set(['子', '寅', '辰', '午', '申', '戌']);
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    for (const line of jf.lines) {
+      const trigram = line.position <= 3
+        ? TRIGRAMS[hexagram.lower].name
+        : TRIGRAMS[hexagram.upper].name;
+      const isYangTrigram = ['乾', '震', '坎', '艮'].includes(trigram);
+      assert.equal(
+        yangBranch.has(line.branch),
+        isYangTrigram,
+        `${hexagram.name}${line.label} 纳${line.branch}，与${trigram}卦阴阳不符`,
+      );
+    }
+  }
+});
+
+test('六亲以本宫五行为我，配法合于五行生克', async () => {
+  const { jingfang } = await import('../miniapp/node/jingfang.mjs');
+  // 乾宫属金：土生金故父母，金生水故子孙，火克金故官鬼，金克木故妻财，同金故兄弟
+  const qian = jingfang(HEXAGRAM_LIST.find((h) => h.name === '乾为天'));
+  assert.deepEqual(qian.lines.map((l) => l.relative), ['子孙', '妻财', '父母', '官鬼', '兄弟', '父母']);
+  assert.deepEqual(qian.lines.map((l) => l.element), ['水', '木', '土', '火', '金', '土']);
+  // 坤宫属土：火生土故父母，土生金故子孙，木克土故官鬼，土克水故妻财，同土故兄弟
+  const kun = jingfang(HEXAGRAM_LIST.find((h) => h.name === '坤为地'));
+  assert.deepEqual(kun.lines.map((l) => l.relative), ['兄弟', '父母', '官鬼', '兄弟', '妻财', '子孙']);
+  // 坎宫属水：土克水故官鬼，水生木故子孙，水克火故妻财，金生水故父母，同水故兄弟
+  const kan = jingfang(HEXAGRAM_LIST.find((h) => h.name === '坎为水'));
+  assert.deepEqual(kan.lines.map((l) => l.relative), ['子孙', '官鬼', '妻财', '父母', '官鬼', '兄弟']);
+});
+
+test('世爻由宫与世次定，应爻隔三位且不越界', async () => {
+  const { jingfang } = await import('../miniapp/node/jingfang.mjs');
+  // 一世初、二世二、三世三、四世四、五世五、本宫上爻、游魂四、归魂三
+  const shiOf = { 本宫: 6, 一世: 1, 二世: 2, 三世: 3, 四世: 4, 五世: 5, 游魂: 4, 归魂: 3 };
+  const seen = new Set();
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    assert.equal(jf.shi, shiOf[jf.stage], `${hexagram.name} 是${jf.stage}卦，世爻位不对`);
+    // 初应四、二应五、三应六，返过来四应一、五应二、六应三。
+    // 照字面「世 + 3」的话，本宫、六爻与五世卦会算到第八、九爻去。
+    assert.equal(jf.ying, jf.shi <= 3 ? jf.shi + 3 : jf.shi - 3, `${hexagram.name} 应爻隔位不对`);
+    assert.ok(jf.ying >= 1 && jf.ying <= 6, `${hexagram.name} 应爻越界：${jf.ying}`);
+    assert.equal(jf.lines.filter((l) => l.role).length, 2, `${hexagram.name} 世应标记数不对`);
+    assert.ok(jf.lines[jf.shi - 1].role === '世' && jf.lines[jf.ying - 1].role === '应');
+    seen.add(`${jf.shi}-${jf.ying}`);
+  }
+  assert.equal(seen.size, 6, '世应配对应有六种');
+});
+
+test('断语给出六亲世应，且不与梅花的主客混说世应', () => {
+  const reading = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29), question: '要不要接这个 offer' });
+  const segment = reading.insights.find((item) => item.title === '六亲世应');
+  assert.ok(segment, '断语里没有「六亲世应」');
+  const jf = reading.jingfang;
+  const shi = jf.lines[jf.shi - 1];
+  const ying = jf.lines[jf.ying - 1];
+  assert.ok(segment.text.includes(jf.palaceName + jf.stage), '没点出宫与世次');
+  assert.ok(segment.text.includes(`世爻${shi.label}持${shi.relative}`), '没点出世爻身份');
+  assert.ok(segment.text.includes(`应爻${ying.label}为${ying.relative}`), '没点出应爻身份');
+  // 动爻的六亲要说清「事落在谁身上」
+  const moving = reading.movingLines.map((line) => jf.lines[line.position - 1].relative);
+  for (const relative of moving) assert.ok(segment.text.includes(relative), `没点到动爻六亲 ${relative}`);
+
+  // 梅花那一层只能说主客，不能再自称世应——同一段里两个世爻位会看糊涂
+  const host = reading.insights.find((item) => item.title === '主客');
+  assert.ok(host, '断语里没有「主客」');
+  assert.ok(!reading.insights.some((item) => item.title === '世应'), '「世应」这一段仍被梅花占用');
+  // 对应爻是初应四、二应五、三应上，来回都跨内外两卦：主客恒分居两卦，
+  // 写成「同在下卦」是跟 counterpart 的定义打架。
+  const a = reading.structure.shi.position;
+  const b = reading.structure.ying.position;
+  assert.ok((a <= 3) !== (b <= 3), '主客两爻本该分居内外两卦');
+  assert.ok(!/同在下卦|同在上卦/.test(host.text), '主客段仍断言两爻同处一卦');
+  assert.ok(/恒分居内卦与外卦/.test(host.text), '主客段没有点明主客恒分居两卦');
+  // 变卦另有一套宫与世次，不能沿用本卦
+  if (reading.changed) {
+    assert.ok(reading.changedJingfang, '变卦没有装京房');
+    assert.equal(reading.changedJingfang.palaceName.length + reading.changedJingfang.stage.length > 0, true);
+  }
+});
+
+test('卦体把六亲与世应画出来，不只是数据里有', async () => {
+  // 钉在调用点，不钉在函数存在——只验 guaLines 里有 .rel，解读页照样可以不调它。
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  // 掐出 guaLines 自己的函数体：锚到下一个 function，否则 indexOf 取到的区间是空的
+  const start = client.indexOf('function guaLines(');
+  const body = client.slice(start, client.indexOf('\n      function ', start + 10));
+  assert.ok(body.length > 0, '没找到 guaLines 函数体');
+  assert.ok(/\.rel/.test(body) && /na\.relative/.test(body), '卦体没画六亲');
+  assert.ok(/na\.role/.test(body), '卦体没标世应');
+  assert.ok(/jingfang\.lines\[position - 1\]/.test(body), '卦体没按爻位取纳甲');
+  // 本卦与变卦都要传进去，且是从 reading 上取的
+  const render = client.slice(client.indexOf('left.append(guaBlock'));
+  assert.ok(
+    /guaBlock\(reading\.hexagram, reading\.lines, '本卦', reading\.jingfang\)/.test(render),
+    '解读页本卦没把京房数据传进卦体',
+  );
+  assert.ok(/guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang\)/.test(render), '解读页变卦没传京房数据');
+  // 右栏摘要也得有这一行
+  assert.ok(/\['六亲世应',/.test(client), '右栏没有六亲世应摘要');
+  assert.ok(/\['主客',/.test(client), '右栏仍把体用那层叫世应');
+  // 卦库详情页也要装上，同一根代码两个地方都传
+  assert.ok(/guaLines\(item, null, item\.palace \|\| null\)/.test(client), '卦库详情页没把京房数据传进卦体');
+  assert.ok(/item\.palace\.palaceName \+ item\.palace\.stage/.test(client), '卦库详情页标题没带宫位');
+});
+
+test('查卦给宫位与世应，full 档再给六亲全表', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  const ask = async (args) => {
+    let raw = '';
+    const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+    await handleMcpRequest({
+      response,
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_hexagram_lookup', arguments: args } },
+    });
+    return JSON.parse(raw).result;
+  };
+  const brief = await ask({ query: '谦' });
+  const full = await ask({ query: '谦', detail: 'full' });
+  const briefText = brief.content[0].text;
+  const fullText = full.content[0].text;
+  // 谦为兑宫五世卦：内艮丙辰土父母、丙午火官鬼、丙申金兄弟；外坤癸丑土父母、癸亥水子孙持世、癸酉金兄弟
+  assert.ok(/兑宫五世卦/.test(briefText), 'brief 档没给宫位与世次');
+  assert.ok(/世五爻持子孙/.test(briefText), 'brief 档没给世爻身份');
+  assert.ok(/应二爻为官鬼/.test(briefText), 'brief 档没给应爻身份');
+  assert.ok(!/^六亲：/m.test(briefText), 'brief 档不该塞六亲全表');
+  assert.ok(/^六亲：/m.test(fullText), 'full 档缺六亲全表');
+  assert.ok(/丙辰土父母/.test(fullText), 'full 档六亲没带干支');
+  assert.ok(briefText.length < fullText.length, 'full 档没有比 brief 档长');
 });

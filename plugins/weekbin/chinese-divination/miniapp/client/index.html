@@ -826,9 +826,41 @@
 
       .gua-line {
         display: grid;
-        grid-template-columns: 30px 1fr 26px;
+        grid-template-columns: 30px 1fr 26px auto;
         align-items: center;
         gap: 10px;
+      }
+
+      /* 纳甲一列：干支定五行，六亲定身份，世应定主客。装上了就多出这一列 */
+      .gua-line .rel {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .gua-line .rel .ganzhi {
+        font-size: 11px;
+        color: var(--text-subtle);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+
+      .gua-line .rel .qin {
+        font-size: 12px;
+        color: var(--text);
+        white-space: nowrap;
+      }
+
+      /* 世爻是我、应爻是对方，用朱砂点区分，不靠文字以免一行挤不下 */
+      .gua-line .rel .role {
+        font-size: 10px;
+        line-height: 1;
+        padding: 2px 4px;
+        border: 1px solid var(--seal);
+        color: var(--seal);
+        border-radius: 2px;
+        white-space: nowrap;
       }
 
       .gua-line .pos {
@@ -2169,7 +2201,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines) {
+      function guaLines(hexagram, lines, jingfang) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2180,24 +2212,35 @@
           row.className = `gua-line ${isYang ? 'yang' : 'yin'}${line && line.moving ? ' moving' : ''}`;
           row.dataset.pos = String(position);
           const mark = line && line.moving ? (line.kind === '老阳' ? '○' : '×') : line && !isYang ? '' : '';
+          // 纳甲一列：干支、五行、六亲、身份。装不上（互错综四卦）就不出这一列，
+          // 宁可少一列也不要六爻全空着占地方。
+          const na = jingfang && jingfang.lines ? jingfang.lines[position - 1] : null;
           row.innerHTML =
             `<span class="pos">${names[6 - position]}</span>` +
             `<span class="bars">${isYang ? '<i></i>' : '<i></i><i></i>'}</span>` +
-            `<span class="mark">${mark}</span>`;
+            `<span class="mark">${mark}</span>` +
+            (na
+              ? `<span class="rel">` +
+                `<span class="ganzhi">${escapeHtml(na.stem + na.branch + na.element)}</span>` +
+                `<span class="qin">${escapeHtml(na.relative)}</span>` +
+                (na.role ? `<span class="role">${na.role}</span>` : '') +
+                `</span>`
+              : '');
           wrap.append(row);
         }
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label) {
+      function guaBlock(hexagram, lines, label, jingfang) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
+        const gong = jingfang ? ` · ${escapeHtml(jingfang.palaceName + jingfang.stage + '卦')}` : '';
         title.innerHTML =
           `<h3 class="serif">${hexagram.name}</h3>` +
-          `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}</span>`;
+          `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines));
+        block.append(guaLines(hexagram, lines, jingfang));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2250,10 +2293,10 @@
 
         const left = document.createElement('div');
         left.className = 'gua-block reveal';
-        left.append(guaBlock(reading.hexagram, reading.lines, '本卦'));
+        left.append(guaBlock(reading.hexagram, reading.lines, '本卦', reading.jingfang));
         if (reading.changed) {
           const changed = document.createElement('div');
-          changed.append(guaBlock(reading.changed, null, '变卦'));
+          changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang));
           left.append(changed);
         }
         body.append(left);
@@ -2262,13 +2305,15 @@
         const facts = document.createElement('dl');
         facts.className = 'facts';
         const s = reading.structure;
+        const jf = reading.jingfang;
         const rows = [
           ['体卦（我）', `${s.body.name} · ${s.body.element} · ${s.body.nature} · ${s.body.direction} · ${s.body.position}`],
           ['用卦（事）', `${s.use.name} · ${s.use.element} · ${s.use.nature} · ${s.use.direction} · ${s.use.position}`],
           ['生克', `${reading.verdict.key} → ${reading.verdict.label}`],
-          ['世应', `世在${s.shi.label}，应在${s.ying.label}`],
+          ['主客', `体在${s.shi.label}，用在${s.ying.label}`],
+          jf ? ['六亲世应', `${jf.palaceName}${jf.stage}卦 · 世${jf.shi}爻持${jf.lines[jf.shi - 1].relative} · 应${jf.ying}爻为${jf.lines[jf.ying - 1].relative}`] : null,
           ['月令旺衰', `当令 ${s.monthElement} · 体 ${s.bodyVitality} · 用 ${s.useVitality}`],
-        ];
+        ].filter(Boolean);
         for (const [term, value] of rows) {
           const dt = document.createElement('dt');
           dt.textContent = term;
@@ -2452,9 +2497,10 @@
         card.className = 'card';
 
         const head = document.createElement('div');
+        const gong = item.palace ? ` · ${escapeHtml(item.palace.palaceName + item.palace.stage + '卦')}` : '';
         head.innerHTML =
           `<h2 class="serif" style="margin:0">${escapeHtml(item.name)}</h2>` +
-          `<p class="hint" style="margin:4px 0 0">第 ${item.order} 卦 · 上${escapeHtml(item.upper)}下${escapeHtml(item.lower)} · 五行 ${escapeHtml(item.element)}</p>`;
+          `<p class="hint" style="margin:4px 0 0">第 ${item.order} 卦 · 上${escapeHtml(item.upper)}下${escapeHtml(item.lower)} · 五行 ${escapeHtml(item.element)}${gong}</p>`;
         card.append(head);
 
         const body = document.createElement('div');
@@ -2462,12 +2508,17 @@
         body.style.marginTop = '12px';
 
         const left = document.createElement('div');
-        left.append(guaLines(item, null));
+        left.append(guaLines(item, null, item.palace || null));
         const rel = document.createElement('div');
         rel.className = 'row';
         rel.style.marginTop = '14px';
         rel.style.gap = '16px';
+        const shiYing = item.palace
+          ? `<span>世${item.palace.shi}爻持${escapeHtml(item.palace.lines[item.palace.shi - 1].relative)}</span>` +
+            `<span>应${item.palace.ying}爻为${escapeHtml(item.palace.lines[item.palace.ying - 1].relative)}</span>`
+          : '';
         rel.innerHTML =
+          shiYing +
           `<span>互卦 ${escapeHtml(item.mutual)}</span>` +
           `<span>错卦 ${escapeHtml(item.opposite)}</span>` +
           `<span>综卦 ${escapeHtml(item.inverted)}</span>`;
