@@ -193,6 +193,17 @@ function callTool(name, args) {
                 ? { label: reading.useGod.picked.label, relative: reading.useGod.picked.relative, branch: reading.useGod.picked.branch, element: reading.useGod.picked.element, position: reading.useGod.picked.position }
                 : null,
               why: reading.useGod.why,
+              // 用神不上卦时从本宫首卦取伏神，一并带出去：断语里已经讲过一遍，
+              // Agent 要复述「伏在哪、飞神是谁」时不必再从正文里刨。
+              hidden: (reading.useGod.hidden || []).map((h) => ({
+                relative: h.relative,
+                position: h.position,
+                hushen: h.hushen,
+                feishen: h.feishen,
+                feishenRelative: h.feishenRelative,
+                flying: h.flying,
+                emerges: h.emerges,
+              })),
             }
           : null,
         timing: reading.timing,

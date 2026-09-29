@@ -863,6 +863,17 @@
         white-space: nowrap;
       }
 
+      /* 伏神伏在飞神之下，同格并列：小字加虚框，位置是它的，不是飞神的 */
+      .gua-line .rel .fu {
+        font-size: 10px;
+        line-height: 1;
+        padding: 2px 4px;
+        border: 1px dashed var(--text-subtle);
+        color: var(--text-subtle);
+        border-radius: 2px;
+        white-space: nowrap;
+      }
+
       /* 用神是「你所问的这一件事」落在哪一爻，与世应的主客不是一回事，另用实底 */
       .gua-line .rel .role.god {
         background: var(--seal);
@@ -2208,7 +2219,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang, useGodPosition) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2223,6 +2234,8 @@
           // 宁可少一列也不要六爻全空着占地方。
           const na = jingfang && jingfang.lines ? jingfang.lines[position - 1] : null;
           const isGod = useGodPosition === position;
+          // 伏神伏在某一爻之下，不另起一行，就压在那格的飞神旁边标出来
+          const fu = (hidden || []).find((item) => item.position === position);
           row.innerHTML =
             `<span class="pos">${names[6 - position]}</span>` +
             `<span class="bars">${isYang ? '<i></i>' : '<i></i><i></i>'}</span>` +
@@ -2233,6 +2246,9 @@
                 `<span class="qin">${escapeHtml(na.relative)}</span>` +
                 (na.role ? `<span class="role">${na.role}</span>` : '') +
                 (isGod ? '<span class="role god">用</span>' : '') +
+                (fu
+                  ? `<span class="fu" title="伏神">伏 ${escapeHtml(fu.hushen)}${escapeHtml(fu.relative)}</span>`
+                  : '') +
                 `</span>`
               : '');
           wrap.append(row);
@@ -2240,7 +2256,7 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2249,7 +2265,7 @@
           `<h3 class="serif">${hexagram.name}</h3>` +
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang, useGodPosition));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2274,6 +2290,21 @@
           block.append(yao);
         }
         return block;
+      }
+
+      // 右栏「用神」一格：上了卦说上卦在哪，不上卦说伏在哪，别只丢一句「不上卦」。
+      function useGodFact(useGod) {
+        if (useGod.picked) {
+          return `取${useGod.present.join('、')} · ${useGod.picked.label}（${useGod.why}）`;
+        }
+        const named = useGod.absent.join('、');
+        if (!useGod.hidden || useGod.hidden.length === 0) {
+          return `取${named} · 不上卦，本宫首卦亦无`;
+        }
+        const where = useGod.hidden
+          .map((h) => `伏${h.position}爻 ${h.hushen}`)
+          .join('、');
+        return `取${named} · 不上卦，${where}`;
       }
 
       function renderReading(reading) {
@@ -2302,7 +2333,14 @@
 
         const left = document.createElement('div');
         left.className = 'gua-block reveal';
-        left.append(guaBlock(reading.hexagram, reading.lines, '本卦', reading.jingfang, reading.useGod && reading.useGod.picked ? reading.useGod.picked.position : null));
+        left.append(guaBlock(
+          reading.hexagram,
+          reading.lines,
+          '本卦',
+          reading.jingfang,
+          reading.useGod && reading.useGod.picked ? reading.useGod.picked.position : null,
+          (reading.useGod && reading.useGod.hidden) || [],
+        ));
         if (reading.changed) {
           const changed = document.createElement('div');
           changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang));
@@ -2321,7 +2359,7 @@
           ['生克', `${reading.verdict.key} → ${reading.verdict.label}`],
           ['主客', `体在${s.shi.label}，用在${s.ying.label}`],
           jf ? ['六亲世应', `${jf.palaceName}${jf.stage}卦 · 世${jf.shi}爻持${jf.lines[jf.shi - 1].relative} · 应${jf.ying}爻为${jf.lines[jf.ying - 1].relative}`] : null,
-          reading.useGod ? ['用神', `取${reading.useGod.present.join('、')}${reading.useGod.picked ? ` · ${reading.useGod.picked.label}（${reading.useGod.why}）` : ' · 不上卦'}`] : null,
+          reading.useGod ? ['用神', useGodFact(reading.useGod)] : null,
           ['月令旺衰', `当令 ${s.monthElement} · 体 ${s.bodyVitality} · 用 ${s.useVitality}`],
         ].filter(Boolean);
         for (const [term, value] of rows) {

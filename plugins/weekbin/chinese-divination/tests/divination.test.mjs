@@ -1444,12 +1444,15 @@ test('卦体把六亲与世应画出来，不只是数据里有', async () => {
   assert.ok(/na\.role/.test(body), '卦体没标世应');
   assert.ok(/jingfang\.lines\[position - 1\]/.test(body), '卦体没按爻位取纳甲');
   assert.ok(/isGod/.test(body) && /role god/.test(body), '卦体没标用神');
+  assert.ok(/const fu = \(hidden \|\| \[\]\)/.test(body), '卦体没接伏神');
+  assert.ok(/fu\.hushen/.test(body), '卦体没画出伏神那一爻');
   // 本卦与变卦都要传进去，且是从 reading 上取的
   const render = client.slice(client.indexOf('left.append(guaBlock'));
   assert.ok(
-    /guaBlock\(reading\.hexagram, reading\.lines, '本卦', reading\.jingfang, reading\.useGod/.test(render),
+    /guaBlock\([\s\S]{0,200}?reading\.jingfang,[\s\S]{0,200}?reading\.useGod && reading\.useGod\.picked/.test(render),
     '解读页本卦没把京房数据与用神传进卦体',
   );
+  assert.ok(/reading\.useGod\.hidden/.test(render), '解读页本卦没把伏神传进卦体');
   assert.ok(/guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang\)/.test(render), '解读页变卦没传京房数据');
   // 右栏摘要也得有这一行
   assert.ok(/\['六亲世应',/.test(client), '右栏没有六亲世应摘要');
@@ -1594,4 +1597,174 @@ test('用神不上卦时不编，如实说是缺哪一层', () => {
     assert.ok(text.includes('不上卦'), '没写「不上卦」三个字');
   }
   assert.ok(!/取.{0,4}爻。/.test(text) || reading.useGod.picked === null, '不上卦时不该宣称取了哪一爻');
+});
+
+// ── 伏神 ─────────────────────────────────────────────────────────────────
+
+test('伏神取自本宫首卦同爻位，书上两个例证逐字对上', async () => {
+  const { hiddenGod, flyingRelation, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const byName = (name) => jingfang(HEXAGRAM_LIST.find((h) => h.name === name));
+
+  // 《增删卜易·飞伏神章第二十八》：「乾卦寅木妻财在二爻，即以此寅木伏于姤卦亥水之下，
+  // 姤卦二爻之亥水即为飞神，寅木妻财即为伏神，亥水而生寅木，谓之飞来生伏得长生。」
+  const gou = hiddenGod(byName('天风姤'), '妻财');
+  assert.equal(gou.hushen.stem + gou.hushen.branch, '甲寅', '姤卦的妻财伏神应是甲寅木');
+  assert.equal(gou.hushen.position, 2, '妻财伏神应伏在二爻');
+  assert.equal(gou.feishen.stem + gou.feishen.branch, '辛亥', '压着它的飞神应是姤卦二爻辛亥水');
+  assert.equal(flyingRelation(gou.hushen, gou.feishen).key, '飞来生伏');
+
+  // 同章第二个例：「乾卦子水子孙在初爻，即以此子水子孙伏于遁卦辰土之下……辰土而克子水，
+  // 谓之飞来克伏遭克害，名为伏神受制，有用亦无用矣，即以凶推。」
+  // 兑宫的例：泽山咸（兑宫三世）缺妻财，须从兑为天借丁卯木伏二爻，
+  // 压着它的是咸卦二爻丙午火官鬼——伏去生飞，泄气。
+  const xian = hiddenGod(byName('泽山咸'), '妻财');
+  assert.equal(xian.palaceName, '兑宫', '咸卦的伏神应从兑宫借');
+  assert.equal(xian.hushen.stem + xian.hushen.branch, '丁卯', '咸卦的妻财伏神应是丁卯木');
+  assert.equal(xian.hushen.position, 2);
+  assert.equal(xian.feishen.stem + xian.feishen.branch, '丙午');
+  assert.equal(flyingRelation(xian.hushen, xian.feishen).key, '伏去生飞');
+
+  const dun = hiddenGod(byName('天山遁'), '子孙');
+  assert.equal(dun.hushen.stem + dun.hushen.branch, '甲子', '遁卦的子孙伏神应是甲子水');
+  assert.equal(dun.hushen.position, 1, '子孙伏神应伏在初爻');
+  assert.equal(flyingRelation(dun.hushen, dun.feishen).key, '飞来克伏');
+  // 书上说辰土克子水作凶推，本包不硬套吉凶，但伏飞方向不能反
+  assert.ok(dun.feishen.element === '土' && dun.hushen.element === '水', '飞伏五行与书不合');
+});
+
+test('六十四卦全量：缺失的六亲都能取到唯一伏神', async () => {
+  const { hiddenGod, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  let missing = 0;
+  let found = 0;
+  let ambiguous = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    for (const relative of ['父母', '兄弟', '子孙', '妻财', '官鬼']) {
+      if (jf.lines.some((line) => line.relative === relative)) continue;
+      missing += 1;
+      const pair = hiddenGod(jf, relative);
+      assert.ok(pair, `${hexagram.name} 缺${relative}却取不到伏神`);
+      found += 1;
+      // 书上两个例证都在乾宫，兑宫坎宫的例证一个也没有——只拿那两例去验，
+      // 「去别宫借伏神」这种改法照样全绿。宫名必须逐卦对上。
+      assert.equal(pair.palaceName, jf.palaceName, `${hexagram.name} 的伏神不是从本宫借的`);
+      // 伏神所在爻位必须是本宫首卦里那一亲的位置，且飞神就是本卦同爻位那一爻
+      assert.equal(pair.feishen, jf.lines[pair.hushen.position - 1], `${hexagram.name} 的飞神没对上同爻位`);
+      assert.equal(pair.hushen.relative, relative);
+      if (pair.ambiguous) ambiguous += 1;
+    }
+  }
+  // 八纯卦六亲俱全，缺失只发生在本宫的其他七卦上；缺失数应与实际相符且不出现歧义
+  assert.equal(missing, found);
+  assert.equal(ambiguous, 0, '出现了同亲两爻同时缺失的歧义，本包的取法未处理这种情况');
+  assert.ok(missing > 0, '全量没有一例缺失，测试等于没跑');
+});
+
+test('断语遇不上卦时取伏神，并说清飞伏与出不出得来', () => {
+  // 找一卦使财运的妻财不上卦
+  let reading = null;
+  for (const [upper, lower] of [[5, 2], [2, 7], [4, 3], [6, 1]]) {
+    const candidate = buildReading(castByNumbers(upper, lower), { now: new Date(2026, 8, 29), question: '这单生意能赚钱吗' });
+    if (candidate.useGod && candidate.useGod.picked === null) { reading = candidate; break; }
+  }
+  assert.ok(reading, '没找到妻财不上卦的一卦');
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  assert.ok(/不上卦/.test(text), '没点明用神不上卦');
+  assert.ok(/增删卜易/.test(text), '没引《增删卜易》飞伏神章');
+  assert.ok(/伏在\d爻之下/.test(text), '没说伏神伏在哪一爻');
+  assert.ok(/飞神/.test(text), '没点出飞神');
+  assert.match(text, /飞来生伏|伏去生飞|伏来克飞|飞来克伏|飞伏同气/, '没给飞伏生克的定名');
+
+  // 出不出得来：要么给结论并说凭哪条，要么明说缺哪一层，不许凭空断
+  assert.match(text, /出得来|终不得出|无从判/, '出伏一句都没有');
+  // 断语里提到的月建日辰条件是本包算得出的，出不来时必须交代还缺什么
+  if (/无从判/.test(text)) {
+    assert.ok(/旬空|月破/.test(text), '无从判时必须说明缺哪几项判据');
+  }
+
+  // 结构化字段也要带出来
+  assert.ok(Array.isArray(reading.useGod.hidden) && reading.useGod.hidden.length > 0, 'reading 没带伏神');
+  const fu = reading.useGod.hidden[0];
+  assert.equal(fu.relative, '妻财');
+  assert.ok(/^[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥][木火土金水]$/.test(fu.hushen), '伏神干支格式不对');
+  assert.ok(fu.flying, '没给飞伏关系名');
+  // 出伏结论得是结构化字段，不只是正文里的一句话：Agent 复述时要的是「出不出得来」本身。
+  assert.equal(fu.emerges && fu.emerges.key, '出得来', '伏神没给出伏结论');
+  assert.ok(text.includes(fu.emerges.text), '正文说的出伏结论与结构化字段对不上');
+  // 正文那段话是拼出来的，不该再塞进结构化字段里撑大响应
+  assert.equal(fu.sentence, undefined, 'sentence 只该进断语，不该留在 reading 里');
+});
+
+test('MCP 起卦把伏神一并带进 structuredContent', async () => {
+  // 断语正文里已经讲过一遍，Agent 复述「伏在哪、飞神是谁、出不出得来」时
+  // 不该再从一段话里去刨——这三个答案得是能直接取的字段。
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  let raw = '';
+  const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+  await handleMcpRequest({
+    response,
+    body: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'divination_cast',
+        arguments: { method: 'numbers', upper: 5, lower: 2, question: '这单生意能赚钱吗' },
+      },
+    },
+  });
+  const out = JSON.parse(raw).result;
+  const useGod = out.structuredContent.useGod;
+  assert.ok(useGod, 'structuredContent 里没有用神');
+  assert.equal(useGod.picked, null, '这一卦的妻财本该不上卦');
+  assert.ok(Array.isArray(useGod.hidden) && useGod.hidden.length === 1, 'MCP 没带伏神');
+  const fu = useGod.hidden[0];
+  assert.equal(fu.relative, '妻财');
+  assert.equal(fu.position, 5);
+  assert.equal(fu.hushen, '丙子水');
+  assert.equal(fu.feishen, '辛巳火');
+  assert.equal(fu.flying, '伏来克飞');
+  assert.equal(fu.emerges.key, '出得来');
+  // 断语正文说过的同一件事，两处必须对得上
+  assert.ok(out.content[0].text.includes(fu.emerges.text), '正文与 structuredContent 的出伏结论不一致');
+});
+
+test('伏神出伏条件只算能核验的那几条，其余明说没做', async () => {
+  // 《增删卜易》列「有用者六」与「不得出者五」，本包只有旺衰与日月生克可用。
+  // 旬空、月破、墓库、地支冲都不在——宁可明说无从判，不拿假条件糊弄。
+  const source = await readFile(new URL('../miniapp/node/divination.mjs', import.meta.url), 'utf8');
+  assert.ok(/旬空、月破、墓库与地支冲本包未做/.test(source), '没有交代哪几条出伏条件做不了');
+  assert.ok(/得月建生/.test(source) && /得日辰生/.test(source) && /得飞神生/.test(source), '可核验的出伏条件没实现');
+  // 无从判这一路必须真的走得到，不能是死代码
+  const jfModule = await import('../miniapp/node/jingfang.mjs');
+  const pair = jfModule.hiddenGod(jfModule.jingfang(HEXAGRAM_LIST.find((h) => h.name === '泽山咸')), '妻财');
+  assert.ok(pair, '取不到兑宫咸卦的妻财伏神');
+  assert.equal(pair.hushen.element, '木');
+  assert.equal(pair.feishen.element, '火', '咸卦二爻应是丙午火官鬼');
+});
+
+test('右栏用神一格：上了卦说在哪一爻，不上卦说伏在哪一爻', async () => {
+  // 伏神之前这格写死在「不上卦」三个字上，伏神取出来了它也不改。
+  // 把函数摘出来实跑，钉的是它吐什么字，不是它叫什么名字。
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function useGodFact(');
+  assert.ok(i >= 0, '客户端里找不到 useGodFact');
+  const src = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(src.length > 0, 'useGodFact 摘出来是空的');
+  const useGodFact = new Function(`${src}\nreturn useGodFact;`)();
+
+  const onGua = useGodFact({ present: ['官鬼'], absent: [], picked: { label: '二爻（卦中独一）', why: '卦中独一' }, hidden: [] });
+  assert.match(onGua, /取官鬼/, '上了卦却没说取哪一亲');
+  assert.match(onGua, /二爻/, '上了卦却没说在哪一爻');
+  assert.ok(!/不上卦/.test(onGua), '上了卦还说不上卦');
+
+  // 这一格正是本轮要修的那处：妻财不上卦，右栏得落到伏神上
+  const reading = buildReading(castByNumbers(5, 2), { now: new Date(2026, 8, 29), question: '这单生意能赚钱吗' });
+  assert.equal(reading.useGod.picked, null, '这一卦的妻财本该不上卦');
+  const offGua = useGodFact(reading.useGod);
+  assert.match(offGua, /不上卦/, '不上卦得说不上卦');
+  assert.match(offGua, /伏5爻/, '不上卦却没把伏神落在哪一爻说出来');
+  const fu = reading.useGod.hidden[0];
+  assert.ok(offGua.includes(fu.hushen), '右栏没带上伏神干支');
+  assert.ok(!/本宫首卦亦无/.test(offGua), '明明取到伏神却说本宫首卦亦无');
 });

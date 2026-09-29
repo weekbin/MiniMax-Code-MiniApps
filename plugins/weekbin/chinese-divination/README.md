@@ -78,8 +78,8 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神, the month's vitality, the four-derivation diagram, and the 消长 ring |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red, a 伏神 under its line in dashed small type; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), the month's vitality, the four-derivation diagram, and the 消长 ring |
 | 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
@@ -135,8 +135,10 @@ still works, but no topic will be recognised and the timing falls back to the �
 | `upper` / `lower` | integer 1–1e9 | Only for `numbers`: the upper and lower trigram numbers |
 
 Two blocks come back: `content[0].text` is prose written for the model, and `structuredContent` is
-for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `timing` /
-`disclaimer`). A real response:
+for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `useGod` /
+`timing` / `disclaimer`). `useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
+carries the 伏神 as `hidden` — `position`, `hushen`, `feishen`, `flying` and an `emerges` verdict —
+so a model never has to dig the answer back out of the prose. A real response:
 
 ```text
 【起法】数字起卦
@@ -454,11 +456,35 @@ still take the stronger or the one at 世/应 — and it also weighs the day bra
 tomb. This package has none of those inputs, so it does not invent a rule that looks complete and
 cannot be checked. "Nearest" is the plain distance in line positions.
 
-When no 用神 appears on the hexagram at all, tradition takes the **伏神** from the palace's first
-hexagram and reads it together with the 飞神 and whether it can emerge. That is another layer this
-package has not built, so it says 「不上卦」 and names what is missing rather than inventing one.
+When no 用神 appears on the hexagram at all, tradition takes the **伏神** — and that is a real
+rule with a source, so this package follows it. 《增删卜易·飞伏神章第二十八》:
 
-On the diagram the 用神 line carries a **solid red badge**, against the outlined 世/应 boxes.
+> 若用神不现，即以日月为用神，倘日月非用神者，则于本宫首卦寻之，因本宫首卦，父子财官六亲
+> 俱全之故耳。
+
+The position rule that follows: find that 六亲 in the **palace's first hexagram**, and it hides
+under the same line of the hexagram you are reading. Whatever sits on that line is the **飞神**.
+The book works two examples and this package reproduces both to the character — 天风姤 with 妻财
+hidden under 亥水, and 天山遁 with 子孙 hidden under 辰土.
+
+How the two relate is named four ways, and each carries its own meaning:
+
+| Relation | Reading |
+| --- | --- |
+| 飞来生伏 | the line on top feeds the one below; favourable |
+| 伏去生飞 | the hidden one spends itself upward; effortful, slow return |
+| 伏来克飞 | the hidden one kicks the cover aside; sudden, and mostly bad |
+| 飞来克伏 | the line on top pins the one below; suppressed, cannot come out |
+
+Whether it can **emerge** is the follow-up question. 《增删卜易》 lists six conditions for usefulness
+and five for never emerging. This package can check **four** — 得月建生, 得日辰生, 于月建旺相, and
+得飞神生 or 得动爻生 — because those need only the month branch, the day branch and the moving lines.
+旬空, 月破, 墓库 and 地支冲 are not implemented, and the reading says so in as many words rather
+than inventing a rule that looks complete. When all four verifiable conditions come out empty it
+says 「无从判」 instead of guessing.
+
+On the diagram the 用神 line carries a **solid red badge**, against the outlined 世/应 boxes; a
+伏神 sits under its line as smaller dashed text reading 「伏 丙子水妻财」.
 
 **卦气 · 当令主卦 — which hexagram holds the month**
 
@@ -560,7 +586,11 @@ table, 归魂's and 游魂's flipped lines, the eight 纳支歌诀 clauses, bran
 trigram's polarity, the 六亲 mapping, 世应 pairing without overflow, the reading and diagram
 call sites, both lookup levels, and 主客 always straddling the two trigrams. 用神 is checked on
 four more counts: the nine topics against their sources, the line-picking order, 婚恋 refusing
-to pick for the querent, and 用神不上卦 refusing to invent. 95 passing.
+to pick for the querent, and 用神不上卦 refusing to invent. 伏神 is checked on five more: both
+worked examples reproduced character for character, all 64 hexagrams scanned so every missing 六亲
+resolves to exactly one 伏神 **from its own palace**, the four 飞伏 names, the emergence conditions
+naming what they cannot check, the right-hand panel reporting the line it hides under, and the
+MCP response carrying the same thing as a field. 101 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

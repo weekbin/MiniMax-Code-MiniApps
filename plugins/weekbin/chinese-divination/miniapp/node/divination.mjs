@@ -21,12 +21,12 @@ import {
   normalizeToSix,
   oppositeHexagram,
 } from './hexagrams.mjs';
-import { monthPillar, yearPillar, dayPillar, hourPillar, BRANCHES } from './almanac.mjs';
+import { monthPillar, yearPillar, dayPillar, hourPillar, BRANCHES, BRANCH_ELEMENTS } from './almanac.mjs';
 import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
-import { jingfang, pickUseGod, shiYingRelation, elementRelation, RELATIVE_MEANING } from './jingfang.mjs';
+import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation, RELATIVE_MEANING } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -518,10 +518,19 @@ export function buildReading(cast, options = {}) {
   // 用神：问何事取何亲。六亲摆在那里只是摆着，落到「你问的这一件事」上才算用上了。
   const movingPositions = movingLines.map((line) => line.position);
   const useGod = topic ? pickUseGod(jf, topic.god.relatives, movingPositions) : null;
+  const dayBranch = dayPillar(year, month, day).branch;
+  const calendar = {
+    monthElement,
+    dayElement: BRANCH_ELEMENTS[dayBranch],
+    movingElements: movingLines.map((line) => {
+      const na = jf.lines[line.position - 1];
+      return na ? na.element : body.element;
+    }),
+  };
   insights.push({
     title: '用神',
     text: useGod
-      ? useGodText(topic, useGod, jf, movingPositions)
+      ? useGodText(topic, useGod, jf, movingPositions, calendar)
       : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。',
   });
 
@@ -575,6 +584,18 @@ export function buildReading(cast, options = {}) {
           absent: useGod.absent,
           picked: useGod.picked,
           why: useGod.why,
+          // 用神不上卦时，从本宫首卦借来的伏神与压在它上面的飞神。
+          // sentence 只给断语正文用，不进结构化字段——那段话断语里已经整段说过了。
+          hidden: useGod && useGod.picked === null && useGod.present.length === 0
+            ? useGod.absent
+              .map((name) => {
+                const one = hiddenReading(name, jf, calendar);
+                if (!one) return null;
+                const { sentence, ...rest } = one;
+                return rest;
+              })
+              .filter(Boolean)
+            : [],
         }
       : null,
     verdict,
@@ -608,17 +629,101 @@ const GOD_SHI_TONE = Object.freeze({
   同气: '用神与世爻同气，所求之事与我的处境同一路数，顺势为宜。',
 });
 
+/**
+ * 伏神出不出得来。
+ *
+ * 《增删卜易》列「伏神有用者六」与「终不得出者五」，六条里本包只能核验四条——旺衰靠
+ * 月建、生扶靠月建与日辰，另有「得动爻生」一条本包有动爻，也算数。剩下「飞神空破休囚
+ * 墓绝」「日月动爻冲克飞神」要用旬空、月破、墓库与地支冲，本包一件都没有，**不硬凑**：
+ * 四条都落空时只说「无从判」，不假装断得了。
+ */
+const HIDDEN_GAP = '旬空、月破、墓库与地支冲本包未做，《增删卜易》其余两条出伏条件无从核验。';
+
+/**
+ * 伏神的取法、飞伏生克与出伏结论，收在一处。
+ * 断语正文与 reading.useGod.hidden 两边都从这里取，免得同一卦算出两个说法。
+ * @returns {{relative: string, position: number, hushen: string, feishen: string,
+ *   feishenRelative: string, flying: string, emerges: {key: string, text: string},
+ *   sentence: string} | null}
+ */
+function hiddenReading(name, jingfang, calendar) {
+  const pair = hiddenGod(jingfang, name);
+  if (!pair) return null;
+  const flying = flyingRelation(pair.hushen, pair.feishen);
+  const emerges = hiddenVerdict(
+    pair.hushen,
+    pair.feishen,
+    flying,
+    calendar.monthElement,
+    calendar.dayElement,
+    calendar.movingElements,
+  );
+  return {
+    relative: name,
+    position: pair.hushen.position,
+    hushen: `${pair.hushen.stem}${pair.hushen.branch}${pair.hushen.element}`,
+    feishen: `${pair.feishen.stem}${pair.feishen.branch}${pair.feishen.element}`,
+    feishenRelative: pair.feishen.relative,
+    flying: flying.key,
+    emerges,
+    sentence: `${name}伏在${pair.hushen.position}爻之下——本宫首卦${pair.palaceName}的${pair.hushen.stem}${pair.hushen.branch}${pair.hushen.element}在此位，`
+      + `压着它的${pair.feishen.stem}${pair.feishen.branch}${pair.feishen.element}${pair.feishen.relative}是飞神。`
+      + `${flying.text}。${emerges.text}`,
+  };
+}
+
+/** 伏神那一整句：取自本宫首卦，飞伏生克 + 出不出得来。 */
+function hiddenText(god, jingfang, calendar) {
+  const found = [];
+  for (const name of god.absent) {
+    const one = hiddenReading(name, jingfang, calendar);
+    if (!one) {
+      found.push(`${name}在本宫首卦里也寻不到`);
+      continue;
+    }
+    found.push(one.sentence);
+  }
+  return `按《增删卜易·飞伏神章》从本宫首卦取伏神：${found.join(' ')}`;
+}
+
+function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, movingElements) {
+  const good = [];
+  if (generates(monthElement, hushen.element)) good.push('得月建生');
+  if (generates(dayElement, hushen.element)) good.push('得日辰生');
+  if (vitality(hushen.element, monthElement).tone === 'strong' || vitality(hushen.element, monthElement).tone === 'good') {
+    good.push(`于月建${vitality(hushen.element, monthElement).key}`);
+  }
+  if (flying.key === '飞来生伏') good.push('得飞神生');
+  if (movingElements.some((element) => generates(element, hushen.element))) good.push('得动爻生');
+
+  const bad = [];
+  if (overcomes(monthElement, hushen.element) || overcomes(dayElement, hushen.element)) {
+    bad.push('被月建或日辰克');
+  }
+  if (['休', '囚', '死'].includes(vitality(hushen.element, monthElement).key)) {
+    bad.push(`于月建${vitality(hushen.element, monthElement).key}，休囚无气`);
+  }
+  if (overcomes(feishen.element, hushen.element)
+    && ['strong', 'good'].includes(vitality(feishen.element, monthElement).tone)) {
+    bad.push('被旺相的飞神克害');
+  }
+
+  if (good.length > 0) return { key: '出得来', text: `伏神${good.join('、')}，出得来，无用亦为有用。` };
+  if (bad.length > 0) return { key: '出不来', text: `伏神${bad.join('、')}，终不得出，虽有如无。${HIDDEN_GAP}` };
+  return { key: '无从判', text: `日月既不生伏神、也不克伏神，四条可核验的条件都落空；${HIDDEN_GAP}` };
+}
+
 /** 用神那一段。候选不止一亲时只各报所在，不替求测者择。 */
-function useGodText(topic, god, jingfang, movingPositions) {
+function useGodText(topic, god, jingfang, movingPositions, calendar) {
   const moving = new Set(movingPositions);
   const where = (name) => god.all.filter((line) => line.relative === name)
     .map((line) => `${line.label}${moving.has(line.position) ? '（动）' : ''}`)
     .join('、');
   const head = `所问为${topic.label}，${topic.god.reason}`;
 
-  // 一亲都不上卦：传统要取伏神连带飞神再判，属另一层。如实说明，不硬编。
+  // 一亲都不上卦：传统从本宫首卦取伏神，连带飞神与出不出得来一并断。
   if (!god.picked && god.present.length === 0) {
-    return `${head}卦中${god.relatives.join('、')}一亲也不见，属用神不上卦。传统要从本宫首卦取伏神、连带飞神与出伏一并再判，本包暂未做到这一层，只把「不上卦」摆在这里。`;
+    return `${head}卦中${god.relatives.join('、')}一亲也不见，属用神不上卦。${hiddenText(god, jingfang, calendar)}`;
   }
 
   // 候选不止一亲：婚恋分男女（byGender），本包不认得求测者性别；疾病是病症与医药

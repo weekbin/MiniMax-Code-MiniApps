@@ -302,6 +302,66 @@ export function pickUseGod(jingfang, relatives, movingPositions = []) {
   return Object.freeze({ relatives, present, absent, picked, all, why });
 }
 
+/**
+ * 伏神：用神不上卦时，从本宫首卦借来压在某一爻之下。
+ *
+ * 出处为《增删卜易·飞伏神章第二十八》：「若用神不现，即以日月为用神，倘日月非用神者，
+ * 则于本宫首卦寻之，因本宫首卦，父子财官六亲俱全之故耳。」位置也随之定死：**本宫首卦
+ * 里那一亲在第几爻，就伏在本卦的第几爻之下**；本卦同爻位那一爻压着它，就是飞神。
+ *
+ * 书上的两个例证，本文件的测试逐条对：
+ *   天风姤（乾宫一世）占妻财——姤卦六爻无寅卯，乾为天二爻是妻财寅木，故寅木伏于
+ *     姤卦二爻亥水之下，亥水为飞神；亥水生寅木，是「飞来生伏得长生」，作吉断。
+ *   天山遁（乾宫二世）占子孙——遁卦无亥子，乾为天初爻是子水子孙，故子水伏于遁卦
+ *     初爻辰土之下，辰土为飞神；辰土克子水，是「飞来克伏遭克害」，伏神受制，作凶推。
+ *
+ * 另有一条《火珠林》更严的版本「本宫财官伏世下方可取，不伏世下则不取」——本包不取：
+ * 它会把大量正常局面直接判成无用神。
+ *
+ * @param {Jingfang} jingfang
+ * @param {string} relative 缺的那一亲
+ * @returns {{
+ *   hushen: JingfangLine,
+ *   feishen: JingfangLine,
+ *   palaceName: string,
+ *   ambiguous: boolean,
+ * } | null}
+ */
+export function hiddenGod(hexagramJingfang, relative) {
+  const palace = PALACES.find((item) => item.name === hexagramJingfang.palaceName);
+  if (!palace) return null;
+  // 参数不能也叫 jingfang：会把这层遮蔽掉，函数内就再也调不到它。
+  const palaceJingfang = jingfang(hexagramByKey(TRIGRAMS[palace.key].lines.repeat(2)));
+  const candidates = palaceJingfang.lines.filter((line) => line.relative === relative);
+  if (candidates.length === 0) return null;
+  const hushen = candidates[0];
+  return Object.freeze({
+    hushen,
+    feishen: hexagramJingfang.lines[hushen.position - 1],
+    palaceName: palace.name,
+    // 八纯卦里同一亲占两爻的情况（乾宫父母在三、六爻）。测试量过六十四卦全量：
+    // 缺失六亲的实例与伏神爻一一对应，从没碰上过同亲两爻同时缺失，所以不必另设挑法。
+    ambiguous: candidates.length > 1,
+  });
+}
+
+/** 飞伏生克，四种关系各有定名，出处同《增删卜易》飞伏神章。 */
+export function flyingRelation(hushen, feishen) {
+  const from = feishen.element;
+  const to = hushen.element;
+  if (from === to) return { key: '比和', text: '飞伏同气，伏神不另得生也另不得泄', good: null };
+  if (generatesTo(from, to)) {
+    return { key: '飞来生伏', text: '飞来生伏得长生：压着它的那一爻反倒生它，所求之事虽不在明面，底下是被养着的', good: true };
+  }
+  if (generatesTo(to, from)) {
+    return { key: '伏去生飞', text: '伏去生飞是泄气：伏神一味往上供，耗神费力，付出多而收成迟', good: false };
+  }
+  if (overcomesTo(to, from)) {
+    return { key: '伏来克飞', text: '伏来克飞是出暴：伏神一脚踹开压着它的爻，事情应得突然而急，多为不吉之兆', good: false };
+  }
+  return { key: '飞来克伏', text: '飞来克伏是反伤：飞神死死压住伏神，所求之事受压制，难以出头', good: false };
+}
+
 /** 任两个五行之间的关系，说人话用。from 生 to 为「生」。 */
 export function elementRelation(from, to) {
   if (from === to) return '同气';
