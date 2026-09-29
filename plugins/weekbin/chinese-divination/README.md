@@ -79,7 +79,7 @@ every single time.
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, the 动爻's 爻辞 with its 象传 quoted under the 本卦; and, on the eighteen 六冲/六合 hexagrams, three thin arcs in the margin joining 初四、二五、三六 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
 | 断语 | seventeen to twenty sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
@@ -446,6 +446,35 @@ fixes the identity, and 世 and 应 each get a red box. The reading gains a 六�
 palace and generation, who the 世 and 应 lines are, how they stand to each other, and which 亲 the
 moving line falls on — with what each 亲 covers. The 变卦 gets its own palace and generation; it never
 inherits the 本卦's.
+
+**八宫名单 — the eight slots of one palace**
+
+The hard part of the 京房 layer is not which palace you are in; it is the **order** of the eight
+hexagrams inside that palace. 一世 through 五世 walk the 世 line up one line at a time, which reads
+like a ladder — and then 游魂 and 归魂 walk it back down (世 on the fourth and third line) while still
+being called 世. Written out as "离宫一世卦", nobody would guess the ladder has two rungs that run
+backwards.
+
+So all eight are laid out in one row, ahead of the four derivations — settle which palace and which
+rung you are on before looking at how 梅花 derives anything. Each slot is a small hexagram marking the
+lines it flips relative to the palace's pure hexagram, in 朱砂. The 朱砂 box is your hexagram, and the
+generation is written under it. 游魂 and 归魂 have their generation in bold: they are the two
+exceptions on that ladder, and without it the row reads as six of a kind.
+
+Your own hexagram can itself be the 游魂 or the 归魂 — sixteen of the sixty-four, a quarter of all
+casts. That slot carries both marks at once, and 朱砂 wins over the bold: box and text both 朱砂, so
+you can tell at a glance that it is yours *and* that yours is one of the exceptions.
+
+No 世 line is marked on the small hexagrams. The 世 is already boxed in 朱砂 on the hexagram to the
+left, and marking it again here would be a second account for the reader to reconcile. This row is
+about order only.
+
+The row is not a copied table. It is derived from the palace's pure hexagram by each generation's
+flips, so it comes out of the same derivation as the palace and generation themselves — which is why
+every slot's name and position matches the received ordering, all sixty-four of them. The whole roster,
+including each slot's flipped lines, is frozen: the eight hexagrams of one palace read the same array,
+so editing it after looking at one palace's row would silently feed the edit to every other hexagram
+in that palace, with nothing on screen to show where it came from.
 
 **用神 — which line your question falls on**
 
@@ -1060,8 +1089,25 @@ The margin arcs are checked too: that they are drawn only after the diagram is o
 row heights while the node is still detached yields an empty picture), that they take their width from
 the gutter rather than out of the hexagram, that the arc's reach still fits inside that gutter, that
 they are muted and never red, that they do not intercept clicks, and that each one names its two
-branches. The client tests read the source, since there is no DOM in the test runner.
-166 passing.
+branches. The 八宫名单 is checked too, on both sides. Ten checks on the data: the eight slots sit in generation
+order and their names match the received ordering palace by palace (each slot's name and key must be
+the same hexagram); the 世 walks up one line at a time from 一世 to 五世 while the flipped lines grow
+by one each step; the 游魂 slot does not flip the fourth line; the 归魂 slot flips only the fifth;
+every slot's 世 and 应 sit three apart; all sixty-four hexagrams find their own slot and agree on 世 and
+应 with the hexagram's own reading; exactly sixteen hexagrams are 游魂 or 归魂 (that slot carries two
+marks when it is your own hexagram, which is what the client's "red wins over bold" rule is there
+for); and the whole roster including each slot's flipped lines is frozen, since the eight hexagrams
+of one palace read the same array. The roster is also checked not to be a second copied table — it
+must be the one that came out of the same derivation as the palace and generation themselves. Eight
+checks on the page: the row is really inserted rather than a function that is never called, it sits
+ahead of the four derivations, the heading names the palace and its element, the caption explains
+where 游 and 归 come from, the small-hexagram styles are not scoped back under .derive (doing that
+would drop the red flipped lines from the eight slots), the derivation diagram's own arrows and row
+spacing stay scoped under .derive, the red self-slot rule is written after the bold 游归 rule at the
+same specificity, and the eight slots mark flipped lines but not the 世 (the hexagram to the left
+already boxes it in red).
+The client tests read the source, since there is no DOM in the test runner.
+174 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

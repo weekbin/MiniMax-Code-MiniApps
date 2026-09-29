@@ -160,8 +160,11 @@ function flip(key, positions) {
  * 任一情况都在这里抛，不静默出错。
  */
 const BY_HEXAGRAM_KEY = new Map();
+/** 每宫的八卦，按世次先后排好：卦盘上那一列同宫名单就是从这里取的。 */
+const PALACE_ROSTERS = new Map();
 for (const palace of PALACES) {
   const base = TRIGRAMS[palace.key].lines.repeat(2);
+  const roster = [];
   for (const stage of STAGES) {
     const hexagram = hexagramByKey(flip(base, stage.flips));
     const existing = BY_HEXAGRAM_KEY.get(hexagram.key);
@@ -169,7 +172,18 @@ for (const palace of PALACES) {
       throw new Error(`八宫推导撞车：${hexagram.name} 同时算进${existing.palace.name}与${palace.name}`);
     }
     BY_HEXAGRAM_KEY.set(hexagram.key, { palace, stage });
+    roster.push(Object.freeze({
+      stage: stage.name,
+      name: hexagram.name,
+      key: hexagram.key,
+      // 相对本宫纯卦变过哪几爻。游魂是五世卦第四爻复本来的，第四爻不在其中；
+      // 归魂只变第五爻。正因为这两个反着来，「游」「归」两个字才不是随口起的。
+      flips: Object.freeze([...stage.flips]),
+      shi: stage.shi,
+      ying: yingOf(stage.shi),
+    }));
   }
+  PALACE_ROSTERS.set(palace.key, Object.freeze(roster));
 }
 if (BY_HEXAGRAM_KEY.size !== HEXAGRAM_LIST.length) {
   throw new Error(`八宫推导只得到 ${BY_HEXAGRAM_KEY.size} 卦，应为 ${HEXAGRAM_LIST.length} 卦`);
@@ -264,8 +278,24 @@ export function jingfang(hexagram) {
     shi: stage.shi,
     ying,
     stageMeaning: stage.meaning,
+    // 同宫那八卦。卦盘上那一列小卦就是它，每一格标着相对本宫纯卦变过哪几爻。
+    roster: PALACE_ROSTERS.get(palace.key),
     lines: Object.freeze(lines),
   });
+}
+
+/**
+ * 同宫那八卦，按世次先后排好。
+ *
+ * 拿本宫纯卦作底，按各世次的变爻推出来，所以这一列与宫、世次是同一套推导出来的，
+ * 不是另抄的一张表。卦名、变爻、世应都在里面，够卦盘画一整列小卦。
+ *
+ * @param {{ key: string, name?: string }} hexagram
+ * @returns {ReadonlyArray<{ stage: string, name: string, key: string,
+ *   flips: readonly number[], shi: number, ying: number }>}
+ */
+export function palaceRoster(hexagram) {
+  return PALACE_ROSTERS.get(palaceEntry(hexagram).palace.key);
 }
 
 /**

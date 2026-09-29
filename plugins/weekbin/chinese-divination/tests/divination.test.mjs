@@ -1199,6 +1199,98 @@ test('四卦推导图把互、变、错、综的取法画出来', async () => {
   }
 });
 
+test('八宫那一列排在四卦推导前头，八格按世次一路排下来', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  assert.ok(/\.palace \{/.test(client), '八宫名单没有样式');
+  assert.ok(/function palaceBlock\(jingfang\)/.test(client), '没有八宫名单的绘制函数');
+  // 钉在调用点，不是钉在符号存在。函数写死了不调用照样能过。
+  assert.ok(
+    /if \(palace\) \{[\s\S]{0,200}?box\.innerHTML = palace;[\s\S]{0,80}?right\.append\(box\)/.test(client),
+    '解读页没有真正把八宫名单插进页面',
+  );
+  // 次序：先认清自己在哪一宫的哪一级，再看梅花那四种推法。排反了读的人就得回头找。
+  // 找的是调用点那一行，不是函数定义——定义在文件里排得更前，
+  // 拿定义去比顺序，判出来的先后跟页面上真正的先后不是一回事。
+  const palaceAt = client.indexOf('const palace = palaceBlock(reading.jingfang)');
+  const deriveAt = client.indexOf('const derive = deriveBlock(reading)');
+  assert.ok(palaceAt > 0, '解读页没有把京房数据交给八宫名单绘制');
+  assert.ok(deriveAt > 0, '解读页没有画四卦推导');
+  assert.ok(palaceAt < deriveAt, '八宫名单排在四卦推导后头了');
+  // 名单是跟着卦走的：拿的是本卦那一宫的名单，不是写死某八格
+  assert.ok(/const roster = jingfang && jingfang\.roster;/.test(client), '八宫名单没有读同宫名单');
+  assert.ok(/if \(!roster \|\| roster\.length === 0\) return null;/.test(client), '八宫名单没有做空值保护');
+  // 抬头写清宫与五行，看图的人知道自己站在哪
+  assert.ok(/escapeHtml\(jingfang\.palaceName\)/.test(client), '八宫抬头没写宫名');
+  assert.ok(/escapeHtml\(jingfang\.element\)/.test(client), '八宫抬头没写五行');
+  // 名次照名次原样写，图注里「游」「归」怎么来的也说了，别让那句话空着
+  assert.ok(/游魂退到四爻、归魂退到三爻/.test(client), '八宫图注没解释游魂归魂为什么叫这个名字');
+  assert.ok(/一世到五世世爻逐爻上移/.test(client), '八宫图注没说明世次怎么爬');
+});
+
+test('八宫与四卦推导共用小卦样式，没被 .derive 又 scope 回去', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  // 这一组是 miniGua() 画出来的小卦，两处都在用。挂回 .derive 下面，
+  // 八宫那八格就只剩默认样式：没有朱砂变爻，没有加粗游归，图注说的话全落空。
+  // 把样式表里所有选择器原样收下来，再一条条问「有没有这一条」。
+  // 不能只找「以 X 结尾」的那条规则——`.palace .unit.odd .unit-tag` 也以 `.unit-tag` 结尾，
+  // 先撞上它，就永远轮不到真正那条 `.unit-tag`。
+  const selectors = [...client.matchAll(/^\s*([^\n{]+?)\s*\{/gm)].map((m) => m[1].trim());
+  for (const selector of ['.derive-head', '.unit', '.unit-name', '.unit-tag', '.mini-gua', '.mini-line', '.mini-line.touched i']) {
+    assert.ok(selectors.includes(selector), `${selector} 这条规则没了，八宫那八格会掉样式`);
+    assert.ok(!selectors.includes(`.derive ${selector}`), `${selector} 被挂回 .derive 底下了`);
+  }
+  // 反过来，推导图自己的布局（箭头、那一行）就该留在 .derive 里，
+  // 放出去会让八宫那块也去吃本该只有箭头才有的排版
+  for (const selector of ['.derive .arrow', '.derive .derive-row', '.derive .derive-body']) {
+    assert.ok(selectors.includes(selector), `${selector} 这条规则没了`);
+    assert.ok(!selectors.includes(selector.replace('.derive ', '')), `${selector} 被提出去了，八宫那块会跟着吃这条排版`);
+  }
+  // 变过的爻染朱砂这条，八宫那八格靠它才看得出次序
+  const touched = /\.mini-line\.touched i \{([\s\S]*?)\}/.exec(client);
+  assert.ok(touched, '小卦没有变爻的样式');
+  assert.ok(/var\(--seal\)/.test(touched[1]), '变过的爻没有染朱砂');
+});
+
+test('本卦那一格的朱砂压得过游魂归魂的加粗', async () => {
+  // 十六卦的本卦自身就落在游魂或归魂上，那一格同时挂「就是你」和「这是例外级」两个标记。
+  // 两条规则特异性相同时按书写顺序决胜，朱砂那条必须写在后面，
+  // 否则本卦恰好是游归时只剩个框、字反倒是灰的，看着像别人的一格。
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const selfAt = client.indexOf('.palace .unit.self .unit-tag');
+  const oddAt = client.indexOf('.palace .unit.odd .unit-tag');
+  assert.ok(oddAt > 0, '游魂归魂那两格没有加粗');
+  assert.ok(selfAt > 0, '本卦那一格的世次没有染朱砂');
+  assert.ok(selfAt > oddAt, '朱砂那条压在游归加粗前面，本卦落在游魂归魂上时字就成灰的了');
+  // 两条得是同一个特异性（各三个类），否则先后顺序根本不起作用
+  assert.ok(
+    /\.palace \.unit\.odd \.unit-tag \{[\s\S]{0,400}?\.palace \.unit\.self \.unit-tag \{/.test(client),
+    '这两条不是同级，先写后写都一样',
+  );
+  // 框是朱砂的，格子上确实同时挂了两个标记
+  assert.ok(/\.palace \.unit\.self \{[\s\S]*?border: 1px solid var\(--seal\)/.test(client),
+    '本卦那一格没有朱砂框');
+  const start = client.indexOf('function palaceBlock(jingfang)');
+  const block = client.slice(start, client.indexOf('\n      function ', start + 10));
+  assert.ok(/const isHere = slot\.stage === jingfang\.stage;/.test(block), '本卦那格没按世次认');
+  assert.ok(/const isOdd = slot\.stage === '游魂' \|\| slot\.stage === '归魂';/.test(block),
+    '游魂归魂两格没认出来');
+  assert.ok(/'self self-unit'/.test(block) && /'odd'/.test(block), '两个标记没有一起挂到格子上');
+});
+
+test('八宫那八格只标变过的爻，不标世爻', async () => {
+  // 世爻在左边卦盘上已经朱砂框出来了，这里再标一遍是两份要人核对的账。
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const start = client.indexOf('function palaceBlock(jingfang)');
+  const block = client.slice(start, client.indexOf('\n      function ', start + 10));
+  assert.ok(block, '找不到八宫名单的绘制函数');
+  assert.ok(/miniGua\(slot\.key, slot\.flips\)/.test(block), '八宫那八格没有把变过的爻传给小卦');
+  assert.ok(!block.includes('slot.shi'), '八宫那八格不该再标世爻，左边卦盘上已经标了');
+  // 顺带盯着四卦推导那一格没被改：它传的是 null，意思是本卦不标任何爻
+  const deriveAt = client.indexOf('function deriveBlock(reading)');
+  const derive = client.slice(deriveAt, client.indexOf('\n      function ', deriveAt + 10));
+  assert.ok(/miniGua\(base\.key, null\)/.test(derive), '四卦推导的本卦那格被误标了爻');
+});
+
 test('推导图的四卦，取法本身经得起核', () => {
   // 图只是把既有结果画出来，所以要保证画出去的与算出来的一致：互卦取二三四、
   // 三四五，错卦全反，综卦倒置——这四条若有一条画错，图就在骗人。
@@ -1333,6 +1425,100 @@ test('归魂是只变第五爻，不是变第四、五爻', async () => {
   // 游魂（晋）则要变初、二、三、五爻
   const you = 乾宫.find((h) => palaceOf(h).stage.name === '游魂');
   assert.deepEqual(differ(you.key), [1, 2, 3, 5], '游魂相对本宫被变的爻位不对');
+});
+
+test('同宫八卦按世次排成一列，卦名与次序跟传世卦序逐宫对得上', async () => {
+  // 卦盘上那一列小卦就是这一列。BY_HEXAGRAM_KEY 是按卦反查宫的表，没排过序；
+  // 这一列有次序，次序本身就是「一世到五世、游魂归魂」——排错或抄错，看图的人就照错的读。
+  const { jingfang, palaceRoster } = await import('../miniapp/node/jingfang.mjs');
+  const expected = {
+    乾: ['乾为天', '天风姤', '天山遁', '天地否', '风地观', '山地剥', '火地晋', '火天大有'],
+    兑: ['兑为泽', '泽水困', '泽地萃', '泽山咸', '水山蹇', '地山谦', '雷山小过', '雷泽归妹'],
+    离: ['离为火', '火山旅', '火风鼎', '火水未济', '山水蒙', '风水涣', '天水讼', '天火同人'],
+    震: ['震为雷', '雷地豫', '雷水解', '雷风恒', '地风升', '水风井', '泽风大过', '泽雷随'],
+    巽: ['巽为风', '风天小畜', '风火家人', '风雷益', '天雷无妄', '火雷噬嗑', '山雷颐', '山风蛊'],
+    坎: ['坎为水', '水泽节', '水雷屯', '水火既济', '泽火革', '雷火丰', '地火明夷', '地水师'],
+    艮: ['艮为山', '山火贲', '山天大畜', '山泽损', '火泽睽', '天泽履', '风泽中孚', '风山渐'],
+    坤: ['坤为地', '地雷复', '地泽临', '地天泰', '雷天大壮', '泽天夬', '水天需', '水地比'],
+  };
+  const stageNames = ['本宫', '一世', '二世', '三世', '四世', '五世', '游魂', '归魂'];
+  for (const [trigram, names] of Object.entries(expected)) {
+    const base = HEXAGRAM_LIST.find((h) => h.name === names[0]);
+    const roster = palaceRoster(base);
+    assert.equal(roster.length, 8, `${trigram}宫不是八格`);
+    assert.deepEqual(roster.map((s) => s.stage), stageNames, `${trigram}宫的世次次序不对`);
+    assert.deepEqual(roster.map((s) => s.name), names, `${trigram}宫这一列跟传世卦序对不上`);
+    // 一格里卦名与卦象必须指同一个卦，别拿名字配错卦象
+    for (const slot of roster) {
+      assert.equal(slot.key, hexagramByOrder(HEXAGRAM_LIST.find((h) => h.name === slot.name).order).key,
+        `${trigram}宫${slot.stage}那格的卦名与卦象不是一卦`);
+    }
+  }
+});
+
+test('游魂那格不含第四爻、归魂只变第五爻，「游」「归」不是随口起的', async () => {
+  // 递进到五世之后忽然要往回退，这一退就是这两个名字的全部由来。
+  // 名次图注上写着这句话，所以它得是真的：变爻错一爻，「游」「归」两个字就空了。
+  const { jingfang, palaceRoster } = await import('../miniapp/node/jingfang.mjs');
+  for (const palace of ['乾宫', '兑宫', '离宫', '震宫', '巽宫', '坎宫', '艮宫', '坤宫']) {
+    const base = HEXAGRAM_LIST.find((h) => {
+      const j = jingfang(h);
+      return j.palaceName === palace && j.stage === '本宫';
+    });
+    const [ben, yi, er, san, si, wu, you, gui] = palaceRoster(base);
+    // 一世到五世：世次一级一级往上爬，变过的爻一级一级往上加
+    assert.deepEqual([ben, yi, er, san, si, wu].map((s) => s.shi), [6, 1, 2, 3, 4, 5],
+      `${palace}世次没有逐爻上移`);
+    assert.deepEqual([yi, er, san, si, wu].map((s) => s.flips.length), [1, 2, 3, 4, 5],
+      `${palace}一到五世的变爻数不对`);
+    // 游魂：外卦复本，第四爻退回去了，所以变爻里没有第四爻；世爻跟着退到四爻
+    assert.equal(you.stage, '游魂', `${palace}第七格不是游魂`);
+    assert.ok(!you.flips.includes(4), `${palace}游魂的变爻里混进了第四爻`);
+    assert.deepEqual(you.flips, [1, 2, 3, 5], `${palace}游魂的变爻不对`);
+    assert.equal(you.shi, 4, `${palace}游魂的世爻没退到四爻`);
+    // 归魂：下三爻收回来，净效果只剩第五爻被变；世爻退到三爻
+    assert.equal(gui.stage, '归魂', `${palace}第八格不是归魂`);
+    assert.deepEqual(gui.flips, [5], `${palace}归魂不是只变第五爻`);
+    assert.equal(gui.shi, 3, `${palace}归魂的世爻没退到三爻`);
+    // 世应相隔三位，这是六爻通例
+    for (const slot of palaceRoster(base)) {
+      assert.equal(slot.ying, slot.shi > 3 ? slot.shi - 3 : slot.shi + 3,
+        `${palace}${slot.stage}的世应相隔不是三位`);
+    }
+  }
+});
+
+test('六十四卦在同宫名单里都找得到自己那一格，两处世应一致', async () => {
+  const { jingfang, palaceRoster } = await import('../miniapp/node/jingfang.mjs');
+  for (const h of HEXAGRAM_LIST) {
+    const j = jingfang(h);
+    assert.equal(j.roster, palaceRoster(h), `${h.name}：两条取法拿到的不是同一份名单`);
+    const slot = j.roster.find((s) => s.key === h.key);
+    assert.ok(slot, `${h.name}在本宫名单里找不到自己`);
+    assert.equal(slot.stage, j.stage, `${h.name}那一格的世次对不上`);
+    assert.equal(slot.shi, j.shi, `${h.name}那一格的世爻对不上`);
+    assert.equal(slot.ying, j.ying, `${h.name}那一格的应爻对不上`);
+  }
+  // 游魂归魂每宫各一，十六卦。这一格在本卦上会同时挂「就是你」与「这是例外级」两个标记，
+  // 客户端那条朱砂压过加粗的规则就是为它们准备的，所以数目得钉住。
+  const odd = HEXAGRAM_LIST.filter((h) => ['游魂', '归魂'].includes(jingfang(h).stage));
+  assert.equal(odd.length, 16, '游魂归魂不是十六卦');
+});
+
+test('同宫名单是冻结的：它被这一宫所有卦共用，谁都不能就地改坏', async () => {
+  // 同一宫的八个卦读出来的是同一份数组。不冻的话，看过一次八宫图改了它，
+  // 后面这一宫别的卦读到的就是被改过的——而且从哪看出来的都看不出来。
+  const { jingfang, palaceRoster } = await import('../miniapp/node/jingfang.mjs');
+  const base = HEXAGRAM_LIST.find((h) => {
+    const j = jingfang(h);
+    return j.palaceName === '离宫' && j.stage === '本宫';
+  });
+  const roster = palaceRoster(base);
+  assert.ok(Object.isFrozen(roster), '名单本身没冻');
+  assert.ok(Object.isFrozen(roster[0]), '单格没冻');
+  assert.ok(Object.isFrozen(roster[0].flips), '变爻数组没冻');
+  assert.throws(() => { 'use strict'; roster[0].name = '别的卦'; }, TypeError, '名单竟然能改');
+  assert.equal(palaceRoster(base)[0].name, '离为火', '改坏了还在往外发');
 });
 
 test('纳支照纳支歌诀，八纯卦内外首支逐条对上', async () => {

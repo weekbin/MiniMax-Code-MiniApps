@@ -249,6 +249,10 @@
         color: var(--text);
       }
 
+      /* ---------- 小卦与图注（八宫名单与四卦推导共用）----------
+         .unit / .mini-gua 这组是 miniGua() 画出来的小卦：六线一根一根摆着，
+         下面挂卦名与图注。八宫那一列同宫名单与四卦推导用的是同一套，提到这里共用。 */
+
       /* ---------- 四卦推导 ----------
          互、变、错、综四种取法，纯文字说一遍是「互卦为XX」四个字，
          看不出怎么互出来的。这里把本卦摆在左边，四种取法的结果摆在右边，
@@ -262,7 +266,7 @@
         background: var(--surface-sunken, rgba(0, 0, 0, 0.015));
       }
 
-      .derive .derive-head {
+      .derive-head {
         font-size: 12px;
         color: var(--text-muted);
         text-align: center;
@@ -285,7 +289,7 @@
         gap: 4px;
       }
 
-      .derive .derive-unit {
+      .unit {
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -293,12 +297,59 @@
         min-width: 46px;
       }
 
-      .derive .unit-name {
+      /* ---------- 八宫名单 ----------
+         一宫八卦按世次先后摆成一列，标出每一卦相对本宫纯卦变过哪几爻。
+         这八格是京房那一层的全貌：世次怎么爬、游魂归魂怎么退，一张图看完了。 */
+      .palace {
+        margin-top: 16px;
+        padding: 14px 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-sunken, rgba(0, 0, 0, 0.015));
+      }
+
+      .palace .palace-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 2px;
+      }
+
+      /* 本卦那一格：朱砂只给「就是你这一卦」，不给另外七个——宫是一处，不是吉凶。 */
+      .palace .unit.self {
+        padding: 4px 3px 3px;
+        border: 1px solid var(--seal);
+        border-radius: 7px;
+      }
+
+      /* 世次名。游魂归魂这两格是梯子上的两个例外，标出来才不会看成六个一串。 */
+      .palace .unit.odd .unit-tag {
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      /* 这条必须压在上一条下面，且选择器同样要三个类。
+         本卦自己就有落在游魂、归魂上的（十六卦，占四分之一），那一格同时挂 self 与 odd，
+         两条特异性相同时按书写顺序决胜——朱砂是「就是你这一卦」，比「这是例外级」更要紧，
+         少了它，那一卦就只剩个框、字反倒是灰的。 */
+      .palace .unit.self .unit-tag {
+        color: var(--seal);
+      }
+
+      .palace .palace-note {
+        margin: 12px 0 0;
+        font-size: 11px;
+        line-height: 1.7;
+        color: var(--text-muted);
+        text-align: center;
+      }
+
+      .unit-name {
         font-size: 12px;
         color: var(--text);
       }
 
-      .derive .unit-tag {
+      .unit-tag {
         font-size: 10px;
         color: var(--text-muted);
       }
@@ -325,41 +376,41 @@
         display: block;
       }
 
-      .derive .mini-gua {
+      .mini-gua {
         display: flex;
         flex-direction: column;
         gap: 3px;
         width: 42px;
       }
 
-      .derive .mini-line {
+      .mini-line {
         display: flex;
         gap: 4px;
         height: 4px;
       }
 
-      .derive .mini-line i {
+      .mini-line i {
         display: block;
         height: 4px;
         border-radius: 2px;
         background: var(--text);
       }
 
-      .derive .mini-line.yin i {
+      .mini-line.yin i {
         width: 44%;
         background: var(--border-strong);
       }
 
-      .derive .mini-line.yang i {
+      .mini-line.yang i {
         flex: 1;
       }
 
       /* 参与这一步取法的爻，染朱砂，一眼看出「动的是这几爻」 */
-      .derive .mini-line.touched i {
+      .mini-line.touched i {
         background: var(--seal);
       }
 
-      .derive .self-unit .unit-name {
+      .self-unit .unit-name {
         font-weight: 600;
       }
 
@@ -2204,7 +2255,7 @@
             const isChanged = kind === 'changed';
             return (
               arrow(label, how) +
-              `<div class="derive-unit">` +
+              `<div class="unit">` +
               miniGua(target.key, isChanged ? touched : null) +
               `<span class="unit-name">${escapeHtml(target.name)}</span>` +
               `<span class="unit-tag">${escapeHtml(label)}</span>` +
@@ -2218,7 +2269,7 @@
           `<div class="derive-head">本卦之外，四种取法各有所据</div>` +
           `<div class="derive-body">` +
           `<div class="derive-row">` +
-          `<div class="derive-unit self-unit">` +
+          `<div class="unit self-unit">` +
           miniGua(base.key, null) +
           `<span class="unit-name">${escapeHtml(base.name)}</span>` +
           `<span class="unit-tag">本卦</span>` +
@@ -2226,6 +2277,52 @@
           `</div>` +
           `<div class="derive-row">${units}</div>` +
           `</div>` +
+          `</div>`
+        );
+      }
+
+      /**
+       * 一宫八卦，按世次先后摆成一列。
+       *
+       * 京房这一层最难记的不是「我在哪个宫」，是那一宫里八卦的次序：一世到五世
+       * 世爻逐爻上移，看着像一架梯子；游魂、归魂两个却往回退（世在四爻、三爻），
+       * 偏偏又都叫「世」。只写「离宫一世卦」四个字，谁也想不到梯子中间还有两级是倒着走的。
+       * 所以把同宫八卦全摆出来，每一格标出它相对本宫纯卦变过哪几爻——递进到第五级之后
+       * 忽然要退回去一步，图上一眼就看得出「游」「归」两个字不是随口起的。
+       *
+       * 小卦上不标世爻：世爻在左边卦盘上已经朱砂框出来了，这里再标一遍是两份要人核对的账。
+       * 这一列只管次序。
+       */
+      function palaceBlock(jingfang) {
+        const roster = jingfang && jingfang.roster;
+        if (!roster || roster.length === 0) return null;
+        const units = roster
+          .map((slot) => {
+            const isHere = slot.stage === jingfang.stage;
+            // 游魂、归魂是那架梯子上的两个例外，标出来才不会看成六个一串
+            const isOdd = slot.stage === '游魂' || slot.stage === '归魂';
+            const classes = ['unit', isHere ? 'self self-unit' : '', isOdd ? 'odd' : '']
+              .filter(Boolean)
+              .join(' ');
+            return (
+              `<div class="${classes}">` +
+              miniGua(slot.key, slot.flips) +
+              `<span class="unit-name">${escapeHtml(slot.name)}</span>` +
+              `<span class="unit-tag">${escapeHtml(slot.stage)}</span>` +
+              `</div>`
+            );
+          })
+          .join('');
+
+        return (
+          `<div class="palace">` +
+          `<div class="derive-head">${escapeHtml(jingfang.palaceName)}八卦 · 五行${escapeHtml(jingfang.element)} · ${escapeHtml(jingfang.polarity)}</div>` +
+          `<div class="palace-row">${units}</div>` +
+          `<p class="palace-note">` +
+          `朱砂框住的是你这一卦；朱砂爻是相对本宫纯卦变过的爻。` +
+          `一世到五世世爻逐爻上移（初、二、三、四、五），游魂退到四爻、归魂退到三爻——` +
+          `这两级是折回去的，所以叫「游」「归」。` +
+          `</p>` +
           `</div>`
         );
       }
@@ -2644,7 +2741,18 @@
           right.append(caution);
         }
 
-        // 四卦推导摆在最前：这四卦是本卦的推法，讲清了才轮到「当月主卦」那句话。
+        // 八宫名单排在四卦推导前头：先认清自己在哪一宫的哪一级，再看梅花那四种推法。
+        // 这一列是京房层的全貌，四卦推导是梅花层的推法，两层各管各的。
+        const palace = palaceBlock(reading.jingfang);
+        if (palace) {
+          const box = document.createElement('div');
+          box.className = 'anim-fade';
+          box.innerHTML = palace;
+          right.append(box);
+        }
+
+        // 四卦推导接在八宫后头：宫认完了，才轮到梅花那四种取法。
+        // 讲清了这四卦是怎么推出来的，才轮到「当月主卦」那句话。
         const derive = deriveBlock(reading);
         if (derive) {
           const box = document.createElement('div');
