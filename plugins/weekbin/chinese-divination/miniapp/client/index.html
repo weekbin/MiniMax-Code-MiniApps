@@ -915,6 +915,25 @@
         font-weight: 600;
       }
 
+      /* 元神忌神仇神是「用神周围那一圈」，与世应、与用神都不是一回事，各用小字描边 */
+      .gua-line .rel .role-yuan,
+      .gua-line .rel .role-ji,
+      .gua-line .rel .role-chou {
+        font-size: 10px;
+        line-height: 1;
+        padding: 1px 3px;
+        border: 1px solid var(--text-subtle);
+        color: var(--text-subtle);
+        border-radius: 2px;
+      }
+
+      /* 忌神直克用神，描边加重一点，让它在那一圈里最显眼——它才是真在使坏的那一支 */
+      .gua-line .rel .role-ji {
+        border-color: var(--seal);
+        color: var(--seal);
+        font-weight: 600;
+      }
+
       /* 用神是「你所问的这一件事」落在哪一爻，与世应的主客不是一回事，另用实底 */
       .gua-line .rel .role.god {
         background: var(--seal);
@@ -2260,7 +2279,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2290,6 +2309,16 @@
           // 只在变卦上标，本卦那边动爻本来就有 ○／× 两记，再加一记反而挤。
           // 关系名直接写「回头生」「化比和」这些术语本身，不另加「化」字前缀——
           // 三个名目本就以「化」开头，再加一遍就成了「化 化比和」。
+          // 用神周围那一圈：《增删卜易·用神元神忌神仇神章》说元神生用神、忌神克用神、
+          // 仇神压着元神又反生忌神。三个位置各是卦里的一爻，就跟用神一样标在它本来的格子上。
+          // 用神定不下来时无此圈（伏神在卦外、两亲各看各的），那时 circle 为空，一个标也不出。
+          const role = !circle ? null
+            : (circle.yuan || []).includes(position) ? '元'
+              : (circle.ji || []).includes(position) ? '忌'
+                : (circle.chou || []).includes(position) ? '仇' : null;
+          const roleMark = role
+            ? `<span class="role role-${role}" title="${role === '元' ? '元神：生用神的那一爻' : role === '忌' ? '忌神：克用神的那一爻' : '仇神：压着元神、反去生忌神'}">${role}</span>`
+            : '';
           const tf = (transforms || []).find((item) => item.position === position);
           const huMark = tf
             ? `<span class="hu${tf.relation === '回头克' || tf.relation === '回头生' ? ' hot' : ''}" title="化出之爻">${escapeHtml(tf.relation)}</span>`
@@ -2305,6 +2334,7 @@
                 `<span class="qin">${escapeHtml(na.relative)}</span>` +
                 (na.role ? `<span class="role">${na.role}</span>` : '') +
                 (isGod ? '<span class="role god">用</span>' : '') +
+                roleMark +
                 stateMark +
                 (fu
                   ? `<span class="fu" title="伏神">伏 ${escapeHtml(fu.hushen)}${escapeHtml(fu.relative)}</span>`
@@ -2317,7 +2347,7 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states, gods, transforms, circle) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2326,7 +2356,7 @@
           `<h3 class="serif">${hexagram.name}</h3>` +
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states, gods, transforms, circle));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2403,11 +2433,13 @@
           (reading.useGod && reading.useGod.hidden) || [],
           reading.states || [],
           reading.sixGods || null,
+          null,
+          (reading.useGod && reading.useGod.circle) || null,
         ));
         if (reading.changed) {
           const changed = document.createElement('div');
           changed.append(guaBlock(reading.changed, null, '变卦', reading.changedJingfang,
-            null, [], [], null, reading.transforms || []));
+            null, [], [], null, reading.transforms || [], null));
           left.append(changed);
         }
         body.append(left);

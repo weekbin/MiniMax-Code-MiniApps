@@ -27,7 +27,8 @@ import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
-  voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui } from './jingfang.mjs';
+  voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui,
+  useGodCircle } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -527,10 +528,13 @@ export function buildReading(cast, options = {}) {
       return na ? na.element : body.element;
     }),
   };
+  // 用神那圈（元神、忌神、仇神）只在一个用神定下来时才存在：不上卦取的是伏神，
+  // 伏神在卦外，元忌仇无从谈起；两亲各看各的时也无从取舍。所以只在 picked 非空时算。
+  const circle = useGod && useGod.picked ? circleReading(jf, useGod.picked, calendar) : null;
   insights.push({
     title: '用神',
     text: useGod
-      ? useGodText(topic, useGod, jf, movingPositions, calendar)
+      ? useGodText(topic, useGod, jf, movingPositions, calendar, circle)
       : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。',
   });
 
@@ -540,7 +544,7 @@ export function buildReading(cast, options = {}) {
   const transforms = changedJf
     ? movingPositions.map((position) => transformReading(position, jf, changedJf, calendar))
     : [];
-  insights.push({ title: '化爻 · 变出之爻', text: transformText(transforms) });
+  insights.push({ title: '化爻 · 变出之爻', text: transformText(transforms, circle) });
 
   // 「世应」这两个字留给京房那边：世爻恒由本卦的宫与世次定，与动爻无关。梅花这一层
   // 讲的是我与事，说「主客」才不打架——同一段解读里出现两个不同的世爻位会看糊涂。
@@ -617,6 +621,16 @@ export function buildReading(cast, options = {}) {
           absent: useGod.absent,
           picked: useGod.picked,
           why: useGod.why,
+          // 用神周围那一圈：元神、忌神、仇神。用神定不下来时无此圈（伏神在卦外，
+          // 两亲各看各的也无从取舍），所以是一段字段而不是逐爻摊开。
+          circle: circle
+            ? {
+                yuan: circle.yuan.map((line) => line.position),
+                ji: circle.ji.map((line) => line.position),
+                chou: circle.chou.map((line) => line.position),
+                elements: circle.elements,
+              }
+            : null,
           // 用神不上卦时，从本宫首卦借来的伏神与压在它上面的飞神。
           // sentence 只给断语正文用，不进结构化字段——那段话断语里已经整段说过了。
           hidden: useGod && useGod.picked === null && useGod.present.length === 0
@@ -792,8 +806,8 @@ function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, moving
   throw new Error('出伏判定漏了情形：旺衰本该让 good 或 bad 必有其一');
 }
 
-/** 用神那一段。候选不止一亲时只各报所在，不替求测者择。 */
-function useGodText(topic, god, jingfang, movingPositions, calendar) {
+/** 用神那一段。候选不止一亲时只各报所在，不替求测者择。circle 由 buildReading 算好传进来。 */
+function useGodText(topic, god, jingfang, movingPositions, calendar, circle) {
   const moving = new Set(movingPositions);
   const where = (name) => god.all.filter((line) => line.relative === name)
     .map((line) => `${line.label}${moving.has(line.position) ? '（动）' : ''}`)
@@ -820,6 +834,7 @@ function useGodText(topic, god, jingfang, movingPositions, calendar) {
   if (god.all.length > 1) {
     parts.push(`两现，按${god.why}取${picked.label}。`);
   }
+  parts.push(circle.sentence);
   const relation = elementRelation(jingfang.lines[jingfang.shi - 1].element, picked.element);
   parts.push(picked.position === jingfang.shi
     ? '用神恰在世爻之上，所求之事就在自己身上。'
@@ -882,13 +897,81 @@ function transformReading(position, jingfang, changedJingfang, calendar) {
   };
 }
 
+/**
+ * 用神周围那一圈：元神、忌神、仇神。
+ *
+ * 《增删卜易》卷之一·用神元神忌神仇神章第九把三个名目连定义带例子都给足了：
+ *   「元神者，生用神之爻，即为元神。忌神者，克用神之爻也，即为忌神。仇神者，克制元神
+ *     不能生用神，反生忌神而克害用神，即为仇神。」
+ * 紧接着野鹤交代了看完用神接着看什么——「既得用神，須看旺衰否？有元神動而生扶否？
+ * 有忌神動而克害否？」——所以三者各报所在、动不动、月建旺衰，正照这两句来。
+ *
+ * 仇神要**另说一句**：它并不直接克用神，是压着元神使元神生不动，反去生忌神，两头帮倒忙。
+ * 断语若写成「仇神克用神」就是把它的路数说反了。
+ *
+ * 同章还有一句本包照办：**「勿以仇神即仇人也」**——仇神是五行位置上那一爻，不是卦里那个人。
+ * 原书自己就把话说尽了：卦里称作仇人的另有其人，是应爻克世。两者不混。
+ *
+ * 三者都可能不在卦上——六爻只纳八个地支，五行里本就常常不齐。这时照实说「卦中不见」，
+ * 不从别处借一爻来凑。借了就是给卦外编爻。
+ *
+ * @param {import('./jingfang.mjs').Jingfang} jingfang
+ * @param {import('./jingfang.mjs').JingfangLine} picked
+ * @param {object} calendar
+ */
+function circleReading(jingfang, picked, calendar) {
+  const moving = new Set(calendar.movingPositions);
+  const circle = useGodCircle(jingfang, picked);
+  const say = (name, element, lines) => (lines.length === 0
+    ? `${name}属${element}，本卦六爻里没有这一行`
+    : `${name}属${element}，见${lines.map((line) => `${line.label}（${moving.has(line.position) ? '动' : '静'}，于月建${vitality(line.element, calendar.monthElement).key}）`).join('、')}`);
+  const parts = [
+    `按《增删卜易·用神元神忌神仇神章》，用神取${picked.label}${picked.element}，它周围还有三个位置：`,
+    `${say('元神', circle.elements.yuan, circle.yuan)}，正是生用神的那一行。`,
+    `${say('忌神', circle.elements.ji, circle.ji)}，正是克用神的那一行。`,
+    `${say('仇神', circle.elements.chou, circle.chou)}。`,
+  ];
+  // 仇神的路数要说准：它不直接克用神，是压着元神、反去生忌神。写反了这一条就把它当忌神说了。
+  if (circle.chou.length > 0) {
+    parts.push('仇神并不直接克用神，它压着元神叫元神生不动，自己又反去生忌神，两头帮倒忙。');
+  }
+  parts.push('这三者是五行上的位置，不是卦里的人——原书紧接着就提醒「勿以仇神即仇人也」，'
+    + '卦里那个称作仇人的另有其人，是应爻克世，不在这里头。');
+  return {
+    godPosition: picked.position,
+    yuan: circle.yuan,
+    ji: circle.ji,
+    chou: circle.chou,
+    elements: circle.elements,
+    sentence: parts.join(''),
+  };
+}
+
 /** 化爻那一段。变爻只认本位动爻，所以先把这句规矩摆出来，免得看着像要把变爻拿去六爻通算。 */
-function transformText(transforms) {
+function transformText(transforms, circle) {
   if (transforms.length === 0) {
     return '六爻皆静，无变卦，也就谈不上变出之爻——本卦的格局就此定格，不会中途生变。';
   }
+  // 回头克那条「原用二神遇之則凶，忌仇二神遇之反吉也」，得先知道回头克落在哪一爻上才说得出。
+  // 用神那圈还没算出来（用神不上卦、两亲各看各的）时就只报关系，不接后半句——空口说凶是编的。
+  const at = (lines, position) => lines.some((line) => line.position === position);
+  const rows = transforms.map((item) => {
+    if (item.relation !== '回头克' || !circle) return item.sentence;
+    // 原文只交代了两路：用神一路则凶，忌神仇神一路反吉。元神那一路原书未言，就不替它定。
+    if (item.position === circle.godPosition) {
+      return `${item.sentence}这一爻正是用神——照《卜筮正宗》「原用二神遇之則凶」，用神遭回头克是实打实的凶。`;
+    }
+    if (at(circle.ji, item.position) || at(circle.chou, item.position)) {
+      const name = at(circle.ji, item.position) ? '忌神' : '仇神';
+      return `${item.sentence}这一爻正落在${name}那一行——照同章「忌仇二神遇之反吉」，回头克打在${name}上，这一卦里反不作凶论。`;
+    }
+    if (at(circle.yuan, item.position)) {
+      return `${item.sentence}这一爻正落在元神那一行。书上回头克只交代用神与忌仇两路，元神遇之如何原书未言，这里不替它定。`;
+    }
+    return item.sentence;
+  });
   return '按《增删卜易》「夫變出之爻，能生克沖合本位之動爻，不能生克他爻」，变爻只与本位动爻相生克，不与他爻相干：'
-    + transforms.map((item) => item.sentence).join(' ');
+    + rows.join(' ');
 }
 
 /**

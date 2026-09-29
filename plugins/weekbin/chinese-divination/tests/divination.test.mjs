@@ -1455,7 +1455,7 @@ test('卦体把六亲与世应画出来，不只是数据里有', async () => {
   assert.ok(/reading\.useGod\.hidden/.test(render), '解读页本卦没把伏神传进卦体');
   // 变卦要把化爻传进去，才标得出哪一格是由本卦动爻变过来的
   assert.ok(
-    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,120}?reading\.transforms \|\| \[\]\)/.test(render),
+    /guaBlock\(reading\.changed, null, '变卦', reading\.changedJingfang,[\s\S]{0,140}?reading\.transforms \|\| \[\][\s\S]{0,20}?\)\)/.test(render),
     '解读页变卦没传京房数据与化爻',
   );
   // 右栏摘要也得有这一行
@@ -2344,4 +2344,156 @@ test('MCP 把化爻落成字段，变卦那一行带上动爻去向', async () =
   }
   // 抬头那一行：Agent 复述「变到哪儿、往哪儿去」看这一行就够
   assert.match(result.content[0].text, /【变卦】.+动爻去向 .+回头|动爻去向 .+化/s, '变卦行没带动爻去向');
+});
+
+test('元神忌神仇神照《增删卜易》那一章定位，书上的金例一字不差', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  // 原文：「元神者，生用神之爻，即为元神。忌神者，克用神之爻也，即为忌神。仇神者，克制元神
+  //   不能生用神，反生忌神而克害用神，即为仇神。假令金为用神，生金者土也，土为元神；
+  //   克金者火也，火为忌神；克土生火者木也，木为仇神。余仿此。」
+  const circle = (element) => J.useGodCircle(
+    { lines: ['木', '火', '土', '金', '水'].map((e, i) => ({ position: i + 1, element: e })) },
+    { element },
+  );
+  const god = circle('金');
+  assert.deepEqual(god.elements, { yuan: '土', ji: '火', chou: '木' }, '书例：金用则土元火忌木仇');
+  assert.equal(god.yuan.length, 1, '元神取生用神那一行的爻');
+  assert.equal(god.ji.length, 1, '忌神取克用神那一行的爻');
+  assert.equal(god.chou.length, 1, '仇神取克元神那一行的爻');
+  // 余仿此：五行各一组，三行必然互异
+  const want = { 木: ['水', '金', '土'], 火: ['木', '水', '金'], 土: ['火', '木', '水'], 水: ['金', '土', '火'] };
+  for (const [element, [yuan, ji, chou]] of Object.entries(want)) {
+    const one = circle(element);
+    assert.deepEqual([one.elements.yuan, one.elements.ji, one.elements.chou], [yuan, ji, chou],
+      `${element}用则${yuan}元${ji}忌${chou}仇`);
+  }
+  // 仇神的路数是间接的：它不生用神，却反去生忌神——这条钉住，断语才不能说成「仇神克用神」
+  for (const element of ['木', '火', '土', '金', '水']) {
+    const one = circle(element);
+    assert.ok(generates(one.elements.chou, one.elements.ji), `${element}用之仇神${one.elements.chou}该反生忌神${one.elements.ji}`);
+    assert.ok(!generates(one.elements.chou, element), `${element}用之仇神不该生用神`);
+    assert.ok(overcomes(one.elements.chou, one.elements.yuan), `${element}用之仇神该克的是元神，不是用神`);
+  }
+});
+
+test('用神那圈只在一个用神定下来时才有，卦外不借爻', async () => {
+  // 妻财不上卦的卦：用神取的是本宫首卦的伏神，在卦外，元忌仇无从谈起——照实不给
+  const hidden = buildReading(castByNumbers(3, 1), { now: new Date(2026, 8, 30, 10, 0), question: '我最近身体如何' });
+  assert.equal(hidden.useGod.picked, null, '这一例用神本该不上卦，否则验错了路');
+  assert.equal(hidden.useGod.circle, null, '用神不在卦上就不该硬凑出一圈元忌仇');
+  const circleSentence = (reading) => reading.insights.find((item) => item.title === '用神').text;
+  assert.ok(!/元神属/.test(circleSentence(hidden)), '不上卦却报出了元神');
+  // 兑宫泽山咸：兄弟不上卦，婚恋两亲各看各的，也不该有圈
+  const both = buildReading(castByNumbers(2, 5), { now: new Date(2026, 8, 30, 10, 0), question: '他会主动找我吗' });
+  if (both.useGod.relatives.length > 1) {
+    assert.equal(both.useGod.circle, null, '两亲各看各的时无从取舍，不该有圈');
+    assert.ok(!/元神属/.test(circleSentence(both)), '两亲各看各的却报出了元神');
+  }
+});
+
+test('用神段把元忌仇的所在、动静、旺衰摆开，并守住「勿以仇神即仇人」', async () => {
+  const reading = buildReading(castByNumbers(3, 1), { now: new Date(2026, 8, 30, 10, 0), question: '这批货该不该进' });
+  const text = reading.insights.find((item) => item.title === '用神').text;
+  const circle = reading.useGod.circle;
+  assert.ok(circle, '这一卦用神上了卦，该有这一圈');
+  assert.deepEqual(circle.elements, { yuan: '水', ji: '金', chou: '土' }, '二爻木用神：水元金忌土仇');
+  // 每一支都要报到「哪一爻、动不动、月建旺衰」——野鹤原话是「有元神動而生扶否？有忌神動而克害否？」
+  for (const [name, positions] of [['元神', circle.yuan], ['忌神', circle.ji], ['仇神', circle.chou]]) {
+    assert.ok(new RegExp(`${name}属${circle.elements[name === '元神' ? 'yuan' : name === '忌神' ? 'ji' : 'chou']}，见[\\s\\S]{0,40}（[动静]，于月建[旺相休囚死]）`).test(text),
+      `${name}没报出所在与动静旺衰`);
+  }
+  assert.match(text, /勿以仇神即仇人也/, '漏了「勿以仇神即仇人也」这句');
+  assert.match(text, /并不直接克用神/, '没说清仇神是间接为害，说成了直接克就反了');
+  // 结构化字段里存的是爻位号，每一个都要跟卦体上那一爻对得上
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const jf = J.jingfang(reading.hexagram);
+  for (const position of [...circle.yuan, ...circle.ji, ...circle.chou]) {
+    assert.ok(position >= 1 && position <= 6, `爻位越界：${position}`);
+    assert.ok(jf.lines[position - 1], `第${position}爻不在卦上`);
+  }
+  for (const position of circle.ji) {
+    assert.equal(jf.lines[position - 1].element, circle.elements.ji, '忌神那支的五行不对');
+  }
+  for (const position of circle.yuan) {
+    assert.equal(jf.lines[position - 1].element, circle.elements.yuan, '元神那支的五行不对');
+  }
+});
+
+test('回头克落在用神、元神、忌神、仇神上各说一句，方向不许反', async () => {
+  const now = new Date(2026, 8, 30, 10, 0);
+  const tail = (u, l, question) => {
+    const reading = buildReading(castByNumbers(u, l), { now, question });
+    const text = reading.insights.find((item) => item.title.startsWith('化爻')).text;
+    const cut = text.indexOf('这一爻');
+    return { text: cut < 0 ? '' : text.slice(cut), circle: reading.useGod.circle };
+  };
+  // 用神：二爻官鬼火动，变出亥水子孙，水回头克火——用神遭回头克则凶
+  const onGod = tail(1, 7, '我该不该换工作');
+  assert.match(onGod.text, /正是用神.*原用二神遇之則凶.*实打实的凶/s, '用神遭回头克该断为凶');
+  assert.ok(!/不作凶论/.test(onGod.text), '把用神遭回头克说成了不作凶论，方向反了');
+  // 忌神：三爻回头克，卦中用神为初爻父母土，忌神是三爻卯木
+  const onJi = tail(1, 8, '这房子该不该买');
+  assert.match(onJi.text, /正落在忌神那一行.*忌仇二神遇之反吉.*不作凶论/s, '忌神遭回头克该反不作凶论');
+  // 仇神
+  const onChou = tail(1, 12, '这批货该不该进');
+  assert.match(onChou.text, /正落在仇神那一行.*反不作凶论/s, '仇神遭回头克该反不作凶论');
+  // 元神：原书未言，就明说未言，不替它定
+  const onYuan = tail(1, 7, '这房子该不该买');
+  assert.match(onYuan.text, /正落在元神那一行.*原书未言/s, '元神遇回头克该照实说原书未言');
+  // 用神不上卦时那圈根本不存在，后半句就接不上——空口说「落在用神则凶」是编的
+  const noCircle = tail(1, 7, '这批货该不该进');
+  assert.equal(noCircle.circle, null, '这一例用神本该不上卦，否则验错了路');
+  assert.equal(noCircle.text, '', '用神不在卦上还接「落在用神则凶」那半句，是空口说凶');
+});
+
+test('卦体把元忌仇标在各自那一爻，忌神描边加重', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function guaLines(');
+  const body = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(/circle/.test(body), '卦体没收用神那圈');
+  // 钉在「这一支真的会出这个字」上，不是钉 circle 出现过——三元入圈时能重复出
+  assert.ok(/\(circle\.yuan \|\| \[\]\)\.includes\(position\) \? '元'/.test(body), '元神没按爻位对位');
+  assert.ok(/\(circle\.ji \|\| \[\]\)\.includes\(position\) \? '忌'/.test(body), '忌神没按爻位对位');
+  assert.ok(/\(circle\.chou \|\| \[\]\)\.includes\(position\) \? '仇'/.test(body), '仇神没按爻位对位');
+  assert.ok(/class="role role-\$\{role\}"/.test(body), '元忌仇没画出标记');
+  // 忌神直克用神，描边加重；元神仇神用淡字。
+  // 窗口切到这条规则的收尾为止——按固定字数切会把后面 .role.god 那条（也是朱砂）算进来，
+  // 那样即便把忌神的朱砂删了照样全绿，等于没测。
+  const rule = (selector) => {
+    const from = client.indexOf(selector);
+    assert.ok(from >= 0, `CSS 里找不到 ${selector}`);
+    return client.slice(from, client.indexOf('\n      }', from));
+  };
+  assert.ok(/var\(--seal\)/.test(rule('.gua-line .rel .role-ji {')), '忌神该用朱砂描边——它是那一圈里真在使坏的一支');
+  const shared = client.slice(client.indexOf('.gua-line .rel .role-yuan,'), client.indexOf('.gua-line .rel .role-ji {'));
+  assert.ok(!/var\(--seal\)/.test(shared), '元神仇神用淡字，不该一律朱砂');
+  // 本卦那次得把 circle 传下去
+  const call = client.slice(client.indexOf('left.append(guaBlock('), client.indexOf('left.append(guaBlock(') + 520);
+  assert.ok(/reading\.useGod\.circle/.test(call), '解读页本卦没把用神那圈传进卦体');
+  // 变卦不传：那一圈是本卦的事
+  const changedCall = client.slice(client.indexOf("guaBlock(reading.changed, null, '变卦'"), client.indexOf("guaBlock(reading.changed, null, '变卦'") + 220);
+  assert.ok(!/reading\.useGod\.circle/.test(changedCall), '变卦不该标用神那圈');
+});
+
+test('MCP 把元忌仇那圈落成字段', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  let raw = '';
+  const response = { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } };
+  await handleMcpRequest({
+    response,
+    body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: { question: '这批货该不该进', method: 'numbers', upper: 3, lower: 1 } } },
+  });
+  const sc = JSON.parse(raw).result.structuredContent;
+  const circle = sc.useGod.circle;
+  assert.ok(circle, 'MCP 没给 useGod.circle');
+  assert.deepEqual(circle.elements, { yuan: '水', ji: '金', chou: '土' }, '五行关系不对');
+  for (const key of ['yuan', 'ji', 'chou']) {
+    assert.ok(Array.isArray(circle[key]), `${key} 该是爻位数组`);
+    for (const position of circle[key]) {
+      assert.ok(position >= 1 && position <= 6, `${key} 的爻位越界：${position}`);
+    }
+  }
+  // 三个位置不能在同一个爻位上撞车
+  const all = [...circle.yuan, ...circle.ji, ...circle.chou];
+  assert.equal(new Set(all).size, all.length, '元忌仇撞在同一爻上了');
 });

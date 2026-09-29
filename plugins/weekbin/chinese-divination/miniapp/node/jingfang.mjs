@@ -431,6 +431,63 @@ export function elementRelation(from, to) {
 }
 
 /**
+ * 用神、元神、忌神、仇神：用神周围那一圈。
+ *
+ * 出处为《增删卜易》卷之一·用神元神忌神仇神章第九，原文连定义带worked example都给足了：
+ *   「用神者，即前各类之用神。元神者，生用神之爻，即为元神。忌神者，克用神之爻也，即为忌神。
+ *     仇神者，克制元神不能生用神，反生忌神而克害用神，即为仇神。假令金为用神，生金者土也，
+ *     土为元神；克金者火也，火为忌神；克土生火者木也，木为仇神。余仿此。」
+ *
+ * 三个名目都在本卦六爻里找，不出卦外：
+ *   元神——生用神那一行的爻；忌神——克用神那一行的爻；仇神——克元神那一行的爻。
+ * 仇神的害处是**间接**的，这一点原文讲得很明白：它压着元神使元神生不动用神，
+ * 自己又反去生忌神，等于两头帮倒忙。所以断语不说「仇神克用神」——它并不直接克。
+ *
+ * 三行必然互异，五行里逐个核过：金木水火土五位用神，元、忌、仇各占一支，十九种组合
+ * 没有一次撞行；金用神那组也正好是书上的土元、火忌、木仇。加载时核一遍，核不过就抛。
+ *
+ * 另有一条本包要照办的提醒，原文紧接着就说了：**「勿以仇神即仇人也」**——仇神是五行位置上
+ * 的那一爻，不是卦里那个人。原文里真正把人称作仇人的，是应爻克世。两者不是一回事。
+ *
+ * @param {Jingfang} jingfang
+ * @param {JingfangLine} picked 用神爻
+ * @returns {{ yuan: JingfangLine[], ji: JingfangLine[], chou: JingfangLine[], elements: { yuan: string, ji: string, chou: string } }}
+ */
+export function useGodCircle(jingfang, picked) {
+  const god = picked.element;
+  const yuanElement = Object.keys(GENERATES).find((element) => GENERATES[element] === god) ?? '';
+  const jiElement = Object.keys(OVERCOMES).find((element) => OVERCOMES[element] === god) ?? '';
+  // 仇神克的是元神，不是用神——原文「克土生火者木也」那个「克土」说的是元神那一行。
+  const chouElement = Object.keys(OVERCOMES).find((element) => OVERCOMES[element] === yuanElement) ?? '';
+  const pick = (element) => jingfang.lines.filter((line) => line.element === element);
+  return Object.freeze({
+    yuan: Object.freeze(pick(yuanElement)),
+    ji: Object.freeze(pick(jiElement)),
+    chou: Object.freeze(pick(chouElement)),
+    elements: Object.freeze({ yuan: yuanElement, ji: jiElement, chou: chouElement }),
+  });
+}
+
+// 元、忌、仇三行互异，且与书上的金用神一例对得上。定义跟着代码走，核不过就在这里抛。
+for (const god of ELEMENTS) {
+  const { elements } = useGodCircle(
+    { lines: ELEMENTS.map((element, index) => ({ position: index + 1, element })) },
+    { element: god },
+  );
+  if (new Set([elements.yuan, elements.ji, elements.chou]).size !== 3) {
+    throw new Error(`元忌仇校验不过：${god}用神之下算出元${elements.yuan}忌${elements.ji}仇${elements.chou}，五行里这三者应当互异`);
+  }
+  // 书上给的例子：金为用神，土为元神，火为忌神，木为仇神
+  if (god === '金' && (elements.yuan !== '土' || elements.ji !== '火' || elements.chou !== '木')) {
+    throw new Error(`元忌仇校验不过：书上说金用则土元火忌木仇，实算出元${elements.yuan}忌${elements.ji}仇${elements.chou}`);
+  }
+  // 原文说仇神「反生忌神」，这一条也核上——它替忌神出力，自己却并不生用神
+  if (GENERATES[elements.chou] !== elements.ji || GENERATES[elements.chou] === god) {
+    throw new Error(`元忌仇校验不过：${god}用神之仇神${elements.chou}该反生忌神${elements.ji}且不生用神`);
+  }
+}
+
+/**
  * 变出之爻：动爻动了以后变出来的那一爻，讲的是这一爻「往哪儿去」。
  *
  * 回头生与回头克的定名，各有一条可核的原话，两句都只看一个方向——**变爻对本爻**：

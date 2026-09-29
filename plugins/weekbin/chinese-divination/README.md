@@ -78,7 +78,7 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 as small marks; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
 | Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
 | 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
@@ -138,6 +138,8 @@ Two blocks come back: `content[0].text` is prose written for the model, and `str
 for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `useGod` /
 `timing` / `disclaimer`). `useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
 carries the 伏神 as `hidden` — `position`, `hushen`, `feishen`, `flying` and an `emerges` verdict —
+and, when a single 用神 is settled, carries its circle as `circle` — the 爻 positions of the 元神, 忌神
+and 仇神 with their elements under `circle.elements` —
 so a model never has to dig the answer back out of the prose. A real response:
 
 ```text
@@ -485,6 +487,58 @@ and 休囚死 always in the second, and the two between them cover every case.
 On the diagram the 用神 line carries a **solid red badge**, against the outlined 世/应 boxes; a
 伏神 sits under its line as smaller dashed text reading 「伏 丙子水妻财」.
 
+**元神 · 忌神 · 仇神 — the circle around the 用神**
+
+Picking the 用神 is only the first step. 《增删卜易》卷之一·用神元神忌神仇神章第九 gives the rest
+with a worked example, and the reading follows it clause by clause:
+
+> 元神者，生用神之爻，即为元神。忌神者，克用神之爻也，即为忌神。仇神者，克制元神不能生用神，
+> 反生忌神而克害用神，即为仇神。假令金为用神，生金者土也，土为元神；克金者火也，火为忌神；
+> 克土生火者木也，木为仇神。余仿此。
+
+All three sit in this hexagram's six lines, none of them is borrowed from outside:
+
+| | Which line | Reads as |
+| --- | --- | --- |
+| 元神 | the line that 生 the 用神 | helps feed the 用神 |
+| 忌神 | the line that 克 the 用神 | strikes the 用神 |
+| 仇神 | the line that 克 the 元神 | indirect — see below |
+
+野鹤 says what to look at next, and the reading reports exactly that per line — which 爻, 动 or 静,
+and its 旺衰 under the month:
+
+> 既得用神，須看旺衰否？有元神動而生扶否？有忌神動而克害否？
+
+**仇神 does not strike the 用神 directly**, and the wording is careful about that: it pins the
+元神 so the 元神 cannot feed the 用神, and it feeds the 忌神 instead — help on both counts. Saying
+「仇神克用神」 would be a misreading of how the mechanism works. All three are fixed test
+invariants: the 仇神 must 反生忌神 and must not 生用神, in all five cases.
+
+A line the hexagram simply does not have is reported as such — 六爻 carry eight 地支 and the five
+elements rarely fill out, so the reading says 「本卦六爻里没有这一行」 instead of borrowing one.
+The circle exists only when a single 用神 has been settled: a 用神 that went to the 伏神 is off the
+board, and 婚恋's two candidates are two questions at once, so neither gets a circle.
+
+And one line from the same chapter this package takes to heart:
+
+> 勿以仇神即仇人也
+
+The 仇神 is a position in the five-element scheme, not a person in the reading. The source is blunt
+about it: whoever it calls the enemy is someone else — an 应爻 that 克 the 世爻.
+
+This also fills in something the 回头克 rule had been quoting without computing:
+
+> 凡遇回頭剋者,徹底剋盡,原用二神遇之則凶,忌仇二神遇之反吉也
+
+Once the circle is known, the reading can say which of the four the 回头克 actually lands on — 凶 on
+the 用神, 不作凶论 on a 忌神 or 仇神, and for 元神, where the text says nothing, it says so rather
+than filling the gap. Each case has its own test: a 回头克 falling on the 元神 must *not* come out
+judged, and one with no circle at all must not borrow the clause.
+
+On the diagram each of the three sits on its own line as a small outlined tag reading 元, 忌 or 仇;
+忌神 gets the red outline, since it is the one actually striking the 用神, while 元神 and 仇神 stay
+in the muted tone of the 伏神.
+
 **六神 — what the day's stem says about the mood**
 
 The sixth column a 六爻 chart has always carried. 《卜筮全书·卷之一·启蒙节要》:
@@ -719,7 +773,13 @@ carrying no verdict, the 歌诀's sixteen pairs stored verbatim and each checked
 reverse, the quote that confines a changed line to its own moving line, the changed line kept still
 so it cannot be rescued as 发动, the reading and the structured field agreeing, and MCP carrying
 it. The removed 绝 mark is checked too — a test asserts no 纳支 can land on its own 绝 branch, so
-nobody adds the label back thinking it was forgotten. 125 passing.
+nobody adds the label back thinking it was forgotten. The 元神 / 忌神 / 仇神 circle is checked on
+eight more: the book's 金 example reproduced exactly, all five elements following 「余仿此」 with the
+three positions never colliding, the 仇神 proved to 反生忌神 and not 生用神, the circle withheld when
+the 用神 went to the 伏神 or when two candidates stand, each of the three reported with its line, its
+动/静 and its 旺衰, 「勿以仇神即仇人也」 kept, 回头克 read four ways — 凶 on the 用神, 不作凶论 on a
+忌神 or 仇神, unjudged on a 元神, and not borrowed when there is no circle — and MCP carrying it.
+131 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
