@@ -21,10 +21,11 @@ import {
   normalizeToSix,
   oppositeHexagram,
 } from './hexagrams.mjs';
-import { monthPillar, yearPillar, dayPillar, hourPillar } from './almanac.mjs';
+import { monthPillar, yearPillar, dayPillar, hourPillar, BRANCHES } from './almanac.mjs';
 import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
+import { monthQi, hexagramQi } from './guaqi.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -395,10 +396,16 @@ export function buildReading(cast, options = {}) {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const day = now.getDate();
+  const monthBranch = monthPillar(year, month, day).branch;
   const monthElement = monthPillar(year, month, day).element;
   const bodyVitality = vitality(body.element, monthElement);
   const useVitality = vitality(use.element, monthElement);
   const relation = judgeRelation(body.element, use.element);
+
+  // 卦气是另一条路：月建五行讲的是「这五行在当月强弱如何」，十二辟卦讲的是
+  // 「当月本该是哪一卦当令」。两者不互相替代，故并列给出。
+  const monthLord = monthQi(monthBranch);
+  const selfQi = hexagramQi(hexagram.key);
 
   // 所问何事落到事类，事类取类神五行。类神只管应期与取象，不改吉凶——
   // 同一个卦问财与问婚，凶不会因此翻面，只是看的时辰和轻重不同。
@@ -449,6 +456,24 @@ export function buildReading(cast, options = {}) {
   }
   insights.push({ title: '体用关系', text: relation.text });
   insights.push({ title: '旺衰应期', text: verdict.vitalityText });
+  if (monthLord) {
+    // 卦气只讲位置，不改吉凶：本卦是不是当令主卦，是另一维度的话，不与体用相混。
+    const trend = monthLord.phase === '息'
+      ? '当月阳气渐长，主事有推进之势'
+      : '当月阴气渐盛，主事宜收敛守成';
+    const self = selfQi
+      ? `本卦${hexagram.name}正在十二辟卦之中，为${selfQi.short}卦，属${selfQi.phase}，${selfQi.meaning}`
+      : `本卦${hexagram.name}不属十二辟卦，十二辟卦是乾坤二宫专主月份的十二卦，其余五十二卦不论卦气`;
+    const align = selfQi
+      ? (selfQi.phase === monthLord.phase
+        ? `与当月${selfQi.phase === '息' ? '同处阳长之段，方向与时势相合' : '同处阴长之段，行事与时势相应'}。`
+        : `与当月${monthLord.short}卦分处消长两端，是逆着时势走，宜放缓一步。`)
+      : '';
+    insights.push({
+      title: '卦气 · 当令主卦',
+      text: `${BRANCHES[monthBranch]}月当令主卦为${monthLord.name}，${monthLord.meaning}${trend}。${self}${align}`,
+    });
+  }
   insights.push({
     title: '互卦 · 过程',
     text: `互卦为${mutual.name}，主事情中间一段的走向。${mutual.image}`,

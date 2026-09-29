@@ -10,6 +10,7 @@ import {
   invertedHexagram,
   mutualHexagram,
   oppositeHexagram,
+  hexagramByKey,
 } from '../miniapp/node/hexagrams.mjs';
 import {
   almanac,
@@ -35,6 +36,7 @@ import { responseTiming } from '../miniapp/node/xiang.mjs';
 import { hexagramYaoTexts, lineText } from '../miniapp/node/yao.mjs';
 import { hexagramXiangTexts, lineXiang } from '../miniapp/node/xiang-chuan.mjs';
 import { tuanText } from '../miniapp/node/tuan.mjs';
+import { TWELVE_MESSAGES, hexagramQi, monthQi } from '../miniapp/node/guaqi.mjs';
 import { detectTopic, godRelation, TOPIC_CLASSES } from '../miniapp/node/topics.mjs';
 import { generates, overcomes } from '../miniapp/node/divination.mjs';
 
@@ -409,7 +411,7 @@ test('卦历写入 dataDir 后可回读', async () => {
 
     const full = await store.get(reading.id);
     assert.equal(full.hexagram.name, reading.hexagram.name);
-    assert.equal(full.insights.length, 12);
+    assert.equal(full.insights.length, 13);
 
     assert.equal(await store.remove(reading.id), true);
     assert.equal(await store.remove(reading.id), false);
@@ -1030,4 +1032,66 @@ test('起卦返回的本卦与变卦都带着彖传', () => {
     }
   }
   assert.ok(changed > 0, '样本里一个变卦都没有，这条断言等于没验');
+});
+
+test('十二辟卦恰好十二卦，且与卦表逐一对得上', () => {
+  // 这条最要紧：卦气的整套推论都建立在这张表上，表错一位，后面全错。
+  assert.equal(TWELVE_MESSAGES.length, 12);
+  const matched = HEXAGRAM_LIST.filter((item) => hexagramQi(item.key));
+  assert.equal(matched.length, 12, `六十四卦里只认出 ${matched.length} 卦属于十二辟卦`);
+  for (const lord of TWELVE_MESSAGES) {
+    const fromTable = hexagramByKey(lord.key);
+    assert.ok(fromTable, `${lord.name} 的爻象 ${lord.key} 在卦表里找不到`);
+    assert.equal(fromTable.name, lord.name, `${lord.branch} 月主卦的卦名与卦表不符`);
+    const qi = hexagramQi(lord.key);
+    assert.equal(qi.name, lord.name);
+    assert.equal(qi.phase, lord.phase);
+  }
+});
+
+test('卦气按月支推移，子月复、亥月坤，十二个月不重不漏', () => {
+  // 传统：复主子月、临主丑月……乾主巳月、姤主午月，直到坤主亥月。
+  const expected = [
+    '地雷复', '地泽临', '地天泰', '雷天大壮', '泽天夬', '乾为天',
+    '天风姤', '天山遁', '天地否', '风地观', '山地剥', '坤为地',
+  ];
+  const actual = TWELVE_MESSAGES.map((item) => item.name);
+  assert.deepEqual(actual, expected);
+  for (let branch = 0; branch < 12; branch += 1) {
+    assert.equal(monthQi(branch)?.name, expected[branch], `${branch} 月的主卦不对`);
+  }
+  assert.equal(monthQi(12), null);
+  assert.equal(monthQi(-1), null);
+});
+
+test('消长各六：复至乾为息，姤至坤为消', () => {
+  const xi = TWELVE_MESSAGES.filter((item) => item.phase === '息').map((item) => item.short);
+  const xiao = TWELVE_MESSAGES.filter((item) => item.phase === '消').map((item) => item.short);
+  assert.deepEqual(xi, ['复', '临', '泰', '大壮', '夬', '乾']);
+  assert.deepEqual(xiao, ['姤', '遁', '否', '观', '剥', '坤']);
+  // 息卦阳爻由一长到六，消卦阴爻由一长到六，两边的进度是对称的。
+  assert.deepEqual(xi.map((short) => hexagramQi(TWELVE_MESSAGES.find((m) => m.short === short).key).yangCount), [1, 2, 3, 4, 5, 6]);
+});
+
+test('非辟卦不硬套卦气', () => {
+  // 屯、师、谦、豫下卦虽有两三个阳爻，却不是消息卦的形状，不能算成复或临。
+  for (const name of ['水雷屯', '地水师', '地山谦', '雷地豫', '水火既济', '泽雷随']) {
+    const item = hexagramByKey(HEXAGRAM_LIST.find((h) => h.name === name).key);
+    assert.equal(hexagramQi(item.key), null, `${name} 被误认成十二辟卦了`);
+  }
+});
+
+test('断语里的卦气段说明当月主卦，并给出本卦的位置', () => {
+  const reading = buildReading(castByNumbers(1, 1), { now: new Date(2026, 8, 30) });
+  const gua = reading.insights.find((item) => item.title === '卦气 · 当令主卦');
+  assert.ok(gua, '断语里没有卦气这一段');
+  assert.match(gua.text, /月当令主卦为/, '卦气段没有点出当月主卦');
+  const inSeptember = buildReading(castByNumbers(1, 1), { now: new Date(2026, 8, 30) });
+  const inJanuary = buildReading(castByNumbers(1, 1), { now: new Date(2026, 0, 20) });
+  assert.notEqual(
+    inSeptember.insights.find((i) => i.title === '卦气 · 当令主卦').text,
+    inJanuary.insights.find((i) => i.title === '卦气 · 当令主卦').text,
+    '不同月份的卦气段不该逐字相同',
+  );
+  assert.match(inJanuary.insights.find((i) => i.title === '卦气 · 当令主卦').text, /丑月当令主卦为地泽临/);
 });

@@ -311,10 +311,11 @@ is recognised, nothing is forced: the timing falls back to the 用卦 and says s
 
 **Thirteen sections, every time**
 
-卦象总断, 动爻爻辞, 体用关系, 应期, 旺衰应期, 互卦 for the middle course, 变卦 for the outcome,
-错卦 for the other side, 综卦 seen from the other position, 世应, 取象 of both trigrams, 爻位 for
-the moving line's position, and 方所 for the 后天八卦 directions. A recognised topic adds one more,
-所问之事, naming the topic, its 类神, and how that element stands to the 体卦.
+卦象总断, 动爻爻辞, 体用关系, 旺衰应期, 卦气 for the month's governing hexagram, 互卦 for the
+middle course, 变卦 for the outcome, 错卦 for the other side, 综卦 seen from the other position,
+世应, 取象 of both trigrams, 爻位 for the moving line's position, and 方所 for the 后天八卦
+directions. A recognised topic adds one more, 所问之事, naming the topic, its 类神, and how that
+element stands to the 体卦.
 
 **动爻爻辞 — the line that actually moved**
 
@@ -353,6 +354,19 @@ editions give 「保和大和」 and 「保合太和」, and the received text r
 by a test, as is the traditional-to-simplified mapping, which is derived rather than recalled: a
 simplified source is aligned position by position against the traditional base, only agreeing pairs
 are kept, and three false pairs produced by source typos are then removed by hand.
+
+**卦气 · 当令主卦 — which hexagram holds the month**
+
+Han-dynasty 易学 assigns twelve hexagrams to the twelve months, called the 十二辟卦: 复 rules 子月
+and 临 rules 丑月, round to 坤 in 亥月. This is not the same as 旺衰应期 above — that one reads how
+strong the five elements are in the month, this one reads how the hexagram itself waxes and wanes
+with the solar terms. 复 through 乾 are the 息 hexagrams, yang growing from the lowest line upward;
+姤 through 坤 are the 消 hexagrams, yin growing the same way. The year turns once on that cycle.
+
+The reading names the month's governing hexagram and says where the cast hexagram sits in it: on
+the same 消长 side means the direction agrees with the season, opposite sides means you are running
+against it and should slow down. Only twelve of the sixty-four are 辟卦; the other fifty-two are not
+forced into the scheme.
 
 **应期 — when it lands**
 
@@ -462,6 +476,7 @@ miniapp/node/hexagrams.mjs    Trigrams and the sixty-four hexagrams
 miniapp/node/yao.mjs           The 384 爻辞, cross-checked against the hexagram diagrams
 miniapp/node/xiang-chuan.mjs    The 384 小象传, cross-checked between two editions
 miniapp/node/tuan.mjs           The 64 彖传, cross-checked between two editions
+miniapp/node/guaqi.mjs          The twelve 辟卦, one per month branch
 miniapp/node/xiang.mjs        Line positions and response timing
 miniapp/node/topics.mjs       Element-to-topic: question → topic → 类神
 miniapp/node/almanac.mjs      Ganzhi, the twelve offices, solar terms, zodiac
