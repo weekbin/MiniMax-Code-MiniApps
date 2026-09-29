@@ -21,12 +21,13 @@ import {
   normalizeToSix,
   oppositeHexagram,
 } from './hexagrams.mjs';
-import { monthPillar, yearPillar, dayPillar, hourPillar, BRANCHES, BRANCH_ELEMENTS } from './almanac.mjs';
+import { monthPillar, yearPillar, dayPillar, hourPillar, monthPo, xunKong, BRANCHES, BRANCH_ELEMENTS } from './almanac.mjs';
 import { LINE_POSITIONS, responseTiming } from './xiang.mjs';
 import { lineText } from './yao.mjs';
 import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
-import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation, RELATIVE_MEANING } from './jingfang.mjs';
+import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
+  voidReading, vitality, RELATIVE_MEANING } from './jingfang.mjs';
 import { detectTopic, godRelation } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -312,14 +313,6 @@ export function castByCoins(sums) {
  * @param {string} element
  * @param {string} monthElement
  */
-function vitality(element, monthElement) {
-  if (element === monthElement) return { key: '旺', tone: 'strong' };
-  if (generates(monthElement, element)) return { key: '相', tone: 'good' };
-  if (generates(element, monthElement)) return { key: '休', tone: 'weak' };
-  if (overcomes(element, monthElement)) return { key: '囚', tone: 'bad' };
-  return { key: '死', tone: 'bad' };
-}
-
 /**
  * 体用生克断吉凶。
  * @param {string} bodyElement 体卦五行
@@ -519,9 +512,15 @@ export function buildReading(cast, options = {}) {
   const movingPositions = movingLines.map((line) => line.position);
   const useGod = topic ? pickUseGod(jf, topic.god.relatives, movingPositions) : null;
   const dayBranch = dayPillar(year, month, day).branch;
+  const dayGanZhi = dayPillar(year, month, day);
   const calendar = {
     monthElement,
     dayElement: BRANCH_ELEMENTS[dayBranch],
+    // 旬空要靠日柱在六十甲子里的序号才排得出，月破与墓绝要靠地支序号，都一并带上。
+    dayIndex: dayGanZhi.index,
+    dayBranch,
+    monthBranch,
+    movingPositions,
     movingElements: movingLines.map((line) => {
       const na = jf.lines[line.position - 1];
       return na ? na.element : body.element;
@@ -576,6 +575,30 @@ export function buildReading(cast, options = {}) {
     structure,
     jingfang: jf,
     changedJingfang: changed ? jingfang(changed) : null,
+    // 旬空与月破是这一卦整体的两处日子，跟哪一卦无关，单列一份给右栏和历法页用。
+    void: (() => {
+      const kong = xunKong(dayGanZhi.index);
+      const po = monthPo(monthBranch);
+      return {
+        headName: kong.headName,
+        names: kong.voidNames,
+        brokenName: BRANCHES[po],
+      };
+    })(),
+    // 六爻各自逢什么：旬空（连真假）、月破、墓绝。卦体照这个画小标，断语照这个说话。
+    states: jf.lines.map((line) => {
+      const v = voidReading(line, calendar);
+      return {
+        position: line.position,
+        void: v.isVoid,
+        voidKind: v.status,
+        broken: v.isBroken,
+        tomb: v.isTomb,
+        jue: v.isJue,
+        rescues: v.rescues,
+        empties: v.empties,
+      };
+    }),
     useGod: useGod
       ? {
           topic: topic.key,
@@ -632,12 +655,12 @@ const GOD_SHI_TONE = Object.freeze({
 /**
  * 伏神出不出得来。
  *
- * 《增删卜易》列「伏神有用者六」与「终不得出者五」，六条里本包只能核验四条——旺衰靠
- * 月建、生扶靠月建与日辰，另有「得动爻生」一条本包有动爻，也算数。剩下「飞神空破休囚
- * 墓绝」「日月动爻冲克飞神」要用旬空、月破、墓库与地支冲，本包一件都没有，**不硬凑**：
- * 四条都落空时只说「无从判」，不假装断得了。
+ * 《增删卜易·飞伏神章》列「伏神易出有六」与「终不得出有五」，本包七条都能核验：
+ *   易出六——得日月生、得旺相、得飞神生、得动爻生，用月建与日辰即可判；
+ *           「飞神逢旬空、月破或休囚墓绝」这一条要旬空、月破、墓绝，也已做。
+ *   不出五——休囚无气、被日月冲克、被旺相飞神克害、正逢墓绝、直逢旬空月破，逐条对上。
+ * 六用五不出之外，野鹤还把休、囚、死并入无气，本包同此口径。
  */
-const HIDDEN_GAP = '旬空、月破、墓库与地支冲本包未做，《增删卜易》其余两条出伏条件无从核验。';
 
 /**
  * 伏神的取法、飞伏生克与出伏结论，收在一处。
@@ -650,6 +673,9 @@ function hiddenReading(name, jingfang, calendar) {
   const pair = hiddenGod(jingfang, name);
   if (!pair) return null;
   const flying = flyingRelation(pair.hushen, pair.feishen);
+  // 伏神与飞神各自逢什么空、破、墓、绝，一并问出来；伏神按野鹤的分法再判真假。
+  const fu = voidReading(pair.hushen, { ...calendar, isHidden: true, isStruck: flying.key === '飞来克伏' });
+  const fei = voidReading(pair.feishen, calendar);
   const emerges = hiddenVerdict(
     pair.hushen,
     pair.feishen,
@@ -657,6 +683,17 @@ function hiddenReading(name, jingfang, calendar) {
     calendar.monthElement,
     calendar.dayElement,
     calendar.movingElements,
+    {
+      isVoid: fu.isVoid,
+      status: fu.status,
+      isBroken: fu.isBroken,
+      isTomb: fu.isTomb,
+      isJue: fu.isJue,
+      flyingVoid: fei.isVoid,
+      flyingBroken: fei.isBroken,
+      flyingTomb: fei.isTomb,
+      flyingJue: fei.isJue,
+    },
   );
   return {
     relative: name,
@@ -686,31 +723,59 @@ function hiddenText(god, jingfang, calendar) {
   return `按《增删卜易·飞伏神章》从本宫首卦取伏神：${found.join(' ')}`;
 }
 
-function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, movingElements) {
+function hiddenVerdict(hushen, feishen, flying, monthElement, dayElement, movingElements, state) {
+  // 《增删卜易》「伏神易出有六」与「终不得出有五」逐条落：旺衰靠月建，生扶靠月建与
+  // 日辰，旬空月破墓绝各据其表，飞伏空破则压不住伏神。七条之外野鹤还把休囚死并入无气。
   const good = [];
   if (generates(monthElement, hushen.element)) good.push('得月建生');
   if (generates(dayElement, hushen.element)) good.push('得日辰生');
-  if (vitality(hushen.element, monthElement).tone === 'strong' || vitality(hushen.element, monthElement).tone === 'good') {
-    good.push(`于月建${vitality(hushen.element, monthElement).key}`);
-  }
+  const tone = vitality(hushen.element, monthElement);
+  if (tone.tone === 'strong' || tone.tone === 'good') good.push(`于月建${tone.key}`);
   if (flying.key === '飞来生伏') good.push('得飞神生');
   if (movingElements.some((element) => generates(element, hushen.element))) good.push('得动爻生');
+  if (state.flyingVoid || state.flyingBroken || state.flyingTomb || state.flyingJue) {
+    good.push('飞神逢空破墓绝，压不住它');
+  }
 
   const bad = [];
   if (overcomes(monthElement, hushen.element) || overcomes(dayElement, hushen.element)) {
     bad.push('被月建或日辰克');
   }
-  if (['休', '囚', '死'].includes(vitality(hushen.element, monthElement).key)) {
-    bad.push(`于月建${vitality(hushen.element, monthElement).key}，休囚无气`);
-  }
+  if (['休', '囚', '死'].includes(tone.key)) bad.push(`于月建${tone.key}，休囚无气`);
   if (overcomes(feishen.element, hushen.element)
     && ['strong', 'good'].includes(vitality(feishen.element, monthElement).tone)) {
     bad.push('被旺相的飞神克害');
   }
+  // 「伏神正逢休囚无气」「被日月冲克」「被旺相飞神克害」三条之外，
+  // 《增删卜易》另列「占卦之日月伏神正逢墓绝」与「伏神直旬空、月破」——正是这三条。
+  if (state.isTomb || state.isJue) bad.push('占卦日月于伏神正逢墓绝');
+  if (state.isVoid) bad.push(`伏神直${state.status || '旬空'}`);
+  if (state.isBroken) bad.push('伏神逢月破');
 
-  if (good.length > 0) return { key: '出得来', text: `伏神${good.join('、')}，出得来，无用亦为有用。` };
-  if (bad.length > 0) return { key: '出不来', text: `伏神${bad.join('、')}，终不得出，虽有如无。${HIDDEN_GAP}` };
-  return { key: '无从判', text: `日月既不生伏神、也不克伏神，四条可核验的条件都落空；${HIDDEN_GAP}` };
+  // 「这一旬空不空」与「出不出得来」本就是两问，野鹤也分列两处。混在一句里会出现
+  // 「旬空而假空……终不得出」这种看着自相矛盾的话，所以两句要分开摆：先讲空，
+  // 真空就把空本身算作出不来的一条，假空就说清「空不为其患」——出不来是另有原因。
+  const kongHead = (() => {
+    if (!state.isVoid) return '';
+    // 真空时 bad 里有「伏神直真空」兜着底，头一句只点个方向，不必把空说三遍。
+    if (state.status === '真空') return '伏神旬空而真空，';
+    if (state.status === '假空') return '伏神旬空而假空，空不为其患，';
+    return '伏神旬空，真假未判，';
+  })();
+
+  if (good.length > 0) {
+    return {
+      key: '出得来',
+      text: `${kongHead}伏神${good.join('、')}，出得来，无用亦为有用。`
+        + (state.status === '假空' ? '不过此是假空，出旬或逢冲之后才见真章。' : ''),
+    };
+  }
+  if (bad.length > 0) return { key: '出不来', text: `${kongHead}伏神${bad.join('、')}，终不得出，虽有如无。` };
+  // 这里走不到，也没有走不到的分支可留：旺衰只有旺相休囚死五档，旺相进 good、
+  // 休囚死进 bad，两边必有一边非空，「出得来」与「出不来」已穷尽全部情形。
+  // 早先还留过一个「无从判」兜底，扫了两千六百八十八个伏神，一次都没走到——是死代码，删。
+  /* c8 ignore next */
+  throw new Error('出伏判定漏了情形：旺衰本该让 good 或 bad 必有其一');
 }
 
 /** 用神那一段。候选不止一亲时只各报所在，不替求测者择。 */
@@ -744,8 +809,32 @@ function useGodText(topic, god, jingfang, movingPositions, calendar) {
   const relation = elementRelation(jingfang.lines[jingfang.shi - 1].element, picked.element);
   parts.push(picked.position === jingfang.shi
     ? '用神恰在世爻之上，所求之事就在自己身上。'
-    : `用神与世爻${relation}——${GOD_SHI_TONE[relation]}`);
+    : GOD_SHI_TONE[relation]);
+  const state = voidSentence(voidReading(picked, { ...calendar, movingPositions }));
+  if (state) parts.push(state);
   return parts.join('');
+}
+
+/**
+ * 一爻逢空逢破逢墓绝，说人话。
+ * 野鹤《增删卜易·旬空章》分真假：「旺不爲空，動不爲空，有日建動爻生扶者不爲空」是假空，
+ * 出旬与冲空之后照旧有力；「月破爲空」「真空卽春土、夏金、秋木、三冬逢火」才是真空，
+ * 逢值或逢冲之日应事。
+ */
+function voidSentence(v) {
+  const marks = [];
+  if (v.isVoid) marks.push('旬空');
+  if (v.isBroken) marks.push('月破');
+  if (v.isTomb) marks.push('入墓');
+  if (v.isJue) marks.push('逢绝');
+  if (marks.length === 0) return '';
+  if (v.status === '假空') {
+    return `${marks.join('又')}，然${v.rescues.join('、')}，是假空：出旬或逢冲之日照旧有力，不是全无指望。`;
+  }
+  if (v.status === '真空') {
+    return `${marks.join('又')}，且${v.empties.join('、')}，是真空：这一旬里做不成，等出旬逢值或逢冲再论。`;
+  }
+  return `${marks.join('又')}，暂看不出真假，等出旬或逢冲之日再定。`;
 }
 
 function buildAdvice(verdict) {

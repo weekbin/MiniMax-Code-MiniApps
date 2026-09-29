@@ -1566,7 +1566,7 @@ test('断语给出用神，且分男女与不上卦都不硬编', () => {
   assert.deepEqual(wealth.useGod.relatives, ['妻财']);
   const godLine = wealth.useGod.picked;
   assert.ok(wg.text.includes(godLine.label), '用神段没点出所取的那一爻');
-  assert.ok(/用神与世爻|用神恰在世爻之上/.test(wg.text), '用神段没说用神与世爻的关系');
+  assert.ok(/用神与世爻同气|用神恰在世爻之上|世爻生用神|用神生世爻|世爻克用神|用神克世爻/.test(wg.text), '用神段没说用神与世爻的关系');
 
   // 婚恋分男女：只各报所在，不替人择——择了就等于替求测者认了性别
   const love = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29), question: '跟他会不会复合' });
@@ -1729,18 +1729,37 @@ test('MCP 起卦把伏神一并带进 structuredContent', async () => {
   assert.ok(out.content[0].text.includes(fu.emerges.text), '正文与 structuredContent 的出伏结论不一致');
 });
 
-test('伏神出伏条件只算能核验的那几条，其余明说没做', async () => {
-  // 《增删卜易》列「有用者六」与「不得出者五」，本包只有旺衰与日月生克可用。
-  // 旬空、月破、墓库、地支冲都不在——宁可明说无从判，不拿假条件糊弄。
+test('出伏七条逐条落地，旬空月破墓绝都算数了', async () => {
+  // 《增删卜易·飞伏神章》列「易出六」与「不出五」。上一轮只做得出四条，
+  // 剩下一条「飞神逢空破墓绝」和两条「正逢墓绝」「直旬空月破」当时说没做。
+  // 这一轮把旬空、月破、墓绝都补上，那句「本包未做」必须随之消失。
   const source = await readFile(new URL('../miniapp/node/divination.mjs', import.meta.url), 'utf8');
-  assert.ok(/旬空、月破、墓库与地支冲本包未做/.test(source), '没有交代哪几条出伏条件做不了');
-  assert.ok(/得月建生/.test(source) && /得日辰生/.test(source) && /得飞神生/.test(source), '可核验的出伏条件没实现');
-  // 无从判这一路必须真的走得到，不能是死代码
+  assert.ok(!/本包未做/.test(source), '出伏条件已补齐，还留着「本包未做」是过期话');
+  assert.ok(!/HIDDEN_GAP/.test(source), '出伏缺口的常量该删了');
+  assert.ok(/得月建生/.test(source) && /得日辰生/.test(source) && /得飞神生/.test(source), '原有的出伏条件掉了');
+  assert.ok(/占卦日月于伏神正逢墓绝/.test(source), '没接上「正逢墓绝」这一条');
+  assert.ok(/伏神逢月破/.test(source), '没接上「直逢旬空月破」这一条');
+  assert.ok(/飞神逢空破墓绝/.test(source), '没接上「飞神逢空破墓绝压不住它」这一条');
+
+  // 上面是读源码。下面真跑：造一个伏神正逢旬空的日子，看「终不得出」这一路走不走得到。
   const jfModule = await import('../miniapp/node/jingfang.mjs');
+  const almanac = await import('../miniapp/node/almanac.mjs');
   const pair = jfModule.hiddenGod(jfModule.jingfang(HEXAGRAM_LIST.find((h) => h.name === '泽山咸')), '妻财');
   assert.ok(pair, '取不到兑宫咸卦的妻财伏神');
   assert.equal(pair.hushen.element, '木');
   assert.equal(pair.feishen.element, '火', '咸卦二爻应是丙午火官鬼');
+  // 卯木妻财伏在二爻；找出让卯落进旬空的日子
+  let hit = null;
+  for (let d = 0; d < 60; d += 1) {
+    if (almanac.xunKong(d).voidBranches.includes(pair.hushen.branchIndex)) { hit = d; break; }
+  }
+  assert.ok(hit !== null, '六十日里总该有几天卯是旬空');
+  const empty = jfModule.voidReading(pair.hushen, {
+    monthBranch: 0, dayBranch: almanac.xunKong(hit).voidBranches[0],
+    dayIndex: hit, movingElements: [], movingPositions: [], isHidden: true,
+  });
+  assert.equal(empty.isVoid, true, '这一天卯应当是旬空');
+  assert.ok(['真空', '假空', '旬空未判'].includes(empty.status), '逢空必得给个真假说法');
 });
 
 test('右栏用神一格：上了卦说在哪一爻，不上卦说伏在哪一爻', async () => {
@@ -1767,4 +1786,251 @@ test('右栏用神一格：上了卦说在哪一爻，不上卦说伏在哪一�
   const fu = reading.useGod.hidden[0];
   assert.ok(offGua.includes(fu.hushen), '右栏没带上伏神干支');
   assert.ok(!/本宫首卦亦无/.test(offGua), '明明取到伏神却说本宫首卦亦无');
+});
+
+/* ---------- 旬空 · 月破 · 墓绝 ---------- */
+// 上一轮出伏说「旬空、月破、墓库与地支冲本包未做」，这一轮补齐。补的东西必须有出处，
+// 而且算法要对得上书上的表——只断言「函数存在」的话，把算法改错照样全绿。
+
+test('旬空歌诀六句与算法逐句对撞', async () => {
+  const A = await import('../miniapp/node/almanac.mjs');
+  assert.equal(A.XUNKONG_SONG.length, 6, '歌诀存的不是六句');
+  for (let x = 0; x < 6; x += 1) {
+    const line = A.XUNKONG_SONG[x];
+    // 歌诀形如「甲子旬中戌亥空」：头两字旬名，中字，四、五两字是空亡，末字空
+    const want = line.slice(4, 6);
+    const got = A.xunKong(x * 10).voidNames.join('');
+    assert.equal(got, want, `${line}：算法算出「${got}空」，与歌诀不合`);
+    assert.equal(A.xunKong(x * 10).headName, line.slice(0, 2).slice(1), `${line} 旬首对不上`);
+  }
+  // 一旬十日同旬，日柱换了旬首不变
+  const sameXun = [A.xunKong(40), A.xunKong(43), A.xunKong(49)];
+  for (const k of sameXun) {
+    assert.equal(k.voidNames.join(''), '寅卯', '甲辰旬十日内空亡应始终是寅卯');
+  }
+});
+
+test('旬空对着《增删卜易》两个卦例的日柱反推', async () => {
+  const A = await import('../miniapp/node/almanac.mjs');
+  // 「辰月乙卯日占求财得家人之贲」，书中断「丑财持世遇旬空」——丑在空。
+  const yiMao = [1, 11, 21, 31, 41, 51].find((i) => i % 12 === 3);
+  assert.ok(A.xunKong(yiMao).voidNames.includes('丑'), '乙卯日（丑当值）丑应旬空');
+  // 「子月辛亥日占远行求财得大畜」，书中断「世值旬空」，该卦世爻正是寅木。
+  const xinHai = [7, 17, 27, 37, 47, 57].find((i) => i % 12 === 11);
+  assert.ok(A.xunKong(xinHai).voidNames.includes('寅'), '辛亥日（寅当旬空）寅应旬空');
+  // 六十日里每一天都恰属一旬，旬首两支之外的两支为空
+  for (let d = 0; d < 60; d += 1) {
+    const k = A.xunKong(d);
+    assert.equal(k.voidBranches.length, 2, '每旬恒空两支');
+    assert.equal(k.headName, ['子', '戌', '申', '午', '辰', '寅'][k.xun], '旬首与旬序对不上');
+  }
+});
+
+test('月破逐月对得上《增删卜易》正月申破至十二月未破', async () => {
+  const A = await import('../miniapp/node/almanac.mjs');
+  const months = ['寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥', '子', '丑'];
+  const song = ['申', '酉', '戌', '亥', '子', '丑', '寅', '卯', '辰', '巳', '午', '未'];
+  months.forEach((month, i) => {
+    const got = A.BRANCHES[A.monthPo(A.BRANCHES.indexOf(month))];
+    assert.equal(got, song[i], `${month}月应破${song[i]}，算得${got}`);
+  });
+  // 月破就是月建所冲之支，两条路径必须给同一个答案
+  for (let b = 0; b < 12; b += 1) {
+    assert.equal(A.monthPo(b), A.branchClash(b), '月破与六冲是同一件事');
+  }
+});
+
+test('五行墓绝与四季真空各按自己的表', async () => {
+  const A = await import('../miniapp/node/almanac.mjs');
+  const mu = { 金: '丑', 木: '未', 水: '辰', 土: '辰', 火: '戌' };
+  const jue = { 金: '寅', 木: '申', 水: '巳', 土: '巳', 火: '亥' };
+  for (const [element, want] of Object.entries(mu)) {
+    assert.equal(A.BRANCHES[A.muJue(element).mu], want, `${element}墓应在${want}`);
+    assert.equal(A.BRANCHES[A.muJue(element).jue], jue[element], `${element}绝应在${jue[element]}`);
+  }
+  // 《黄金策》口诀「春土、夏金、秋木、三冬逢火是真空」，四季各三月
+  const expect = { 寅: '土', 卯: '土', 辰: '土', 巳: '金', 午: '金', 未: '金', 申: '木', 酉: '木', 戌: '木', 亥: '火', 子: '火', 丑: '火' };
+  for (const [name, element] of Object.entries(expect)) {
+    assert.equal(A.seasonVacuous(A.BRANCHES.indexOf(name)).vacuousElement, element, `${name}月的真空元素应是${element}`);
+  }
+});
+
+test('假空真空照野鹤原话判：旺、动、生扶是假空，月破与四季之空是真空', async () => {
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const A = await import('../miniapp/node/almanac.mjs');
+  // 卯木在酉月：金旺，木为「休」，所以既不旺相也不发动时最干净地落入真空
+  const dayIndex = 40; // 甲辰旬，寅卯空
+  const line = { position: 2, branchIndex: A.BRANCHES.indexOf('卯'), element: '木' };
+  // 日支取酉：酉金不生卯木，这一爻才落得干净地进真空。
+  // 早先取子水——子恰是水生木，「得日辰生扶」把本该真空的一爻救了回来，测的就不是真空了。
+  const base = { monthBranch: 9, dayBranch: 9, dayIndex, movingElements: [], movingPositions: [] };
+
+  const quiet = J.voidReading(line, base);
+  assert.equal(quiet.isVoid, true, '卯在甲辰旬当旬空');
+  assert.equal(quiet.status, '真空', '秋占木爻又不动，应作真空论');
+  assert.ok(quiet.empties.some((w) => w.includes('秋令正空木')), '真空凭据里没有四季之空这一条');
+
+  // 「动不为空」：同一爻动起来就不再作真空论
+  const moving = J.voidReading(line, { ...base, movingPositions: [2] });
+  assert.equal(moving.status, '假空', '动爻不为空');
+  assert.ok(moving.rescues.includes('发动'), '没把「发动」记作有救');
+
+  // 「有日建动爻生扶者不為空」：日辰来生也算有救。子水生卯木。
+  const fed = J.voidReading(line, { ...base, dayBranch: 0 });
+  assert.equal(fed.status, '假空', '得日辰生扶不作真空论');
+  assert.ok(fed.rescues.some((w) => w.includes('生扶')), '没把「得日辰或动爻生扶」记作有救');
+
+  // 「月破爲空」：酉月破卯，本就该作真空
+  const broken = J.voidReading(line, base);
+  assert.equal(broken.isBroken, true, '酉月正破卯');
+
+  // 不逢空的爻不该被扣上任何空破的帽子
+  const shi = { position: 2, branchIndex: A.BRANCHES.indexOf('午'), element: '火' };
+  const clear = J.voidReading(shi, base);
+  assert.equal(clear.isVoid, false);
+  assert.equal(clear.status, null, '不逢空就不该有真假之说');
+});
+
+test('伏神本身逢旬空时，出伏结论真的落到「终不得出」', async () => {
+  // 上面那条出伏测试是读源码的：把「伏神直旬空」那一行删掉，它照样全绿。
+  // 这一条扫真实的卦与真实的日子，非得找到一个伏神正逢旬空的组合不可。
+  const A = await import('../miniapp/node/almanac.mjs');
+  const voidDays = [];
+  for (let d = 0; d < 60 && voidDays.length < 12; d += 1) {
+    if (A.xunKong(d).voidNames.length === 2) voidDays.push(d);
+  }
+  assert.equal(voidDays.length, 12, '六十日里每旬两日旬空，计十二日');
+
+  let seen = 0;
+  let sawVoid = false;
+  for (let upper = 1; upper <= 8 && seen < 400; upper += 1) {
+    for (let lower = 1; lower <= 8 && seen < 400; lower += 1) {
+      const reading = buildReading(castByNumbers(upper, lower), { now: new Date(2026, 8, 30, 10, 0), question: '这单生意能赚钱吗' });
+      seen += 1;
+      for (const fu of reading.useGod.hidden || []) {
+        const branch = fu.hushen[1];
+        if (!A.xunKong(43).voidNames.includes(branch)) continue;
+        sawVoid = true;
+        assert.ok(/旬空|真空|假空/.test(fu.emerges.text), `伏神逢旬空却没把空论进去：${fu.emerges.text}`);
+        if (fu.emerges.key === '出不来') {
+          assert.ok(/旬空|真空/.test(fu.emerges.text), `断作终不得出却不点破旬空：${fu.emerges.text}`);
+        }
+      }
+    }
+  }
+  assert.ok(sawVoid, '这一轮扫遍八八六十四组，伏神就没逢上旬空，测不到那一支');
+});
+
+test('伏神旬空而别无生扶时，那一条空要独自把它压在出不来里', async () => {
+  // 上一条只要求「逢空必得说出来」，可伏神一旦有生扶就判出得来，那个「空」被好话盖住了。
+  // 这一条专挑无生扶的：把 bad 里「伏神直真空」那一行删掉，结论就再也压不住——得杀掉它。
+  const A = await import('../miniapp/node/almanac.mjs');
+  let checked = 0;
+  let verified = 0;
+  for (let upper = 1; upper <= 8 && checked < 64; upper += 1) {
+    for (let lower = 1; lower <= 8 && checked < 64; lower += 1) {
+      const reading = buildReading(castByNumbers(upper, lower), { now: new Date(2025, 0, 15, 10, 0), question: '这单生意能赚钱吗' });
+      checked += 1;
+      for (const fu of reading.useGod.hidden || []) {
+        if (fu.emerges.key !== '出不来') continue;
+        if (!A.xunKong(A.dayPillar(2025, 1, 15).index).voidNames.includes(fu.hushen[1])) continue;
+        // 结论是「终不得出」，正文就必须把空点出来，且要分清真空假空
+        assert.match(fu.emerges.text, /旬空而(真空|假空)/, `断作终不得出却不言空：${fu.emerges.text}`);
+        assert.match(fu.emerges.text, /终不得出/, '出不来这一路没走到');
+        // 关键：空必须作为**出不来的一条凭据**出现，不只是句首提一句。
+        // 只盯「旬空而真空」那个头字不够——那是 kongHead 拼的，把 bad 里那一行删掉照样过。
+        assert.match(fu.emerges.text, /伏神直(真空|假空)/, `空没被算作出不来的一条：${fu.emerges.text}`);
+        // 假空要说清「空不为其患」，免得读成空就是死因
+        if (/假空/.test(fu.emerges.text)) {
+          assert.ok(/空不为其患/.test(fu.emerges.text), `假空却把空当成死因：${fu.emerges.text}`);
+        }
+        verified += 1;
+      }
+    }
+  }
+  assert.ok(verified > 0, '这批卦里没有伏神旬空而出不来的，用例落空了');
+});
+
+test('伏神休囚无气那一条真的在出不来里说得出来', async () => {
+  // 野鹤「终不得出」第一条就是「伏神正逢休、囚无气」。删掉这一句，结论还会是「出不来」，
+  // 只是没了凭据——所以要单独钉住那句人话，不只看 key。
+  const A = await import('../miniapp/node/almanac.mjs');
+  let checked = 0;
+  let rested = 0;
+  for (let upper = 1; upper <= 8; upper += 1) {
+    for (let lower = 1; lower <= 8; lower += 1) {
+      // 丑月月建土，火在丑月为休囚；一月的卦里总有伏神落在这上头
+      const reading = buildReading(castByNumbers(upper, lower), { now: new Date(2025, 0, 15, 10, 0), question: '这单生意能赚钱吗' });
+      checked += 1;
+      for (const fu of reading.useGod.hidden || []) {
+        if (fu.emerges.key !== '出不来') continue;
+        if (!/休囚无气|于月建[休囚死]/.test(fu.emerges.text)) continue;
+        rested += 1;
+        assert.match(fu.emerges.text, /休囚无气/, `断了休囚却没把「无气」说出来：${fu.emerges.text}`);
+        assert.match(fu.emerges.text, /于月建[休囚死]/, '没点明伏神于月建落到哪一档');
+      }
+    }
+  }
+  assert.ok(rested > 0, '这批卦里没有伏神休囚而出不来的，用例落空了');
+  assert.equal(checked, 64, '应当扫满八八六十四组');
+});
+
+test('卦体与右栏把空破标出来', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const i = client.indexOf('function guaLines(');
+  const body = client.slice(i, client.indexOf('\n      function ', i + 10));
+  assert.ok(/states/.test(body), '卦体没收 states');
+  assert.ok(/st\.void/.test(body) && /st\.broken/.test(body), '卦体没画旬空与月破');
+  assert.ok(/st\.tomb/.test(body) && /st\.jue/.test(body), '卦体没画墓绝');
+  // 四种情形各自成字，不能合成一个词了事
+  const mark = client.slice(client.indexOf('const stateMark ='), client.indexOf('const stateMark =') + 700);
+  // 钉在「这一支真的会出这个字」上。钉 st.broken 出现过是不够的——把 '破' 换成 '' 时
+  // st.broken 还在下面 word === '破' 里出现过，照样全绿，那等于没测月破。
+  for (const [field, word] of [['void', '空'], ['broken', '破'], ['tomb', '墓'], ['jue', '绝']]) {
+    const re = new RegExp(`st\\.${field} \\? [^\\n]*${word}`);
+    assert.ok(re.test(mark), `${field} 那一支没出「${word}」字`);
+  }
+  // 本卦那一次调用得把 states 传下去
+  // 边界别用后面某个字段名去截——文件里 reading.changed 出现在前头，会把这一段切没了。
+  const call = client.slice(client.indexOf('left.append(guaBlock('), client.indexOf('left.append(guaBlock(') + 400);
+  assert.ok(/reading\.states/.test(call), '解读页本卦没把 states 传进卦体');
+  // 右栏得有一格旬空月破
+  assert.ok(/旬空月破/.test(client), '右栏没报旬空与月破');
+  assert.ok(/headName/.test(client) && /brokenName/.test(client), '右栏没把旬首空亡与月破读出来');
+});
+
+test('reading 带着旬空月破与六爻逢什么，断语用神段说得出真假', async () => {
+  // 今天丁未日（甲辰旬空寅卯）、丁酉月（破卯），木爻在这两个日子都不算好过
+  const reading = buildReading(castByNumbers(3, 1), { now: new Date(2026, 8, 30, 10, 0), question: '这批货该不该进' });
+  assert.equal(reading.void.headName, '辰', '丁未日属甲辰旬');
+  assert.deepEqual(reading.void.names, ['寅', '卯'], '甲辰旬空寅卯');
+  assert.equal(reading.void.brokenName, '卯', '酉月破卯');
+  assert.equal(reading.states.length, 6, '六爻的状态要逐爻给');
+  const mu = reading.states.filter((s) => s.void || s.broken || s.tomb || s.jue);
+  assert.ok(mu.length > 0, '这一卦该有逢空逢破逢墓的爻');
+  for (const s of mu) {
+    if (s.void) {
+      assert.ok(['假空', '真空', '旬空未判'].includes(s.voidKind), `逢空必得给真假，${s.voidKind} 不成话`);
+    }
+  }
+});
+
+test('买卖行话也认得出财运，不该因为措辞不像「赚钱」就断成没写问题', async () => {
+  // 浏览器实测时撞上的：「这批货该不该进」明明是问财，detectTopic 却一个都不认，
+  // 断语只好说「未写所问何事，取不出用神」。进货、货款、卖掉、货，这些才是买卖人真会打的字。
+  const { detectTopic } = await import('../miniapp/node/topics.mjs');
+  for (const q of ['这批货该不该进', '该不该进货', '这批货能卖掉吗', '货款什么时候回', '这笔买卖能赚吗']) {
+    assert.equal(detectTopic(q)?.key, 'wealth', `「${q}」该认作财运`);
+  }
+  // 补词不能抢走别的类：求测者问的确实是别的事时，照旧各归各
+  for (const [q, key] of [
+    ['要不要换工作', 'career'],
+    ['能不能复合', 'love'],
+    ['这房子该买吗', 'property'],
+    ['钥匙丢了在哪', 'journey'],
+    ['官司打得赢吗', 'dispute'],
+    ['我要不要起诉对方', 'dispute'],
+  ]) {
+    assert.equal(detectTopic(q)?.key, key, `「${q}」不该被买卖那批词抢走`);
+  }
 });

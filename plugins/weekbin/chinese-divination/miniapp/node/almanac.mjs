@@ -31,6 +31,107 @@ export const SIX_HARMONY = Object.freeze([
   [0, 1], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7],
 ]);
 
+/**
+ * 六冲：子午、丑未、寅申、卯酉、辰戌、巳亥。
+ * 十二支排成圈便隔六位相冲，不必另立表，索引加六取模十二即是。
+ * @param {number} branch 地支索引 0–11
+ * @returns {number} 与之相冲的地支索引
+ */
+export function branchClash(branch) {
+  return (branch + 6) % 12;
+}
+
+/**
+ * 旬空歌诀，《增删卜易·旬空章第二十六》原文，六句。
+ * 存成数据是为了让测试能逐字对着底本校，不是拿它去查——xunKong 是按序号算的，
+ * 歌诀只是它的对校；两者对不上就是其中之一错了。
+ */
+export const XUNKONG_SONG = Object.freeze([
+  '甲子旬中戌亥空', '甲戌旬中申酉空', '甲申旬中午未空',
+  '甲午旬中辰巳空', '甲辰旬中寅卯空', '甲寅旬中子丑空',
+]);
+
+/**
+ * 旬空（空亡）。《增删卜易·旬空章第二十六》：
+ *   「甲子旬中戌亥空，甲戌旬中申酉空，甲申旬中午未空，
+ *     甲午旬中辰巳空，甲辰旬中寅卯空，甲寅旬中子丑空。」
+ * 天干十位配十二支，一旬十日总有两支配不上天干，那两支便是本旬的空。
+ * 六十甲子以旬首的地支为头，缺的两支正在头的**前两位**——这是本函数算法，
+ * 上面六句歌诀是它的对校，不是它的来源。
+ * @param {number} dayIndex 日柱在六十甲子中的序 0–59
+ * @returns {{xun: number, head: number, headName: string, voidBranches: number[], voidNames: string[]}}
+ */
+export function xunKong(dayIndex) {
+  const xun = Math.floor(dayIndex / 10);
+  const head = (xun * 10) % 12;
+  const voidBranches = [(head + 10) % 12, (head + 11) % 12];
+  return {
+    xun,
+    head,
+    headName: BRANCHES[head],
+    voidBranches,
+    voidNames: voidBranches.map((index) => BRANCHES[index]),
+  };
+}
+
+/**
+ * 月破：月建所冲之支。《增删卜易》定「月破者，月建冲爻之谓」，
+ * 十二个月逐月各破一支——正月申破、二月酉破……十二月未破，与六冲同源。
+ * @param {number} monthBranch 月支索引 0–11
+ * @returns {number} 该月所破的地支索引
+ */
+export function monthPo(monthBranch) {
+  return branchClash(monthBranch);
+}
+
+/**
+ * 五行墓绝。《纳甲筮法讲义·生旺墓绝》：
+ *   金长生在巳，旺在酉，墓在丑，绝在寅。
+ *   木长生在亥，旺在卯，墓在未，绝在申。
+ *   水土长生在申，旺在子，墓在辰，绝在巳。
+ *   火长生在寅，旺在午，墓在戌，绝在亥。
+ * 墓取**自墓**一支（丑未辰戌各归一行）。另有「库」法以辰为水库、戌为火库、
+ * 丑为金库、未为木库，与此不同；本包只用上表，断语遇到墓绝会写明依的是哪一支。
+ * @param {string} element 五行
+ * @returns {{mu: number, jue: number}}
+ */
+const MU_JUE = Object.freeze({
+  金: Object.freeze({ mu: 1, jue: 2 }),   // 墓丑、绝寅
+  木: Object.freeze({ mu: 7, jue: 8 }),   // 墓未、绝申
+  水: Object.freeze({ mu: 4, jue: 5 }),   // 墓辰、绝巳
+  土: Object.freeze({ mu: 4, jue: 5 }),   // 墓辰、绝巳
+  火: Object.freeze({ mu: 10, jue: 11 }), // 墓戌、绝亥
+});
+
+export function muJue(element) {
+  return MU_JUE[element];
+}
+
+/**
+ * 四季之真空。《增删卜易·旬空章》引《黄金策》口诀：「春土、夏金、秋木、三冬逢火是真空。」
+ * 四季以月支三分：寅卯辰春、巳午未夏、申酉戌秋、亥子丑冬。
+ * @param {number} monthBranch 月支索引 0–11
+ * @returns {{season: string, vacuousElement: string}}
+ */
+const SEASON_VACUOUS = Object.freeze([
+  Object.freeze({ season: '冬', vacuousElement: '火' }), // 亥
+  Object.freeze({ season: '冬', vacuousElement: '火' }), // 子
+  Object.freeze({ season: '春', vacuousElement: '土' }), // 寅
+  Object.freeze({ season: '春', vacuousElement: '土' }), // 卯
+  Object.freeze({ season: '春', vacuousElement: '土' }), // 辰
+  Object.freeze({ season: '夏', vacuousElement: '金' }), // 巳
+  Object.freeze({ season: '夏', vacuousElement: '金' }), // 午
+  Object.freeze({ season: '夏', vacuousElement: '金' }), // 未
+  Object.freeze({ season: '秋', vacuousElement: '木' }), // 申
+  Object.freeze({ season: '秋', vacuousElement: '木' }), // 酉
+  Object.freeze({ season: '秋', vacuousElement: '木' }), // 戌
+  Object.freeze({ season: '冬', vacuousElement: '火' }), // 亥
+]);
+
+export function seasonVacuous(monthBranch) {
+  return SEASON_VACUOUS[monthBranch];
+}
+
 /** 十二时辰，索引即地支序。 */
 export const SHICHEN = Object.freeze(
   BRANCHES.map((name, index) => {

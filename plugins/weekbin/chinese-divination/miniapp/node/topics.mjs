@@ -36,7 +36,10 @@ export const TOPIC_CLASSES = Object.freeze([
     label: '财运',
     element: '金',
     reason: '金为财，梅花以金主财帛、货利、得失。',
-    keywords: Object.freeze(['工资', '薪水', '融资', '股票', '投资', '报价', '收益', '买卖', '生意', '赚钱', '亏', '钱', '财']),
+    // 进货、货款、卖掉这类买卖行话原先不在表里，「这批货该不该进」「该不该进货」一律认不出，
+    // 问的人十有八九是问财，不该因为措辞不像「赚钱」就断成没写问题。
+    keywords: Object.freeze(['工资', '薪水', '融资', '股票', '投资', '报价', '收益', '买卖', '生意', '赚钱', '亏', '钱', '财',
+      '进货', '货款', '订货', '利润', '营收', '卖', '销', '货']),
   }),
   Object.freeze({
     key: 'career',
@@ -92,7 +95,7 @@ export const TOPIC_CLASSES = Object.freeze([
     label: '官讼是非',
     element: '金',
     reason: '金主肃杀与律令，梅花以金主官非、评判、赔偿与强制。',
-    keywords: Object.freeze(['赔偿', '仲裁', '举报', '官司', '诉讼', '纠纷', '是非', '立案']),
+    keywords: Object.freeze(['赔偿', '仲裁', '举报', '官司', '诉讼', '起诉', '纠纷', '是非', '立案']),
   }),
   Object.freeze({
     key: 'journey',

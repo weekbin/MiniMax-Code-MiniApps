@@ -28,6 +28,14 @@
  */
 
 import { TRIGRAMS, HEXAGRAM_LIST, hexagramByKey } from './hexagrams.mjs';
+// 本文件已有一个按地支字符取五行的 BRANCH_ELEMENTS；历法那边是按索引排的数组，
+// 同名会撞成重复声明，所以这里换个别名，别图省事直接 import 同名常量。
+import { branchClash, muJue, seasonVacuous, xunKong, BRANCH_ELEMENTS as ELEMENT_BY_BRANCH } from './almanac.mjs';
+
+import { BRANCHES } from './almanac.mjs';
+
+/** 地支字面 → 序号。旬空月破墓绝都按序号比，序号在这层只此一处取。 */
+const BRANCH_ORDER = BRANCHES;
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
 const OVERCOMES = Object.freeze({ 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' });
@@ -145,6 +153,7 @@ function yingOf(shi) {
  * @property {string} label     初爻…上爻
  * @property {string} stem      天干
  * @property {string} branch    地支
+ * @property {number} branchIndex 地支索引 0–11
  * @property {string} element   地支五行
  * @property {string} relative  六亲
  * @property {string} role      '世' | '应' | ''
@@ -191,6 +200,8 @@ export function jingfang(hexagram) {
       label,
       stem: source.stem,
       branch,
+      // 旬空、月破、墓绝都按地支序号算，留着它就不用每处再查一次字表。
+      branchIndex: BRANCH_ORDER.indexOf(branch),
       element,
       relative: relativeOf(palace.element, element),
       role: position === stage.shi ? '世' : position === ying ? '应' : '',
@@ -371,3 +382,94 @@ export function elementRelation(from, to) {
   if (overcomesTo(to, from)) return '被克';
   return '无涉';
 }
+
+/**
+ * 旬空、月破、墓绝，落到一爻上是什么情形；旬空再分真假。
+ *
+ * 出处为《增删卜易·旬空章第二十六》野鹤自道：
+ *   「旺不爲空，動不爲空，有日建動爻生扶者不爲空，動而化空、伏而旺相皆不爲空。
+ *     月破爲空。有卦不動爲空，爻反伏而被克爲空，真空爲空，
+ *     真空卽春土、夏金、秋木、三冬逢火是真空。」
+ *
+ * 逐条照做，不另立规矩：
+ *   假空（有救，不作真空论）——旺、动、得日辰或动爻生扶、动而化空、伏而旺相。
+ *   真空（真无用）——月破、有气而不动、伏而被克、四季所逢之空元素。
+ *
+ * 一处存疑照实交代：「有卦不動爲空」一句，野鹤原文如此，后世多本作「有氣無動爲空」。
+ * 两者差一个「氣」字，意思差得远——前者是说静卦全空，后者只说静而有气者空。
+ * 本包取**后者**（有气而不动方论空），理由是它与同段「旺不爲空」不冲突：若静而旺便
+ * 算真空，那前一句「旺不为空」就无处容身。此处已在 README 标明是取舍不是定论。
+ *
+ * @param {JingfangLine} line 本卦一爻
+ * @param {{
+ *   monthBranch: number, dayBranch: number, dayIndex: number,
+ *   movingElements: string[], movingPositions: number[],
+ *   isHidden?: boolean, isStruck?: boolean,
+ * }} calendar
+ */
+export function voidReading(line, calendar) {
+  const kong = xunKong(calendar.dayIndex);
+  const isVoid = kong.voidBranches.includes(line.branchIndex);
+  const isBroken = branchClash(calendar.monthBranch) === line.branchIndex;
+  const mj = muJue(line.element);
+  const isTomb = mj.mu === line.branchIndex;
+  const isJue = mj.jue === line.branchIndex;
+
+  // 下面只在这一爻确实逢空时才判真假；不逢空的爻不必多话。
+  if (!isVoid) {
+    return Object.freeze({
+      isVoid: false, isBroken, isTomb, isJue,
+      status: null, rescues: Object.freeze([]), empties: Object.freeze([]),
+    });
+  }
+
+  const dayElement = ELEMENT_BY_BRANCH[calendar.dayBranch];
+  const monthElement = ELEMENT_BY_BRANCH[calendar.monthBranch];
+  const moving = new Set(calendar.movingPositions);
+
+  /** 有救者不为空。顺序照野鹤原话的次序。 */
+  const rescues = [];
+  const tone = vitality(line.element, monthElement).tone;
+  if (tone === 'strong' || tone === 'good') {
+    rescues.push(`旺相（于月建${tone === 'strong' ? '旺' : '相'}）`);
+  }
+  if (moving.has(line.position)) rescues.push('发动');
+  if (generatesTo(dayElement, line.element) || calendar.movingElements.some((e) => generatesTo(e, line.element))) {
+    rescues.push('得日辰或动爻生扶');
+  }
+  if (calendar.isHidden && (tone === 'strong' || tone === 'good')) rescues.push('伏而旺相');
+
+  /** 作真空论者。 */
+  const empties = [];
+  if (isBroken) empties.push('逢月破');
+  if ((tone === 'strong' || tone === 'good') && !moving.has(line.position)) {
+    empties.push('有气而不动');
+  }
+  if (calendar.isStruck) empties.push('伏而被克');
+  const vacuous = seasonVacuous(calendar.monthBranch);
+  if (vacuous.vacuousElement === line.element) {
+    empties.push(`${vacuous.season}令正空${vacuous.vacuousElement}`);
+  }
+
+  // 有救就不作真空论——这是野鹤的次序：先说不为空，再说什么为空。
+  const status = rescues.length > 0 ? '假空' : (empties.length > 0 ? '真空' : '旬空未判');
+  return Object.freeze({
+    isVoid: true, isBroken, isTomb, isJue,
+    status, rescues: Object.freeze(rescues), empties: Object.freeze(empties),
+  });
+}
+
+/**
+ * 旺相休囚死：同我为旺、我生为相、生我为休、克我为囚、我克为死。
+ * 放在这层是因为生克的 GENERATES / OVERCOMES 就在这里，挪到别处只会多出第二份口径。
+ * @param {string} element 爻或卦的五行
+ * @param {string} monthElement 当月月建的五行
+ */
+export function vitality(element, monthElement) {
+  if (element === monthElement) return { key: '旺', tone: 'strong' };
+  if (generatesTo(monthElement, element)) return { key: '相', tone: 'good' };
+  if (generatesTo(element, monthElement)) return { key: '休', tone: 'weak' };
+  if (overcomesTo(element, monthElement)) return { key: '囚', tone: 'bad' };
+  return { key: '死', tone: 'bad' };
+}
+

@@ -78,8 +78,8 @@ every single time.
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
-| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red, a 伏神 under its line in dashed small type; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), the month's vitality, the four-derivation diagram, and the 消长 ring |
+| Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; the 干支 and 六亲 of each line sit to the right of its bars, 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 绝 as small marks; moving lines marked in red, and the 动爻's 爻辞 with its 象传 quoted under the 本卦 |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 用神 (saying where the line sits, or which line the 伏神 hides under), the month's vitality, the 旬空 and the month's 月破, the four-derivation diagram, and the 消长 ring |
 | 断语 | fifteen sections, sixteen when a topic was recognised, with 【动爻爻辞】 as the second |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
@@ -477,14 +477,43 @@ How the two relate is named four ways, and each carries its own meaning:
 | 飞来克伏 | the line on top pins the one below; suppressed, cannot come out |
 
 Whether it can **emerge** is the follow-up question. 《增删卜易》 lists six conditions for usefulness
-and five for never emerging. This package can check **four** — 得月建生, 得日辰生, 于月建旺相, and
-得飞神生 or 得动爻生 — because those need only the month branch, the day branch and the moving lines.
-旬空, 月破, 墓库 and 地支冲 are not implemented, and the reading says so in as many words rather
-than inventing a rule that looks complete. When all four verifiable conditions come out empty it
-says 「无从判」 instead of guessing.
+and five for never emerging, and this package now checks **all of them** — 旬空, 月破 and 墓绝 were
+added once their tables were in hand, so nothing here is left unsaid. What comes out is always
+出得来 or 出不来: 旺衰 runs 旺相休囚死 with no sixth state, so 旺相 always lands in the first list
+and 休囚死 always in the second, and the two between them cover every case.
 
 On the diagram the 用神 line carries a **solid red badge**, against the outlined 世/应 boxes; a
 伏神 sits under its line as smaller dashed text reading 「伏 丙子水妻财」.
+
+**旬空 · 月破 · 墓绝 — what the day and month do to a line**
+
+These three sit on top of 京房's 纳甲 and decide whether a line is doing anything today.
+
+| | Source | How it is worked out |
+| --- | --- | --- |
+| 旬空 | 《增删卜易·旬空章第二十六》 | The six-line 歌诀 is stored verbatim and checked line by line against the algorithm. Ten stems pair with twelve branches, so every ten-day 旬 leaves two branches unmatched — those are void. |
+| 月破 | 《增删卜易》: 月破者，月建冲爻之谓 | The month branch clashes the line, matching the monthly table 正月申破 through 十二月未破. |
+| 墓绝 | 《纳甲筮法讲义·生旺墓绝》 | Per element: 金墓丑绝寅, 木墓未绝申, 水土墓辰绝巳, 火墓戌绝亥. |
+
+野鹤 himself splits void into false and true, and the reading follows his wording clause by clause
+rather than inventing a rule of its own:
+
+> 旺不爲空，動不爲空，有日建動爻生扶者不爲空，動而化空、伏而旺相皆不爲空。月破爲空。
+> 有卦不動爲空，爻反伏而被克爲空，真空爲空，真空卽春土、夏金、秋木、三冬逢火是真空。
+
+So **假空** means the void is not to be trusted as emptiness — 旺, 动, 得生扶, 动而化空 or 伏而旺相
+rescue it, and it counts once the 旬 passes or a clashing day arrives. **真空** means genuinely
+useless this 旬: 月破, or the element the season voids (earth in spring, metal in summer, wood in
+autumn, fire in winter), or a hidden line being struck. The two are kept apart on the diagram: 假空
+shows as 空假, 真空 as 空真.
+
+One reading is a judgement call, and it is flagged rather than hidden: 野鹤's text reads 「有卦不動
+爲空」, while most later copies read 「有氣無動爲空」 — the difference decides whether a still line
+with vitality counts as void. This package takes the **latter**, because 旺不爲空 sits in the very
+same passage and would otherwise have nowhere to apply.
+
+Each line carries a small mark on the diagram — 空, 破, 墓, 绝 — and the right-hand panel names the
+旬 and the month's broken branch outright.
 
 **卦气 · 当令主卦 — which hexagram holds the month**
 
@@ -590,7 +619,11 @@ to pick for the querent, and 用神不上卦 refusing to invent. 伏神 is check
 worked examples reproduced character for character, all 64 hexagrams scanned so every missing 六亲
 resolves to exactly one 伏神 **from its own palace**, the four 飞伏 names, the emergence conditions
 naming what they cannot check, the right-hand panel reporting the line it hides under, and the
-MCP response carrying the same thing as a field. 101 passing.
+MCP response carrying the same thing as a field. 旬空, 月破 and 墓绝 are checked on eleven more:
+the 旬空 歌诀 against the algorithm, both worked examples from the text recovered from their day
+pillars, the twelve months of 月破, the five elements' 墓绝, the seasonal void, false-void rescue
+and true-void grounds, the emergence path actually reaching 「终不得出」 on void alone, the
+休囚无气 clause, and 空 破 墓 绝 reaching the diagram and the right-hand panel. 111 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

@@ -863,6 +863,19 @@
         white-space: nowrap;
       }
 
+      /* 旬空、月破、入墓、逢绝是这一爻此刻的处境，不是它的身份，所以小字无框 */
+      .gua-line .rel .st {
+        font-size: 10px;
+        line-height: 1;
+        color: var(--text-subtle);
+        white-space: nowrap;
+      }
+
+      .gua-line .rel .st.po,
+      .gua-line .rel .st.tomb {
+        color: var(--seal);
+      }
+
       /* 伏神伏在飞神之下，同格并列：小字加虚框，位置是它的，不是飞神的 */
       .gua-line .rel .fu {
         font-size: 10px;
@@ -2219,7 +2232,7 @@
         return at < 0 ? entry : entry.slice(at + 1);
       }
 
-      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden) {
+      function guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states) {
         const wrap = document.createElement('div');
         wrap.className = 'gua-lines';
         const names = ['上爻', '五爻', '四爻', '三爻', '二爻', '初爻'];
@@ -2236,6 +2249,16 @@
           const isGod = useGodPosition === position;
           // 伏神伏在某一爻之下，不另起一行，就压在那格的飞神旁边标出来
           const fu = (hidden || []).find((item) => item.position === position);
+          const st = states ? states[position - 1] : null;
+          // 逢什么就说几个字，不合成一个词——「空」「破」在书上就是分开讲的。
+          const stateMark = !st ? '' : [
+            st.void ? `空${st.voidKind && st.voidKind !== '旬空未判' ? st.voidKind[0] : ''}` : '',
+            st.broken ? '破' : '',
+            st.tomb ? '墓' : '',
+            st.jue ? '绝' : '',
+          ].filter(Boolean)
+            .map((word) => `<span class="st${word === '破' || word === '墓' ? ' po' : ''}${word === '墓' ? ' tomb' : ''}">${word}</span>`)
+            .join('');
           row.innerHTML =
             `<span class="pos">${names[6 - position]}</span>` +
             `<span class="bars">${isYang ? '<i></i>' : '<i></i><i></i>'}</span>` +
@@ -2246,6 +2269,7 @@
                 `<span class="qin">${escapeHtml(na.relative)}</span>` +
                 (na.role ? `<span class="role">${na.role}</span>` : '') +
                 (isGod ? '<span class="role god">用</span>' : '') +
+                stateMark +
                 (fu
                   ? `<span class="fu" title="伏神">伏 ${escapeHtml(fu.hushen)}${escapeHtml(fu.relative)}</span>`
                   : '') +
@@ -2256,7 +2280,7 @@
         return wrap;
       }
 
-      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden) {
+      function guaBlock(hexagram, lines, label, jingfang, useGodPosition, hidden, states) {
         const block = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'gua-title';
@@ -2265,7 +2289,7 @@
           `<h3 class="serif">${hexagram.name}</h3>` +
           `<span class="meta">${label} · 第 ${hexagram.order} 卦 · 上下 ${hexagram.upper.name}${hexagram.lower.name} · 五行 ${hexagram.element}${gong}</span>`;
         block.append(title);
-        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden));
+        block.append(guaLines(hexagram, lines, jingfang, useGodPosition, hidden, states));
         const text = document.createElement('div');
         text.className = 'text-line serif';
         text.innerHTML =
@@ -2340,6 +2364,7 @@
           reading.jingfang,
           reading.useGod && reading.useGod.picked ? reading.useGod.picked.position : null,
           (reading.useGod && reading.useGod.hidden) || [],
+          reading.states || [],
         ));
         if (reading.changed) {
           const changed = document.createElement('div');
@@ -2361,6 +2386,7 @@
           jf ? ['六亲世应', `${jf.palaceName}${jf.stage}卦 · 世${jf.shi}爻持${jf.lines[jf.shi - 1].relative} · 应${jf.ying}爻为${jf.lines[jf.ying - 1].relative}`] : null,
           reading.useGod ? ['用神', useGodFact(reading.useGod)] : null,
           ['月令旺衰', `当令 ${s.monthElement} · 体 ${s.bodyVitality} · 用 ${s.useVitality}`],
+          reading.void ? ['旬空月破', `${reading.void.headName}旬空 ${reading.void.names.join('')} · 本月破 ${reading.void.brokenName}`] : null,
         ].filter(Boolean);
         for (const [term, value] of rows) {
           const dt = document.createElement('dt');
