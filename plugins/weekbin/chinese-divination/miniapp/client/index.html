@@ -233,7 +233,9 @@
         padding: 46px 18px;
       }
 
-      /* 八卦环：外环八纯顺时针走，内环刻度反向走，两层错开才有流动感 */
+      /* 八卦环：外环八纯顺时针走，内环刻度反向走，两层错开才有流动感。
+       * 整段起卦就三秒出头，一分钟转一圈等于看着没动，环只活在起卦这几秒里——
+       * 所以外环 22 秒、内环 15 秒，三秒里能分别转过 49° 和 72°，一眼看得出在走。*/
       .bagua {
         width: 158px;
         height: 158px;
@@ -243,12 +245,12 @@
 
       .bagua .ring-outer {
         transform-origin: 100px 100px;
-        animation: baguaSpin 54s linear infinite;
+        animation: baguaSpin 22s linear infinite;
       }
 
       .bagua .ring-inner {
         transform-origin: 100px 100px;
-        animation: baguaSpinBack 38s linear infinite;
+        animation: baguaSpinBack 15s linear infinite;
       }
 
       .bagua .core {

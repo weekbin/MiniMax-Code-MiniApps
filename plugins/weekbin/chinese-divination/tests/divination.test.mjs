@@ -681,3 +681,20 @@ test('四法起卦，日志都在三秒内打完', async () => {
     assert.ok(total <= budget, `${name} 要 ${total}ms，超过 ${budget}ms，末行会被砍`);
   }
 });
+
+test('八卦环在起卦那三秒里转得肉眼看得见', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const budget = /await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client);
+  assert.ok(budget, '找不到起卦后的停留时长');
+  const rings = [
+    ['外环', /animation: baguaSpin (\d+)s/.exec(client)],
+    ['内环', /animation: baguaSpinBack (\d+)s/.exec(client)],
+  ];
+  for (const [name, hit] of rings) {
+    assert.ok(hit, `找不到${name}的转速`);
+    const period = Number(hit[1]);
+    // 整段起卦就这么几秒，转速却按分钟算的，看着就等于没动
+    const deg = (Number(budget[1]) / 1000 / period) * 360;
+    assert.ok(deg >= 30, `${name} ${period}s 一圈，停留期间只转 ${deg.toFixed(0)}°，等于没动`);
+  }
+});
