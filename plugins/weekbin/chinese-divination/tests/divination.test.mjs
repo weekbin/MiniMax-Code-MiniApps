@@ -519,3 +519,86 @@ test('认出事类时应期改看类神，不再是用卦', () => {
   assert.match(asked.timing, /辰戌丑未/);
   assert.equal(asked.timing.includes('用卦乾'), false);
 });
+
+/* ---------- 起卦中八卦环 ---------- */
+// 环上那八纯是手排的，跟引擎的 TRIGRAMS 各写一份。排错一位就是给人看错卦象，
+// 所以爻序和方位都拿引擎当权威逐个对，不靠肉眼。
+
+test('八卦环八纯的爻象与引擎 TRIGRAMS 一致', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const { TRIGRAMS } = await import('../miniapp/node/hexagrams.mjs');
+  const source = Object.values(TRIGRAMS);
+  const table = /const BAGUA = \[([\s\S]*?)\n      \];/.exec(client);
+  assert.ok(table, '客户端里找不到 BAGUA 八纯表');
+
+  const ring = [...table[1].matchAll(/name: '(.)', at: (\d+), lines: \[([^\]]+)\]/g)].map((m) => ({
+    name: m[1],
+    at: Number(m[2]),
+    // 数组与引擎同约定：自下而上，[0] 是初爻
+    key: m[3].split(',').map((s) => s.trim()).join(''),
+  }));
+
+  assert.equal(ring.length, 8, '八卦环应当正好八纯');
+  for (const item of ring) {
+    const ref = source.find((t) => t.name === item.name);
+    assert.ok(ref, `引擎里没有「${item.name}」`);
+    assert.equal(item.key, ref.lines, `「${item.name}」爻象与引擎不符`);
+  }
+});
+
+test('八卦环按后天八卦排位，角度对应引擎的 direction', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const { TRIGRAMS } = await import('../miniapp/node/hexagrams.mjs');
+  const source = Object.values(TRIGRAMS);
+  const table = /const BAGUA = \[([\s\S]*?)\n      \];/.exec(client)[1];
+
+  // SVG 里 rotate(0) 指向正上，顺时针排位
+  const AT = { 0: '正北', 45: '东北', 90: '正东', 135: '东南', 180: '正南', 225: '西南', 270: '正西', 315: '西北' };
+  const ring = [...table.matchAll(/name: '(.)', at: (\d+)/g)].map((m) => ({ name: m[1], at: Number(m[2]) }));
+
+  for (const item of ring) {
+    const ref = source.find((t) => t.name === item.name);
+    assert.ok(AT[item.at], `${item.at}° 不是八卦位`);
+    assert.equal(ref.direction, AT[item.at], `「${item.name}」排在 ${item.at}°，应为 ${AT[item.at]}`);
+  }
+});
+
+test('爻线在八卦环里自下而上落笔，初爻在最下', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  // trigramBars 用 y = 9 - i * 9，落笔 y 必须随 i 递减，i=0（初爻）拿最大 y 即最下
+  const formula = /const y = (\d+) - i \* (\d+);/.exec(client);
+  assert.ok(formula, '找不到 trigramBars 的落笔公式');
+  const base = Number(formula[1]);
+  const step = Number(formula[2]);
+  assert.ok(base > 0 && step > 0, '初爻应落在 y 正方向（下方）');
+  assert.equal(base - step * 2, -base, '三爻应关于中线对称');
+});
+
+/* ---------- 动效的定位契约 ---------- */
+// 这两处都是「CSS animation 的 transform 会覆盖定位 transform」引出来的坑：
+// 元素靠 translateX(-50%) 居中，而 keyframes 里的 scale() 会把它整个顶掉。
+
+test('台面光晕的每一帧都保住水平居中', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const frames = /@keyframes tossGlow \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(frames, '找不到 tossGlow');
+  const transforms = [...frames[1].matchAll(/transform:\s*([^;]+);/g)].map((m) => m[1]);
+  assert.ok(transforms.length >= 2, 'tossGlow 应当有多帧');
+  for (const t of transforms) {
+    assert.match(t, /translateX\(-50%\)/, `tossGlow 某帧是 "${t}"，scale() 会顶掉居中偏移`);
+  }
+});
+
+test('投影只留一种居中方式', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const block = /\.coin-shadow \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(block, '找不到 .coin-shadow');
+  const margin = /margin-left:\s*-\d+px/.test(block[1]);
+  const transform = /transform:\s*translateX\(-50%\)/.test(block[1]);
+  assert.equal(
+    margin && transform,
+    false,
+    'margin-left 负值和 translateX(-50%) 同时存在会叠加居中，投影会偏出铜钱',
+  );
+  assert.equal(transform, true, '投影应当靠 translateX(-50%) 居中，各帧也要一致');
+});
