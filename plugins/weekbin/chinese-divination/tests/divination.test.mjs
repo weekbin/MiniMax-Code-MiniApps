@@ -4304,3 +4304,45 @@ test('断语正文里不许残留 markdown 或 HTML 标记——页面转义后�
   assert.deepEqual(offenders, [], `断语正文里有会原样露给读者的标记：${offenders.slice(0, 5).join('；')}`);
   void readings;
 });
+
+test('十二时辰每行都排得满：列数必须整除 12，时间串不许折行', async () => {
+  // 这条曾经真发生过。容器从 1160px 放宽到 1340px 之后，.hour-grid 用的还是
+  // auto-fit minmax(104px, 1fr)：auto-fit 见缝就多塞一列，格子越塞越窄，
+  // 「03:00 - 05:00」被折成两行，同行里两行的格子比三行的矮，一排卡片高低不齐。
+  // 十二格改用固定列数，且只用能整除 12 的档（6 / 4 / 2），每行才都填满。
+  const html = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style'), html.indexOf('</style>'));
+
+  // 把所有 .hour-grid 的样式块收齐：基准那条加上两条媒体查询里的。
+  const blocks = [];
+  for (let from = 0; ; ) {
+    const at = css.indexOf('.hour-grid', from);
+    if (at === -1) break;
+    const open = css.indexOf('{', at);
+    const close = css.indexOf('}', open);
+    blocks.push(css.slice(open + 1, close));
+    from = close + 1;
+  }
+  assert.ok(blocks.length >= 3, `只找到 ${blocks.length} 处 .hour-grid 样式，宽窄两档的降列规则丢了`);
+
+  const columns = [];
+  for (const block of blocks) {
+    assert.ok(!/auto-(fit|fill)/.test(block),
+      '.hour-grid 还在用 auto-fit，格子会被越塞越窄，时间串会折行');
+    const m = block.match(/grid-template-columns:\s*repeat\((\d+)/);
+    assert.ok(m, '.hour-grid 有一处没有写死列数');
+    columns.push(Number(m[1]));
+  }
+  for (const n of columns) {
+    assert.equal(12 % n, 0, `列数 ${n} 整除不了 12，末行会缺格子`);
+  }
+
+  // 折行的后果是同行格子高低不齐，所以时间串与神煞那行都钉成不折行。
+  for (const selector of ['.hour .tm', '.hour .god']) {
+    const at = css.indexOf(selector);
+    assert.ok(at !== -1, `找不到 ${selector} 的样式`);
+    const open = css.indexOf('{', at);
+    assert.ok(/white-space:\s*nowrap/.test(css.slice(open, css.indexOf('}', open))),
+      `${selector} 没有 nowrap，窄一格就会折行、整排卡片高低不齐`);
+  }
+});
