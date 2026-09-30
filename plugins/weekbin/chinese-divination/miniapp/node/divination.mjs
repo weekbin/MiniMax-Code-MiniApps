@@ -287,7 +287,12 @@ export function tossCoins() {
  * @param {number[]} sums 自初爻起的六次掷钱结果
  */
 export function castByCoins(sums) {
-  if (sums.length !== 6 || sums.some((sum) => sum < 6 || sum > 9)) {
+  // 每一项都得是六到九之间的整数。少了 Number.isInteger 这层，NaN 与 undefined
+  // 会被 `sum < 6 || sum > 9` 一起放过去——非数与任何数比较都是 false——于是一次
+  // 手搓的请求会安静地组出一个全 0 的坤卦，看着像卦，其实什么都没掷。
+  if (!Array.isArray(sums)
+    || sums.length !== 6
+    || sums.some((sum) => !Number.isInteger(sum) || sum < 6 || sum > 9)) {
     throw new Error('六次掷钱结果必须是 6 到 9 之间的整数');
   }
   const key = sums.map((sum) => (sum === 7 || sum === 9 ? '1' : '0')).join('');

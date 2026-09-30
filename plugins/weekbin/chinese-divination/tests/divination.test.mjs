@@ -230,6 +230,21 @@ test('铜钱摇卦：六为老阴、九为老阳，变卦取反', () => {
 test('摇卦拒绝非法掷钱结果', () => {
   assert.throws(() => castByCoins([7, 7, 7, 7, 7]), /六次/);
   assert.throws(() => castByCoins([7, 7, 7, 7, 7, 5]), /6 到 9/);
+  assert.throws(() => castByCoins([7, 7, 7, 7, 7, 10]), /6 到 9/);
+
+  // NaN、undefined 与非数都放得过去：它们跟任何数比较都是 false，
+  // `sum < 6 || sum > 9` 一条都拦不住，于是六爻全判成阴，安静地组出一个坤卦。
+  // 页面那条路由是把请求里的 sums 用 Number() 转过来的，转不动的就是 NaN。
+  for (const bad of [[NaN, NaN, NaN, NaN, NaN, NaN], [undefined, 7, 7, 7, 7, 7], ['7', 7, 7, 7, 7, 7]]) {
+    assert.throws(() => castByCoins(bad), /6 到 9/, `非法掷钱结果 ${JSON.stringify(bad)} 竟被放过去了`);
+  }
+  assert.throws(() => castByCoins({ sum: 7, coins: [true, true, true] }), /6 到 9/, '单次掷钱的对象被当成了六次结果');
+  // 长度对得上的类数组也一样：只要每项不是整数就该拦下，哪怕它连 .some 都有。
+  assert.throws(
+    () => castByCoins({ length: 6, some: () => false, map: () => [], reduce: () => [] }),
+    /6 到 9/,
+    '一个 length 恰好是 6 的类数组被放过去了',
+  );
 });
 
 test('每日一卦同日同结果', () => {
@@ -1594,6 +1609,69 @@ test('白话块把体用旺衰翻成「你、那件事、你此刻的劲」', ()
   );
 });
 
+test('四种起法经 MCP 都真起得成卦：铜钱那一路曾经每一次都报「必须是 6 到 9 之间的整数」', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  const cast = async (args) => {
+    let raw = '';
+    await handleMcpRequest({
+      response: { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } },
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'divination_cast', arguments: args } },
+    });
+    return JSON.parse(raw).result;
+  };
+
+  // 前面那些 MCP 端到端只打过 numbers。time 与 daily 碰巧是对的，coins 不是：
+  // tossCoins() 掷一次返回一个 { sum, coins } 对象，castByCoins() 要的是六次结果
+  // 组成的数组，对象递进去 .length 是 undefined，每一次调用都撞在同一个报错上。
+  // 引擎那一层的 castByCoins 有几十条测试，全是直接喂数组——所以这条断路从头到尾
+  // 没被任何一条断言碰到过。四法一起打，才算把这一类断路堵住。
+  for (const method of ['time', 'daily', 'coins', 'numbers']) {
+    const args = method === 'numbers' ? { method, upper: 3, lower: 8 } : { method };
+    const result = await cast({ ...args, topic: 'career' });
+    assert.equal(result.isError, undefined, `${method} 经 MCP 起卦报错了：${result.content[0].text}`);
+
+    const sc = result.structuredContent;
+    assert.ok(sc.hexagram?.name, `${method} 起完了却没给出卦名`);
+    assert.ok(sc.hexagram.order >= 1 && sc.hexagram.order <= 64, `${method} 的卦序不在 1–64：${sc.hexagram.order}`);
+    assert.ok(sc.verdict?.label, `${method} 起完了却没给出吉凶`);
+    assert.ok(['大吉', '吉', '平', '凶', '大凶'].includes(sc.verdict.label), `${method} 的吉凶「${sc.verdict.label}」不在五档里`);
+    assert.ok(result.content[0].text.includes('【大白话】'), `${method} 的正文末尾没有大白话那段`);
+    // 四条起法都得把事类往下传。少传一条，那条起法上 Agent 自报的事类就被悄悄丢了，
+    // 而它照样起得出卦、照样给出吉凶——不钉这一条根本发现不了。
+    assert.equal(sc.topic?.key, 'career', `${method} 这一路把 Agent 报的事类丢了`);
+    assert.match(result.content[0].text, /由 Agent 指定/, `${method} 这一路没标明事类是 Agent 定的`);
+
+    // 铜钱这一路要多验一层：起卦依据那行得真列出六次掷钱的结果，不是三次也不是零个。
+    if (method === 'coins') {
+      const line = result.content[0].text.split('\n').find((l) => l.startsWith('【起卦依据】'));
+      assert.ok(line, '铜钱起卦的依据那一行没写出来');
+      const tossed = line.match(/掷钱\s+((?:[6-9](?:\s*·\s*)?){6})/);
+      assert.ok(tossed, `铜钱起卦没有列出六个点数：${line}`);
+    }
+  }
+
+  // 时间起卦说的是「以当下时辰成卦」。可「当下」得有个能验的凭据：起卦依据里写着
+  // 「月 · 日」，它必须是今天的那一天。月令旺衰那一层不算——那是从 buildReading 的
+  // now 算的，把 castByTime 的参数换成 1970 年它照样是今月的金，验不出来。
+  // 跨零点时前后各取一次日期，两头都算过，免得撞上换日那一秒。
+  const today = new Date();
+  const timed = await cast({ method: 'time' });
+  const dayMark = (d) => `月 · 日 ${d.getMonth() + 1} + ${d.getDate()}`;
+  const timedBasis = timed.content[0].text.split('\n').find((l) => l.startsWith('【起卦依据】'));
+  assert.ok(
+    [dayMark(today), dayMark(new Date())].some((mark) => timedBasis.includes(mark)),
+    `时间起卦用的不是今天：「${timedBasis}」`,
+  );
+
+  // 铜钱该摇得出不同的卦。断的是卦名而不是「有没有变卦」——掷出 6 或 9 就会有变卦，
+  // 拿「有变卦」做判据的话，随手一掷也可能两种都出现，这条断言就成了概率的。
+  const names = new Set();
+  for (let i = 0; i < 12; i += 1) {
+    names.add((await cast({ method: 'coins' })).structuredContent.hexagram.name);
+  }
+  assert.ok(names.size > 1, `连着摇了十二次，只摇出${[...names].join('、')}一个卦`);
+});
+
 test('MCP 让 Agent 自报事类，并在正文末尾补一段大白话', async () => {
   const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
   const call = async (method, params) => {
@@ -1671,6 +1749,33 @@ test('MCP 让 Agent 自报事类，并在正文末尾补一段大白话', async 
   // 提示语也得教模型照着白话讲，否则这段照样被它用术语复述掉。
   const init = await call('initialize', {});
   assert.match(init.instructions, /【大白话】/, 'initialize 的提示语没提大白话那段');
+});
+
+test('SKILL 把「先问清这件事」与新参数都交代给 Agent', async () => {
+  const skill = await readFile(new URL('../skills/divination/SKILL.md', import.meta.url), 'utf8');
+
+  // 这一份是 Agent 的入口文档，不是给人读的说明书。改了它，模型那一侧就跟着变，
+  // 而仓库自检只查文件在不在——不钉住的话，一次「顺手精简」就能把下面几条悄悄弄没。
+  // ① topic 九个键：不写，Agent 不会去填，事类就退回关键词，「他对我还有没有真心」
+  //    那类问法照旧认不出，而页面这边没有别的入口。
+  for (const topic of TOPIC_CLASSES) {
+    assert.ok(skill.includes(topic.key), `SKILL 没告诉 Agent 有 ${topic.key} 这一类事`);
+  }
+  // ② 末了那段白话：不写，Agent 照着断语用术语复述一遍，白话块白做。
+  assert.match(skill, /大白话/, 'SKILL 没交代末了那段白话是给用户听的');
+  // ③ 起卦前先问清：这是这一版补进去的关键一步。见问就起卦，得到的解读挂不到
+  // 用户真实的处境上，抽象且苍白——正是要避免的那种结果。断的是那三问本身，
+  // 不断标题：把「起卦前：先把这件事问清楚」改成「起卦前」，一段话还在那儿。
+  const beforeCast = skill.slice(0, skill.indexOf('## 起卦三步'));
+  assert.ok(beforeCast.length > 100, 'SKILL 里找不到「起卦前」那一段');
+  assert.match(beforeCast, /问清|问清楚/, 'SKILL 没要求起卦前把事情问清');
+  // 断的是那三条 bullet 本身。开头那句「你不知道他在纠结什么、已经走到哪一步、
+  // 最怕的是哪一头」里也有同样的字眼，断那几个词的话，删掉整条问题照样全绿。
+  for (const ask of ['到底是什么事', '已经走到哪一步', '最怕的是哪一头']) {
+    assert.ok(beforeCast.includes(`- **${ask}**`), `SKILL 里的「起卦前」没问「${ask}」，只剩半截引导`);
+  }
+  // ④ 免责声明不许被顺手改掉。
+  assert.match(skill, /仅供娱乐，无实际预测功能/, 'SKILL 里的免责说明被改掉了');
 });
 
 test('掷钱与成卦解卦互为反面：摇满六次就禁掷钱、开成卦解卦', async () => {

@@ -1584,6 +1584,36 @@ The client tests read the source, since there is no DOM in the test runner.
   fixed those two. The other two were faults in the mutations themselves: one left the file a syntax
   error, so the run reported a SyntaxError instead of any assertion, and one edited the *main* block's
   filter rather than `plainBlock`, which has nothing to do with what it claimed to break.
+- **The coins path was broken end to end over MCP, and the user is the one who reported it.**
+  `divination_cast` with `method: coins` always failed with 「六次掷钱结果必须是 6 到 9 之间的整数」:
+  `tossCoins()` performs one toss and returns a `{ sum, coins }` object, while `castByCoins()` wants
+  the six results as an array, so the object's `.length` is `undefined` and not one call got through.
+  The page route (`server.mjs`) collects six tosses separately and composes them, so only the MCP side
+  was affected — the user found it by casting through the engine directly, bypassing MCP. The fix is
+  one line. The same read turned up that `castByCoins` does not reject `NaN` or `undefined` (a
+  non-number compares false against anything), so a hand-made request quietly composed an all-zero
+  坤卦 that looked like a hexagram while nothing had been tossed; `Number.isInteger` closes that too.
+- Why earlier rounds missed it: the engine-level `castByCoins` has dozens of tests that all feed it an
+  array, and the MCP end-to-end coverage only ever exercised `numbers` — `time`, `daily` and `coins`
+  were never called at all. No method had end-to-end coverage. All four are exercised now: the hexagram
+  name and order land in 1–64, the verdict is one of the five, the plain block is at the end, and **all
+  four must pass the Agent's topic through** (dropping it on one still yields a complete reading, which
+  is invisible from outside); coins additionally checks that the 起卦依据 line really lists six tosses,
+  and that twelve consecutive tosses do not all produce the same hexagram.
+- 「Time casting uses the present 时辰」 now has evidence behind it too: the 「月 · 日」 line in 起卦依据
+  is checked against today's date. **Comparing the 月令旺衰 instead does not work** — that comes from
+  `buildReading`'s `now`, so passing 1970 to `castByTime` still yields the current month's element and
+  both sides agree. The midnight boundary is covered by accepting either the date before or after the call.
+- The SKILL gained a step 「起卦前先把这件事问清楚」: casting the moment the user asks produces an
+  interpretation that will not attach to their actual situation — abstract and thin, which is exactly the
+  failure being avoided. That section, the nine topic keys and 「relay the plain block at the end」 are all
+  asserted: it is the Agent's entry point, the repository check only verifies the file exists, and one
+  tidy-up edit can remove any of it silently.
+- All 14 mutations this round are pinned, and 219 tests pass with 0 fail after the script restores the
+  baseline. The first run left five unpinned: two were real gaps (no method was checked for passing the
+  topic through, and 「present time」 had nothing to check against), two were wrong expect keywords on my
+  side, and one was **an equivalent mutation** — `Array.isArray` is redundant next to the length check, so
+  removing it changes no behaviour at all and the knife had to be replaced.
 
 ## Data & access
 

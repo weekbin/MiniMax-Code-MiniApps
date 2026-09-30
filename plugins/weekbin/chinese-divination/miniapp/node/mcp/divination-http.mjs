@@ -310,7 +310,11 @@ function callTool(name, args) {
       const lower = toInteger(args.lower, 1000000000);
       reading = buildReading(castByNumbers(upper, lower), { question, now, topic });
     } else if (method === 'coins') {
-      reading = buildReading(castByCoins(tossCoins()), { question, now, topic });
+      // tossCoins() 掷一次、返回一个 { sum, coins } 对象；castByCoins() 要的是
+      // 自初爻起的六次结果组成的数组。把对象直接递进去，.length 是 undefined，
+      // 于是每一次 coins 调用都撞在「六次掷钱结果必须是 6 到 9 之间的整数」上——
+      // 页面那条路是分开收六次再组卦，所以只有 MCP 这一处坏。
+      reading = buildReading(castByCoins(Array.from({ length: 6 }, () => tossCoins().sum)), { question, now, topic });
     } else if (method === 'time') {
       reading = buildReading(castByTime(now), { question, now, topic });
     } else {
