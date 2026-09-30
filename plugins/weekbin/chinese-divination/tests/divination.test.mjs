@@ -1609,6 +1609,19 @@ test('白话块把体用旺衰翻成「你、那件事、你此刻的劲」', ()
   );
 });
 
+test('两处版本号与清单一致，且是能排的版本号', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../.minimax-plugin/plugin.json', import.meta.url), 'utf8'));
+  const mcp = await readFile(new URL('../miniapp/node/mcp/divination-http.mjs', import.meta.url), 'utf8');
+  const serverVersion = mcp.match(/version: '([\d.]+)'/)?.[1];
+
+  // 清单给 Host 看的是它，serverInfo 给 initialize 的调用方看的是另一个。改版本时
+  // 两处各写各的，Host 报 1.1.0 而 initialize 报 1.0.0，从外面根本看不出来。
+  assert.ok(serverVersion, 'MCP 的 serverInfo 里没有版本号');
+  assert.equal(serverVersion, manifest.version, `清单是 ${manifest.version}，serverInfo 却是 ${serverVersion}`);
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/, `版本号「${manifest.version}」不是 x.y.z`);
+  assert.equal(manifest.name, 'chinese-divination', '清单里的插件名与目录名对不上');
+});
+
 test('四种起法经 MCP 都真起得成卦：铜钱那一路曾经每一次都报「必须是 6 到 9 之间的整数」', async () => {
   const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
   const cast = async (args) => {

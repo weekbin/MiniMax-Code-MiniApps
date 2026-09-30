@@ -21,7 +21,7 @@ import { almanac } from '../almanac.mjs';
 import { jingfang } from '../jingfang.mjs';
 import { TOPIC_KEYS } from '../topics.mjs';
 
-const SERVER_INFO = Object.freeze({ name: 'chinese-divination', version: '1.0.0' });
+const SERVER_INFO = Object.freeze({ name: 'chinese-divination', version: '1.1.0' });
 
 const READ_ANNOTATIONS = Object.freeze({
   readOnlyHint: true,
