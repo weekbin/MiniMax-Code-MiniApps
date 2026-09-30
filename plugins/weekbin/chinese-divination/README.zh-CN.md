@@ -960,21 +960,6 @@ Agent 调 `divination_cast`，`question` 填你的原话、`method` 用 `time`�
 `chinese-divination/`（默认为 `~/.minimax/plugins/chinese-divination/`，具体路径见仓库根
 README 的安装说明）。重启 MiniMax Code 后对 Agent 说「打开灵签易占」。
 
-## 数据与访问
-
-- 读取文件：仅本包内的 `miniapp/client/index.html` 与 Node 载荷目录。不读取任何 Host 文件、
-  用户文件或包目录之外的路径。
-- 写入文件：`context.dataDir` 下的 `readings.json`。该目录由 Host 创建并归属本 Mini App，
-  内含保存的卦象与批注，按时间倒序，最多 500 条。写入先落到同目录临时文件再改名，
-  中途失败不会留下半截文件。改名在目标被别的进程短暂占住时退避重试——Windows 上杀毒扫描
-  或搜索索引打开文件时就会这样。无法解析的 `readings.json` 会被改名另存为
-  `readings.json.corrupt-<时间戳>` 而不是删掉，里面手写的批注捞得回来，卦历则按空表继续走。
-  除该文件外不写任何位置。
-- 网络：**无出站连接。** Node 进程不发起任何对外连接，页面不加载任何远程资源、字体或脚本，也不
-  调用任何模型 API。MCP 端点只监听 Host 指定的回环地址 `context.listen`，只接受 POST。
-- 子进程：不启动任何子进程。摇卦使用 Node 进程内的 `node:crypto.randomInt`。
-- 凭证：不读取、不持有任何凭证，未申请 Host Connector 访问。
-
 ## 测试环境
 
 - MiniMax Code 3.0.73，macOS，Node 22。从本目录安装，经 Agent 打开，页面正常渲染，四个分区
@@ -1121,6 +1106,21 @@ README 的安装说明）。重启 MiniMax Code 后对 Agent 说「打开灵签�
   不作隐藏。
 - 节律有测试兜底：同一时辰内起卦与跨时辰起卦各测一次，并核对「预告的下一时辰之卦」与真的
   到了那个时辰起卦的结果一致。
+
+## 数据与访问
+
+- 读取文件：仅本包内的 `miniapp/client/index.html` 与 Node 载荷目录。不读取任何 Host 文件、
+  用户文件或包目录之外的路径。
+- 写入文件：`context.dataDir` 下的 `readings.json`。该目录由 Host 创建并归属本 Mini App，
+  内含保存的卦象与批注，按时间倒序，最多 500 条。写入先落到同目录临时文件再改名，
+  中途失败不会留下半截文件。改名在目标被别的进程短暂占住时退避重试——Windows 上杀毒扫描
+  或搜索索引打开文件时就会这样。无法解析的 `readings.json` 会被改名另存为
+  `readings.json.corrupt-<时间戳>` 而不是删掉，里面手写的批注捞得回来，卦历则按空表继续走。
+  除该文件外不写任何位置。
+- 网络：**无出站连接。** Node 进程不发起任何对外连接，页面不加载任何远程资源、字体或脚本，也不
+  调用任何模型 API。MCP 端点只监听 Host 指定的回环地址 `context.listen`，只接受 POST。
+- 子进程：不启动任何子进程。摇卦使用 Node 进程内的 `node:crypto.randomInt`。
+- 凭证：不读取、不持有任何凭证，未申请 Host Connector 访问。
 
 ## 文件
 
