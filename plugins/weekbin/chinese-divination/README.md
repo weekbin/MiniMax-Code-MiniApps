@@ -1170,12 +1170,18 @@ to "打开灵签易占".
   page rendered and all four tabs exercised.
 - The MCP endpoint's `initialize`, `tools/list`, `tools/call`, and error paths were exercised
   locally.
-- The type scale and the page layout were raised one step together, then checked page by page
-  at a 1920x1642 viewport: casting, reading (the hexagram rows, the four-hexagram derivation, the
+- The type scale and the page layout were raised together, twice, and checked page by page at a
+  1524x1304 viewport: casting, reading (the hexagram rows, the four-hexagram derivation, the
   twelve-辟卦 growth ring, the eight-palace list), library, almanac (twelve hours, solar terms,
   zodiac), and history with a 40-character question saved into it. Nothing wrapped or overflowed,
   and the browser console stayed clean. Viewports below the 760px breakpoint were not checked on
   a real screen.
+- The hexagram drawings are pinned by a test on two counts, both of which were once true and
+  read as a grey smudge: the yin lines may not be painted in `--border-strong` (two tenths of
+  black, used so that yin would recede), and no line drawing may fall back to a 4-5px hairline.
+  Yang and yin are told apart by shape — one whole bar against two broken halves — so brightness
+  has nothing to add, and the main hexagram on the reading page is held to a heavier minimum
+  than the thumbnails it sits beside.
 - The twelve-hour grid is pinned by a test: its column count must divide 12 and the time and
   office lines must not wrap, because an `auto-fit` track silently squeezed each cell until
   `03:00 - 05:00` broke across two lines and left that row of cards at two different heights.

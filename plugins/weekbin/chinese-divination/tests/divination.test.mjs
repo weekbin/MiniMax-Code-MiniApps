@@ -4346,3 +4346,50 @@ test('十二时辰每行都排得满：列数必须整除 12，时间串不许�
       `${selector} 没有 nowrap，窄一格就会折行、整排卡片高低不齐`);
   }
 });
+
+test('卦画要先读得出来：阴爻不靠明暗区分，爻画不许退回发丝粗', async () => {
+  // 用户反馈「部分卦图并不够清晰」。查下来根因是两条，跟字号无关：
+  //
+  // 一、阴爻画的是 --border-strong（浅色模式下 #00000033，只有两成黑），
+  //    叠在 4px 的细线上，远看就是一团灰。阴阳本来就靠「一整条 vs 断成两截」
+  //    的形状区分，不需要再拿明暗掺一脚——加了只是把卦画弄糊。
+  // 二、爻画退回 4–5px 也就是发丝粗，缩到小卦图上更认不出阴阳。
+  //
+  // 颜色不得替没定吉凶的东西表态（合、刑都只留淡字不上朱砂），但「读不看得清」
+  // 是可用性问题，不归那一层管：这里要的是能读，不是好看。
+  const html = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style'), html.indexOf('</style>'));
+
+  const ruleOf = (selector) => {
+    const at = css.indexOf(selector);
+    assert.ok(at !== -1, `找不到 ${selector} 的样式`);
+    const open = css.indexOf('{', at);
+    return css.slice(open, css.indexOf('}', open));
+  };
+
+  // 阴爻：形状已经表意了，颜色只要读得出来即可，但不许再退到 --border-strong。
+  for (const selector of ['.mini-line.yin i', '.casting-hex .grow.yin i']) {
+    const rule = ruleOf(selector);
+    const color = /background:\s*(var\(--[a-z-]+\))/.exec(rule);
+    assert.ok(color, `${selector} 没写底色`);
+    assert.ok(!/border-strong/.test(color[1]),
+      `${selector} 又用回 --border-strong 了：阴爻画成两成黑，远看糊成一团灰`);
+    assert.ok(/--text\b|--text-muted/.test(color[1]),
+      `${selector} 的底色 ${color[1]} 不在文字色那一档上，读不清`);
+  }
+
+  // 爻画粗细：退回 4–5px 就是发丝。阈值分两档——解读页那副主卦体是首要显示，
+  // 本来就该比缩略图（八宫名单、四卦推导里的小卦）画得更重。
+  const MIN_BAR = [
+    ['.mini-line', 6, '小卦图'],
+    ['.casting-hex .grow', 6, '成卦盘'],
+    ['.gua-line .bars', 12, '解读页主卦体'],
+  ];
+  for (const [selector, min, what] of MIN_BAR) {
+    const rule = ruleOf(selector);
+    const h = /height:\s*([0-9.]+)px/.exec(rule);
+    assert.ok(h, `${selector} 没有写死 height`);
+    assert.ok(Number(h[1]) >= min,
+      `${selector}（${what}）的爻画只有 ${h[1]}px，太细了（至少 ${min}px）`);
+  }
+});
