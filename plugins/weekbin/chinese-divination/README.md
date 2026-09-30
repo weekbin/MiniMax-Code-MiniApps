@@ -1185,6 +1185,15 @@ to "打开灵签易占".
 - The twelve-hour grid is pinned by a test: its column count must divide 12 and the time and
   office lines must not wrap, because an `auto-fit` track silently squeezed each cell until
   `03:00 - 05:00` broke across two lines and left that row of cards at two different heights.
+- Three more layout defects are pinned by tests, all found by looking at the running page rather
+  than by reasoning about it. The eight-palace roster aligned its items to the top, and the
+  current hexagram alone carried a border and padding for its seal frame, so that one cell sat
+  five pixels lower than the other seven; the frame is an outline now, which draws without taking
+  up room. On the twelve-辟卦 ring the bars reach further out than the labels were hung, so on the
+  two sectors carrying all six lines the bars fell across the characters — the labels moved out
+  and the canvas grew from 200 to 232 units square to make room for them. The ring's breathing
+  animation dipped the current sector to 0.55 opacity, flickering the very bars it was pointing
+  at out of legibility twice every 2.6 seconds; it now bottoms out at 0.8.
 - The package's own tests (`node --test "tests/**/*.test.mjs"` from this directory) cover the
   hexagram table, the 错卦/综卦/互卦 derivations, the ganzhi anchors, the twelve offices, the
   建除 cycle, the nine-day period, the coin rules, the response timing table, each method's change

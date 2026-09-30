@@ -4393,3 +4393,58 @@ test('卦画要先读得出来：阴爻不靠明暗区分，爻画不许退回�
       `${selector}（${what}）的爻画只有 ${h[1]}px，太细了（至少 ${min}px）`);
   }
 });
+
+test('自选项的框不占布局，环上标签也不许压在爻杠上', async () => {
+  // 两条都是实机看出来的问题，不是推演出来的。
+  //
+  // 一、八宫名单那一行是 align-items: flex-start，本卦那一格原来给朱砂框加了
+  //    border + padding。框要占布局空间，于是只有这一格被顶下去 5px，八格并排时
+  //    它看着就「掉下去了」。outline 不参与布局，框照画、内容不动。
+  //
+  // 二、消长环上爻杠向外长到 R + 5 + 5×4.2 + 半根杠厚，两行标签原先只挂在 R+32，
+  //    斜角上那两个满六爻的格子（乾巳、坤亥）爻杠正好压在「乾」「坤」的字上。
+  //    标签退到 R+40，画布同时从 200 扩到 232，才腾得出位置。
+  const html = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const css = html.slice(html.indexOf('<style'), html.indexOf('</style>'));
+  const ruleOf = (selector) => {
+    const at = css.indexOf(selector);
+    assert.ok(at !== -1, `找不到 ${selector} 的样式`);
+    const open = css.indexOf('{', at);
+    return css.slice(open, css.indexOf('}', open));
+  };
+
+  const self = ruleOf('.palace .unit.self');
+  assert.ok(!/\bborder:/.test(self),
+    '.palace .unit.self 又用 border 画框了：border 占布局空间，本卦那格会被顶下去');
+  assert.ok(!/\bpadding:/.test(self),
+    '.palace .unit.self 又加了内边距：同样会把本卦那格的内容顶偏');
+  assert.ok(/outline:/.test(self), '.palace .unit.self 少了 outline，框就画不出来了');
+  // 框要占地方，间距就得让开，否则 outline-offset 会压到隔壁那格。
+  const row = ruleOf('.palace .palace-row');
+  const gap = /gap:\s*([0-9.]+)px/.exec(row);
+  assert.ok(gap && Number(gap[1]) >= 8,
+    `.palace .palace-row 的 gap 只有 ${gap ? gap[1] : '?'}px，八格挤在一起`);
+
+  // 环：标签半径必须大于最远那根爻杠的外沿，且画布要装得下最外那两个字。
+  const ring = /const R = ([0-9.]+);/.exec(html);
+  const labelR = /Math\.cos\(at\) \* \(R \+ ([0-9.]+)\)/.exec(html);
+  const spacing = /const off = [0-9.]+ \+ k \* ([0-9.]+);/.exec(html);
+  const barH = /height="([0-9.]+)" rx=/.exec(html);
+  assert.ok(ring && labelR && spacing && barH, '消长环的关键尺寸没找齐');
+  const R = Number(ring[1]);
+  const barOuter = R + 5 + 5 * Number(spacing[1]) + Number(barH[1]) / 2;
+  // 两行标签从基线往下还占一截（地支那一行），近沿比基线更靠里。
+  const labelNear = R + Number(labelR[1]) - 6.4 - 2;
+  assert.ok(labelNear > barOuter,
+    `标签近沿 ${labelNear.toFixed(1)} 没让开爻杠外沿 ${barOuter.toFixed(1)}，爻杠会压到字`);
+
+  const viewBox = /class="qiring" viewBox="(-?[0-9.]+) (-?[0-9.]+) ([0-9.]+) ([0-9.]+)"/.exec(html);
+  assert.ok(viewBox, '消长环的 viewBox 没找到');
+  const [minX, minY, w, h] = viewBox.slice(1).map(Number);
+  assert.equal(minX, 100 - w / 2, '画布没有以圆心 (100,100) 对称展开');
+  assert.equal(minY, 100 - h / 2, '画布没有以圆心 (100,100) 对称展开');
+  // 最外那两个字：标签远沿 = R + 偏移 + 一整行字高，必须留在画布里。
+  const labelFar = R + Number(labelR[1]) + 11;
+  assert.ok(labelFar <= w / 2,
+    `最外的字伸到半径 ${labelFar.toFixed(1)}，超出画布半径 ${(w / 2).toFixed(1)}，会被裁掉`);
+});
