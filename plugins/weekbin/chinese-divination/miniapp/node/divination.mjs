@@ -1691,9 +1691,20 @@ function uniqueElement(upper, lower) {
   return upper === lower ? upper : `${upper}${lower}`;
 }
 
+/**
+ * 同一秒内两次同样的取法，卦序与动爻分毫不差，只靠时间戳加那点哈希是分不开的。
+ * 而客户端的起卦按钮在整个推演动画里一直可点（推演要停 CASTING_HOLD_MS 那么多），
+ * 双击就真的会发出两次请求。两条记录落进卦历时 id 一样，之后删一条，
+ * store.remove 是按 id 过滤的，另一条会被一起带走——实测确实会清掉两条。
+ * 所以种子末尾再掺一个进程内单调递增的计数：同一秒内不会再撞。
+ * 不取模：取模会让计数绕回来时重新撞上，而这一秒内本来就起不了那么多卦。
+ */
+let idSequence = 0;
+
 function buildId(hexagram, positions, now) {
   const stamp = now.toISOString().replace(/[-:.TZ]/gu, '').slice(0, 14);
-  const seed = `${hexagram.order}-${positions.join('')}-${stamp}`;
+  idSequence += 1;
+  const seed = `${hexagram.order}-${positions.join('')}-${stamp}-${idSequence}`;
   let hash = 0;
   for (let index = 0; index < seed.length; index += 1) {
     hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;

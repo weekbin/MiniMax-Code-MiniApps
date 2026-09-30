@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -31,7 +31,7 @@ import {
   castDaily,
   tossCoins,
 } from '../miniapp/node/divination.mjs';
-import { ReadingStore } from '../miniapp/node/store.mjs';
+import { ReadingStore, shouldRetryRename } from '../miniapp/node/store.mjs';
 import { responseTiming } from '../miniapp/node/xiang.mjs';
 import { hexagramYaoTexts, lineText } from '../miniapp/node/yao.mjs';
 import { hexagramXiangTexts, lineXiang } from '../miniapp/node/xiang-chuan.mjs';
@@ -405,6 +405,9 @@ test('卦历写入 dataDir 后可回读', async () => {
     const saved = await store.save(reading, '批注内容');
     assert.equal(saved.id, reading.id);
     assert.equal(saved.note, '批注内容');
+    // 改批注那条路（store.update）连同路由一起没有，所以 updatedAt 永远是 undefined。
+    // 把这个恒为 undefined 的字段挂回 summary，只会让读代码的人以为还有「改批注」这回事。
+    assert.ok(!('updatedAt' in saved), 'summary 里不该有恒为 undefined 的 updatedAt');
 
     const listed = await store.list();
     assert.equal(listed.length, 1);
@@ -432,6 +435,110 @@ test('卦历写入 dataDir 后可回读', async () => {
     // 落盘文件是合法 JSON，不留临时文件
     const onDisk = JSON.parse(await readFile(join(dir, 'readings.json'), 'utf8'));
     assert.equal(onDisk.length, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('同一秒内两次同样的起法，id 必须分开', async () => {
+  // 数字起卦只取决于那两个数，与时辰无关。于是「同一秒、同两个数」得到的是
+  // 卦序与动爻分毫不差的一卦——id 若只拿时间戳加卦序动爻去哈希，两次必然相同。
+  // 而客户端的起卦按钮在整个推演动画里一直可点（要停 CASTING_HOLD_MS 那么多），
+  // 双击就真的会发出两次请求。这条钉的是根因：id 不许撞。
+  const now = new Date('2026-09-30T13:50:00.000Z');
+  const first = buildReading(castByNumbers(17, 29), { question: '甲', now });
+  const second = buildReading(castByNumbers(17, 29), { question: '乙', now });
+  assert.equal(first.hexagram.name, second.hexagram.name, '同一秒同两数，起出来的卦本就该是同一卦');
+  assert.notEqual(first.id, second.id, '同一秒内两次同样的起法，id 撞了：卦历里删一条会连带删另一条');
+
+  // 顺带钉住 id 的形状：路由用 /^\/api\/divination\/history\/([A-Za-z0-9-]{1,80})$/ 取 id，
+  // 掺进种子的那个计数不许改到输出格式上。消息要自己写：assert.match 不带消息时
+  // 抛的是默认文案，按关键词判「钉没钉住」会一条都对不上。
+  assert.match(first.id, /^[0-9]{14}-[a-z0-9]{1,6}$/u, 'id 的形状变了，路由取不到它');
+
+  // 撞 id 的真实后果：两条都存进卦历，删一条只该带走那一条。
+  const dir = await mkdtemp(join(tmpdir(), 'divination-store-'));
+  try {
+    const store = new ReadingStore(dir);
+    await store.save(first, '甲的批注');
+    await store.save(second, '乙的批注');
+    assert.equal((await store.list()).length, 2, '两条都该在');
+
+    assert.equal(await store.remove(first.id), true);
+    const left = await store.list();
+    assert.equal(left.length, 1, '删一条连带删了两条——id 又撞回去了');
+    assert.equal(left[0].id, second.id, '留下的那条不是被点删除的那条');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('落盘改名被 Windows 占住时退避重试，其余错误直接抛', async () => {
+  // Windows 上目标文件正被别的进程打开、且未共享删除权限时（杀毒扫描、
+  // Windows Search 索引都可能占着），改名整个失败并报 EPERM 或 EACCES——
+  // 不是部分写入，是压根没换。退避重试几次，对方松手就成了。
+  for (const code of ['EPERM', 'EACCES', 'EBUSY']) {
+    assert.equal(shouldRetryRename({ code }, 0), true, `${code} 该重试`);
+  }
+  // 其余错误码重试也没用：磁盘满、只读盘、目录不存在，重试四次都是同一个结果，
+  // 只会把这一次保存吊住几百毫秒。
+  for (const code of ['ENOSPC', 'EROFS', 'ENOENT', 'EXDEV', 'EISDIR']) {
+    assert.equal(shouldRetryRename({ code }, 0), false, `${code} 不该重试`);
+  }
+  // 次数必须有上限，不然一个真被占住的目标能把请求一直吊着。
+  assert.equal(shouldRetryRename({ code: 'EPERM' }, 3), true, '最后一次之前仍该重试');
+  assert.equal(shouldRetryRename({ code: 'EPERM' }, 4), false, '重试次数没有上限');
+  // 错误对象里取不到 code 时不许当成可重试——那多半是别处的错。
+  // 这两条消息要自己写：不带消息时抛的是默认文案，按关键词判「钉没钉住」一条都对不上。
+  assert.equal(shouldRetryRename(new Error('boom'), 0), false, '取不到 code 的错误不该重试');
+  assert.equal(shouldRetryRename(undefined, 0), false, '连错误对象都没有，不该重试');
+
+  // 光把上面这个纯函数测绿是不够的：它是个判断，调用它的是 writeAll。
+  // 有人把 writeAll 里的重试那一段删掉（或者改成无条件重试），纯函数照样全绿。
+  // 所以再钉一次调用点。
+  const source = await readFile(new URL('../miniapp/node/store.mjs', import.meta.url), 'utf8');
+  const writeAll = /async writeAll\(entries\) \{([\s\S]*?)\n  \}/.exec(source);
+  assert.ok(writeAll, '找不到 writeAll');
+  assert.ok(
+    /shouldRetryRename\(error, attempt\)/.test(writeAll[1]),
+    'writeAll 没有拿 shouldRetryRename 决定要不要重试——退避重试形同虚设',
+  );
+  assert.ok(
+    /if \(!shouldRetryRename\(error, attempt\)\) throw error;/.test(writeAll[1]),
+    'writeAll 遇到不该重试的错误没有直接抛出去',
+  );
+  assert.ok(
+    /catch \(error\)[\s\S]{0,200}?await delay\(/.test(writeAll[1]),
+    'writeAll 重试之前没有退避，等于连着猛敲',
+  );
+});
+
+test('卦历落盘文件坏了也还能打开，坏的那份挪开留着', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'divination-store-'));
+  try {
+    // 写到一半被打断、被别的程序改过、被同步软件截断，都会落成这个样子。
+    await writeFile(join(dir, 'readings.json'), '{ 这不是 JSON', 'utf8');
+    const store = new ReadingStore(dir);
+
+    // 从前是直接抛，于是 list/save/remove 全线 500：卦历打不开，用户连自救的入口都没有。
+    // 兜住拒绝再断言：坏文件那条路一旦退回直接抛，错误会在断言之前就把用例掀翻，
+    // 报出来的是一句 JSON 解析错，看不出是这条契约被破了。
+    const listed = await store.list().catch((error) => ({ threw: error?.message ?? String(error) }));
+    assert.deepEqual(listed, [], `坏文件不该把整个卦历顶死（实际：${JSON.stringify(listed)}）`);
+
+    // 坏的那份挪到一边另存而不是删掉——里面可能有用户手写的批注，捞得回来。
+    const aside = (await readdir(dir)).filter((name) => name.includes('corrupt'));
+    assert.equal(aside.length, 1, `坏文件该被挪开一份，实得 ${aside.join('、') || '一份都没有'}`);
+
+    // 挪开之后能接着存，且原文件重新立起来。
+    const reading = buildReading(castByCoins([7, 7, 7, 7, 7, 7]), { question: '坏过之后' });
+    await store.save(reading, '批注');
+    const afterSave = await store.list();
+    assert.equal(afterSave.length, 1, '挪开之后应当还能存进去');
+    assert.equal(afterSave[0].id, reading.id);
+
+    // 坏的那份还在盘上，没有被后来的写入盖掉。
+    assert.equal((await readdir(dir)).filter((name) => name.includes('corrupt')).length, 1);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

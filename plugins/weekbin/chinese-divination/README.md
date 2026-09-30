@@ -1243,7 +1243,7 @@ to "打开灵签易占".
   purpose across the two container queries, the four column counts, the cell wrapper, the note box,
   the margin's single source, the left column's floor, and the negative case that no viewport query
   reaches either block. Each was checked to turn the matching assertion red, and all 27 were caught;
-  the suite reports 207 passing after the script restored the files. Two traps turned up while
+  the suite reports 210 passing after the script restored the files. Two traps turned up while
   writing the script, and one of them was a real gap in a test. The script had been matching each
   mutation's expected assertion against the *test name*, but those expectations are assertion
   messages, so a run in which every single mutation behaved correctly reported 26 of 27 unpinned;
@@ -1253,6 +1253,44 @@ to "打开灵签易占".
   separates them now. Restoring the files only in `finally` is a third trap, already noted above:
   mutation N then runs against the file mutation 1 broke, which reads as a test that never pinned
   anything when it was contamination. Every mutation here restores from a clean baseline first.
+- A review of the whole package turned up three defects, all in the history store and the cast id,
+  all now fixed and pinned. The id was a second-resolution timestamp hashed together with the
+  hexagram order and the moving lines. Number casting depends only on the two numbers, so casting
+  the same pair twice inside one second produced byte-identical ids — and the 起卦 button is never
+  disabled while the casting animation holds for `CASTING_HOLD_MS`, so an ordinary double-click
+  sends two requests. Both readings get saved, and `remove(id)` filters by id, so deleting one
+  deleted the other as well: measured, two entries with the same id, one delete, zero left. The id
+  seed carries a process-local counter now, and the test pins the consequence rather than a
+  literal string — two readings of the same hexagram in the same second must differ, and deleting
+  one must leave the other.
+- On Windows, renaming a file over an existing one fails outright with `EPERM` or `EACCES` when
+  another process holds the target open without delete sharing — a virus scanner or the search
+  indexer, which is not rare. Nothing is half-written; the save simply fails. The rename now
+  retries with backoff on `EPERM`/`EACCES`/`EBUSY` up to four times (about 400ms in total) and
+  throws everything else immediately, since retrying a full disk or a read-only mount only holds
+  the request. The decision is a pure function so it can be tested without provoking a real lock,
+  and the call site is pinned separately — the predicate alone stays green if someone deletes the
+  loop that uses it.
+- A `readings.json` that cannot be parsed used to throw out of every history endpoint, so a
+  truncated write, a hand edit or a sync conflict left the history permanently unopenable with no
+  way to recover. It is now renamed aside to `readings.json.corrupt-<timestamp>` — moved, not
+  deleted, so a hand-written note can still be recovered — and the history reads as empty.
+  Separately, `ReadingStore.update()` had no route, no caller and no test; the only field it
+  produced was `updatedAt`, which `toSummary` copied out to become a field that was always
+  `undefined`. Both are gone rather than left as a branch that can never run and a key that
+  implies a note-editing feature the package does not have. `GET /history/:id` stays: its store
+  method is covered by a test, and it is the natural shape of the resource.
+- The fifteen assertions added for these three were each mutation-tested, and all 15 were caught
+  with the suite reporting 210 passing after the script restored the files. Three of the first
+  run reported unpinned and all three were the script's fault rather than a loose test: one
+  expectation named an assertion the mutation tripped *after* an earlier one had already fired, one
+  mutation deleted the call that an earlier assertion already covered, and one threw out of the
+  test before reaching the assertion that named the contract — the test now catches the rejection
+  and folds the cause into the message, so a failure reports the contract that broke rather than a
+  raw JSON parse error. The suite's own wording is also worth repeating: `assert.match` and
+  `assert.equal` without a message throw Node's default text, so any keyword-based "did this
+  mutation pin anything" check can never match. Two of those assertions carry an explicit message
+  for that reason.
 - The casting beat used to play only the engine's own 取数 steps — two for the coins, three for
   numbers — so the speech ran out before the hexagram was even formed. It now follows with the four
   lines that come after, in order of importance: the upper trigram, lower trigram and resulting
@@ -1273,7 +1311,7 @@ to "打开灵签易占".
   number), four on the beat (all four lines present, the three important ones never squeezed, the
   closing line kept, the fixed height fitting 11 lines), and two on the timings (not through the
   budget, hold taken from the constant). Each implementation was broken on purpose to confirm the
-  matching test really went red; all 22 were caught, and the suite reports 207 passing after the
+  matching test really went red; all 22 were caught, and the suite reports 210 passing after the
   script restored the files. One trap turned up while writing the script: restoring only in
   `finally` means mutation N runs against the file mutation 1 already broke, so anchors go missing
   and the red counts climb — which reads as "the test never pinned it" when it was contamination.
@@ -1370,7 +1408,7 @@ mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear;
 twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
 each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-207 passing.
+210 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
@@ -1388,7 +1426,12 @@ The client tests read the source, since there is no DOM in the test runner.
 - Files written: `readings.json` inside `context.dataDir`, the private directory the Host creates
   for this Mini App. It holds saved castings and their notes, newest first, capped at
   500 entries. Writes go to a temporary file in the same directory and are renamed into place, so
-  an interrupted write cannot leave a half-written file. Nothing is written anywhere else.
+  an interrupted write cannot leave a half-written file. The rename is retried with backoff when
+  the target is momentarily held open by another process, which is what Windows does when a virus
+  scanner or the search indexer has the file. A `readings.json` that cannot be parsed is renamed
+  aside to `readings.json.corrupt-<timestamp>` rather than deleted, so a hand-written note inside
+  it can still be recovered, and the history then reads as empty instead of failing every request.
+  Nothing is written anywhere else.
 - Network: **no outbound connections.** The Node process opens no outbound connections, calls no
   model API, and the page loads no remote assets, fonts, or scripts. The MCP endpoint listens only
   on the Host-assigned loopback address `context.listen` and accepts POST only.
