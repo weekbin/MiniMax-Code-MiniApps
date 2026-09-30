@@ -42,8 +42,14 @@ the layer that is missing, instead of telling you that you failed to ask.
 
 **Your question does not change the verdict.** The same hexagram asked about money and asked
 about marriage cannot flip from 凶 to 吉: 吉凶 comes from the hexagram's own 体用生克 and the
-month's vitality. What moves is the 应期 and which 取象 is emphasised. This is deliberate —
+month's vitality. What your question moves is the 应期, which 取象 is emphasised, and the one
+sentence at the top of the result that names the thing you actually asked about — 「问的是事业功名，
+卦里说的就是这份前程」. Rewording swaps that sentence, never the 吉凶. This is deliberate —
 divination should help you think, not let you buy a good answer by phrasing.
+
+That sentence needs the question to name a recognisable matter. The nine classes it covers are
+listed under 「所问之事」; write about something outside them and the line is simply left off
+rather than filled with a phrase that happens to fit.
 
 ### Picking a method
 
@@ -71,20 +77,21 @@ numbers when you want variety.
 
 ### Using 铜钱摇卦
 
-Click 铜钱摇卦, then 掷钱 six times from the bottom line up. Each toss is shown as it lands;
-when six lines are in, click 成卦解卦. 「重来」 starts over. This is the only method that differs
-every single time.
+Click 铜钱摇卦, then 掷钱 six times from the bottom line up. A progress bar and a 「已摇 n / 6 爻」
+counter sit above the buttons and move with every toss, so you can see how many lines are still
+missing without counting them. Each toss is shown as it lands; when six lines are in, click 成卦解卦.
+「重来」 starts over. This is the only method that differs every single time.
 
 ### Reading the result
 
 | Where | What |
 | --- | --- |
 | Title | your question if you wrote one, otherwise the method's name |
-| Top right | the verdict and the 体用 relation |
+| Verdict block | full width, directly under the title and **above** both columns, so the plain-language answer is the first thing on the page rather than something buried mid-scroll. In order: the verdict in large type with its one-word action (大吉 可进), the sentence saying why in 体用生克 terms, the sentence saying what the hexagram is talking about *in your case*, a grey line showing how the score was reached, 宜 / 忌, and any caution. The derivation below it is the 「凭什么」 — read it or don't, it stays where it is |
+| Top right | the same verdict and the 体用 relation, as a badge. It is the same number the block leads with; nothing on the page states two different 吉凶 |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, the 动爻's 爻辞 with its 象传 quoted under the 本卦; and, on the eighteen 六冲/六合 hexagrams, three thin arcs in the margin joining 初四、二五、三六 |
 | Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, 爻之合 (合起, 合绊, 合好, 化扶 on each line that meets a combination), 爻之刑 (who punishes whom), the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
 | 断语 | seventeen to twenty-two sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings); 【犯刑】 follows 【逢合】 and appears only when a line really is punished by another line or by the day's or the month's branch (about 90% of readings — 37 of the sixty-four have 纳甲 that collides on its own, and the rest are covered by the day/month path), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%); 【反伏与卦变】 follows 【犯刑】 and appears only when there really is a 反伏 or a 卦变 — about 6.4% of hand-tossed readings, and never under 时间, 每日 or 数字 casting, all three of which move exactly one line |
-| 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
 
@@ -285,12 +292,16 @@ online and reads nothing outside its package.
 
 **解卦 — reading the result**
 
-The verdict comes from 体用生克: the trigram holding the moving line is the 体卦 (you), the other
-is the 用卦 (the matter at hand). 用生体 is the strongest result, 体克用 and 比和 are favourable,
-体生用 drains you and 用克体 puts you under someone else's thumb. The verdict is then adjusted by
-the body's 五行 vitality in the current month — 旺相休囚死, measured against the month branch set
-by the nearest 节. The 歌诀 reads 「当令者旺，令生者相，生令者休，克令者囚，令克者死」, where 令
-is the month: 旺 same element, 相 fed by the month, 休 feeding the month, 囚 overcoming the month,
+The verdict is decided in exactly one place, from a single score. 体用生克 sets the weight —
+the trigram holding the moving line is the 体卦 (you), the other is the 用卦 (the matter at
+hand): 用生体 is +2, 体克用 and 比和 are +1, 体生用 is −1, 用克体 is −2. The body's 五行
+vitality in the current month — 旺相休囚死, measured against the month branch set by the nearest
+节 — then adds or takes off a point. A score of +2 or more is 大吉, +1 吉, 0 平, −1 凶, −2 or
+worse 大凶. The textbook verdict for the 生克 layer on its own (体克用 reads 小吉, 比和 reads 吉)
+is kept and shown as the *reason* next to the total, never as a second answer: the page leads with
+one number and explains the two layers that produced it. The 歌诀 reads 「当令者旺，令生者相，
+生令者休，克令者囚，令克者死」, where
+令 is the month: 旺 same element, 相 fed by the month, 休 feeding the month, 囚 overcoming the month,
 死 overcome by it. The 囚 and 死 positions are the pair most easily transposed, so all eight
 non-seasonal months are pinned at load time against 《增删卜易·四时旺相章》 — read it as 令 in 寅月
 and 寅月 gives 木旺, 火相, 水休, **金囚, 土死**. The four 四季土 months are deliberately left out
@@ -1472,6 +1483,37 @@ The client tests read the source, since there is no DOM in the test runner.
   the lunar ones. The app states this in the 起卦依据 panel rather than hiding it.
 - The cadence claims are test-backed: a test casts inside one 时辰 and across the boundary, and
   checks the predicted next-时辰 hexagram against a real cast in that 时辰.
+- This round read the verdict block on the **real page** field by field, one cast per question across
+  seven of them. Five named their matter — 事业, 财运, 疾病, 房产 and 出行 came back as 「这份前程」,
+  「这笔进项」, 「这桩病症」, 「这处房产或这纸契」 and 「这趟行程或这件失物」. Two left the sentence off
+  by design: 「明天的会议会顺利吗」 is simply outside the nine classes, and 「他对我还有没有真心」 is a
+  real gap — the 感情 keyword list does not catch that phrasing, so the line disappears rather than
+  being filled with something that happens to fit. Adding a word for it means weighing phrasings like
+  「公司对我是不是真心的」, so it is recorded here rather than quietly widening the table. The seven
+  runs covered 大凶, 大吉, 吉 and 平; the caution appears on every non-平 reading and is absent on 平,
+  as coded. In the DOM the block really does precede both columns and the right column no longer
+  carries a second copy of the summary. The toss progress is a `role="group"` named 「摇卦进度」 holding a
+  `role="status"` 「已摇 0 / 6 爻」, with the bar width and the counter pinned across 0–6.
+- One environment note worth keeping: **the in-app Browser on this machine does not deliver clicks.**
+  `click` returns `success` / `dispatched: true` and the page does not react — the section tabs do not
+  switch, the input keeps its placeholder — and every `ref`-based click reports `STALE_ELEMENT_REF`.
+  The page's own JavaScript is alive (setting `document.title` takes effect at once), and timers in a
+  background tab really are throttled (`setInterval` goes tens of seconds without a callback). The way
+  through is to let the page drive itself: a second same-origin proxy in front of the same server
+  injects a driver script into the real page, clicks are fired by that script, and waiting uses the
+  `load` event of a deliberately delayed image as the timer, since events are not throttled. Results
+  are written into a `<pre>` on the page and the Browser only reads. That path did produce a result
+  page from a real click — the check that stayed blocked in the previous round. Casting a second
+  time in the same tab sent `POST /cast` and never saw it return; hitting the real server and the
+  proxy directly both cast repeatedly in milliseconds, so the stall is the client animation's
+  throttled timers, not the server or the proxy.
+- Every new assertion this round went through mutation testing: the block's position and the order of
+  its seven parts, 宜/忌 and the caution each rendered exactly once, no duplicate summary in the right
+  column, no arrow in the fact table, the short word taken only from after the colon; one distinct
+  取象 sentence for each of the nine classes with none repeated, none when the class is unrecognised,
+  strength following the total score; and the progress bar's width and counter across 0–6. Each was
+  broken in turn to confirm the matching test actually goes red — all 17 pinned, and 214 pass with 0
+  fail after the script restores the baseline.
 
 ## Data & access
 

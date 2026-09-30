@@ -361,11 +361,82 @@ function judgeRelation(bodyElement, useElement) {
 }
 
 /**
+ * 所问何事落到这一卦上的那个「东西」。梅花里用卦是「事」，可「事」是空的：
+ * 不问它，结论就只能停在「体卦水克用卦火」这种谁都套得上的话上——问跳槽跟问
+ * 进货拿到同一句，等于没答。这里按已认出的事类，把用卦换算成那一类事里具体的那个
+ * 东西。**只换说法，不换吉凶**：换问法不会把同一个卦说出相反的结论。
+ */
+const TOPIC_OBJECTS = Object.freeze({
+  wealth: '这笔进项',
+  career: '这份前程',
+  love: '这段关系',
+  marriage: '这桩婚事',
+  health: '这桩病症',
+  study: '这场考试或这纸文书',
+  property: '这处房产或这纸契',
+  dispute: '这桩是非',
+  journey: '这趟行程或这件失物',
+});
+
+/** 生克那一层的关系怎么说。强弱不在这儿定，强弱由 judgeScore 给。 */
+const RELATION_FLAVOUR = Object.freeze({
+  用生体: '外头有人来成就你',
+  体克用: '这件事你压得住',
+  比和: '两边立场站得一般齐',
+  体生用: '这件事要你往外掏',
+  用克体: '外头的力压着这件事',
+});
+
+/**
+ * 把生克关系与吉凶强弱收成一句落到所问之事上的话。
+ * @param {{key: string, label: string}|null} topic detectTopic 认出��事类
+ * @param {string} relationKey 体用生克的关系名
+ * @param {string} label judgeScore 给的吉凶
+ * @returns {string|null} 认不出事类就返回 null，页面不摆这句
+ */
+function topicSentence(topic, relationKey, label) {
+  if (!topic) return null;
+  const object = TOPIC_OBJECTS[topic.key];
+  const flavour = RELATION_FLAVOUR[relationKey];
+  if (!object || !flavour) return null;
+  // 强弱一律跟着 judgeScore 给的那一档走，不拿生克那一层的教科书断语当结论：
+  // 体克用本是生克小吉，体卦逢死地时总分落回「平」，这时候还说「压得住」就是过了。
+  const strength = label === '大吉' || label === '吉'
+    ? '这一卦落在它上面是顺的'
+    : label === '平'
+      ? '它上还看不出强弱'
+      : '这一卦落在它上面不顺';
+  return `问的是${topic.label}，卦里说的就是${object}——${flavour}，${strength}。`;
+}
+
+/**
  * 组装完整卦象解读。
  * @param {{ method: string, summary: string, detail: {label: string, value: string}[], hexagram: any, positions: number[], sums: (number|null)[] }} cast
  * @param {{ question?: string, id?: string, now?: Date }} [options]
  * @returns {Reading}
  */
+/**
+ * 吉凶只此一处断：由「生克 + 旺衰」合出来的总分定，页面徽章、结论行、MCP 抬头
+ * 全取这一份。
+ *
+ * 从前徽章取的是 judgeRelation() 里的生克断语（只论体用生克这一条），结论行取的
+ * 却是含旺衰的总分——体克用而体卦当令得旺时，同一屏上一个说「小吉」一个说
+ * 「大吉」。两句话都在讲吉凶，却不是同一个吉凶，读的人只会挑一个信。
+ *
+ * 生克本身的教科书断语仍单列为 relationVerdict：它是这一卦凭什么得分的「因」，
+ * 跟总分这个「果」不是一回事，摆在事实表里当作依据，不与结论抢位置。
+ *
+ * @param {number} score 生克权重加上体卦旺衰修正
+ * @returns {{ label: string, summary: string }}
+ */
+function judgeScore(score) {
+  if (score >= 2) return { label: '大吉', summary: '大吉：可进' };
+  if (score >= 1) return { label: '吉', summary: '吉：宜行' };
+  if (score <= -2) return { label: '大凶', summary: '大凶：宜止' };
+  if (score <= -1) return { label: '凶', summary: '凶：宜守' };
+  return { label: '平', summary: '平：待时' };
+}
+
 export function buildReading(cast, options = {}) {
   const now = options.now ?? new Date();
   const question = (options.question ?? '').trim();
@@ -422,12 +493,14 @@ export function buildReading(cast, options = {}) {
   };
 
   const weight = relation.weight + (bodyVitality.tone === 'strong' || bodyVitality.tone === 'good' ? 1 : bodyVitality.tone === 'bad' ? -1 : 0);
+  const judged = judgeScore(weight);
   const verdict = {
     key: relation.key,
-    label: relation.verdict,
+    label: judged.label,
     score: weight,
-    summary: weight >= 2 ? '大吉：可进' : weight >= 1 ? '吉：宜行' : weight <= -2 ? '大凶：宜止' : weight <= -1 ? '凶：宜守' : '平：待时',
+    summary: judged.summary,
     text: relation.text,
+    relationVerdict: relation.verdict,
     vitality: bodyVitality.key,
     vitalityText: `体卦五行属${body.element}，当月令为${monthElement}，旺衰落在「${bodyVitality.key}」。${{ 旺: '体卦得令，所求之事根基稳。', 相: '体卦得月令之助，虽非最强但有托底。', 休: '体卦失令而休，力量不足，宜借外力。', 囚: '体卦受月令所困，处境受制，宜守。', 死: '体卦逢月令死地，气力最弱，此时强求不利。' }[bodyVitality.key]}`,
   };
@@ -774,6 +847,10 @@ export function buildReading(cast, options = {}) {
         }
       : null,
     verdict,
+    // 取象句挂在 verdict 上而不是平铺一层：它跟吉凶是一件事的两半——吉凶是那一档，
+    // 取象句是这一档落在所问之事上是什么话。拆开放，页面就得自己拼回去。
+    // 认不出事类时为 null，页面不摆这句，也不拿它凑数。
+    ...(topic ? { topicLine: topicSentence(topic, verdict.key, verdict.label) } : {}),
     // 每一动爻变出来的那一爻：回头生克、进退神、化空化墓。断语正文与这里走同一份，
     // sentence 只进断语不进字段——那段话断语里已经整段说过了。
     transforms: transforms.map(({ sentence, ...rest }) => rest),

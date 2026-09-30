@@ -1366,6 +1366,133 @@
         border: 1px solid var(--seal-soft);
       }
 
+      /* 结论区。原先那句大白话排在右栏第四件，前头压着九行技术事实表，
+         后头跟着八宫名单、四卦推导与卦气环，要一路滚到底才撞见——
+         恰好是最该第一眼看到的一句，排在信息洪流中段。整块提到两栏之上，
+         占满版心：吉凶、缘由、宜忌、提醒一次读完，下面的推导是「凭什么」，
+         读不读都在那儿。 */
+      .verdict-block {
+        margin-top: 16px;
+        padding: 18px 20px 16px;
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-top: 3px solid var(--seal);
+      }
+
+      .verdict-lead {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 12px;
+      }
+
+      .verdict-mark {
+        font-family: 'Songti SC', 'STSong', 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+        font-size: 46px;
+        line-height: 1.15;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--seal);
+      }
+
+      .verdict-say-short {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .verdict-say {
+        margin: 10px 0 0;
+        font-size: 19px;
+        line-height: 1.85;
+        color: var(--text);
+      }
+
+      .verdict-on-topic {
+        padding-left: 13px;
+        border-left: 3px solid var(--jade);
+      }
+
+      /* 怎么算出来的：把生克那一层与旺衰那一层都摆出来，免得看的人拿着
+         事实表里的「生克小吉」去对不上这个「大吉」，以为算错了。 */
+      .verdict-calc {
+        margin: 10px 0 0;
+        font-size: 16px;
+        line-height: 1.75;
+        color: var(--text-muted);
+      }
+
+      .verdict-picks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--border);
+      }
+
+      .verdict-picks h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        letter-spacing: 0.1em;
+      }
+
+      .verdict-picks ul {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 17px;
+        line-height: 1.85;
+      }
+
+      .verdict-picks .good h3 { color: var(--jade); }
+      .verdict-picks .bad h3 { color: var(--seal); }
+
+      .verdict-warn {
+        margin: 14px 0 0;
+        padding: 10px 13px;
+        border-radius: 10px;
+        background: var(--seal-soft);
+        border-left: 3px solid var(--seal);
+        font-size: 17px;
+        line-height: 1.75;
+      }
+
+      .toss-progress {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 12px 0 14px;
+      }
+
+      .toss-track {
+        flex: 1 1 auto;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--surface-muted);
+        overflow: hidden;
+      }
+
+      .toss-fill {
+        height: 100%;
+        width: 0;
+        border-radius: 999px;
+        background: var(--seal);
+        transition: width 240ms ease;
+      }
+
+      .toss-count {
+        margin: 0;
+        flex: 0 0 auto;
+        font-size: 16px;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .toss-fill { transition: none; }
+      }
+
       dl.facts {
         margin: 14px 0 0;
         display: grid;
@@ -1846,7 +1973,11 @@
 
           <div class="card" id="toss-card" hidden>
             <h2>摇卦</h2>
-            <p class="hint">静心默念所问之事，掷三次铜钱，自初爻向上，共六爻。</p>
+            <p class="hint">静心默念所问之事，每次投三枚铜钱，自初爻向上，共掷六次得六爻。</p>
+            <div class="toss-progress" role="group" aria-label="摇卦进度">
+              <div class="toss-track"><div class="toss-fill" id="toss-fill"></div></div>
+              <p class="toss-count" id="toss-count" role="status" aria-live="polite">已摇 0 / 6 爻</p>
+            </div>
             <div class="toss-stage">
               <div class="coins" id="coins" aria-hidden="true">
                 <div class="coin-slot"><div class="coin">?</div><span class="coin-shadow"></span></div>
@@ -2604,6 +2735,15 @@
         cast({ method: 'coins', question: el('question').value.trim(), sums: state.tosses });
       });
 
+      /** 摇到第几次了。进度条与「已摇 n / 6 爻」写在同一处：进度条的宽度是
+          这行字算出来的，不是另写一份百分比，两边不会各说各话。 */
+      function syncTossProgress() {
+        const done = state.tosses.length;
+        const total = 6;
+        el('toss-fill').style.width = `${(done / total) * 100}%`;
+        el('toss-count').textContent = `已摇 ${done} / ${total} 爻`;
+      }
+
       /** 掷钱与成卦解卦互为反面，只由「摇到第几次」一处说了算：没摇够就
           掷钱可点、成卦解卦禁着；摇满六次就反过来。原先这两行散在
           renderToss() 里，摇钱途中的收尾又硬写了一次解禁，把刚算出来的
@@ -2668,6 +2808,7 @@
           log.prepend(row);
         });
         syncTossButtons();
+        syncTossProgress();
       }
       /* ---------- 解卦渲染 ---------- */
 
@@ -2927,6 +3068,76 @@
         head.append(headline, badge);
         card.append(head);
 
+        // 结论整块提到两栏之上。先给吉凶，再讲缘由，再给宜忌与提醒；下面那两栏
+        // 是「凭什么这么算」，是依据不是结论。原先这句排在右栏第四件、前头九行
+        // 事实表、后头八宫名单与四卦推导，混在一堆里认不出来。
+        const lead = document.createElement('section');
+        lead.className = 'verdict-block anim-rise';
+        lead.setAttribute('aria-label', '结论');
+
+        const leadRow = document.createElement('div');
+        leadRow.className = 'verdict-lead';
+        const mark = document.createElement('span');
+        mark.className = 'verdict-mark';
+        mark.textContent = reading.verdict.label;
+        const markShort = document.createElement('span');
+        markShort.className = 'verdict-say-short';
+        // summary 是「大吉：可进」，冒号前那半已经由大字摆着了，再摆一遍就成了
+        // 「大吉 大吉：可进」。这里只取可执行的那半。
+        markShort.textContent = reading.verdict.summary.split('：').slice(1).join('：') || reading.verdict.summary;
+        leadRow.append(mark, markShort);
+        lead.append(leadRow);
+
+        const say = document.createElement('p');
+        say.className = 'verdict-say';
+        say.textContent = reading.verdict.text;
+        lead.append(say);
+
+        // 认出了事类就把结论落到所问之事上。少了这一句，问跳槽跟问进货拿到的是
+        // 同一句「体卦水克用卦火」，等于没答所问。认不出事类时引擎不给这句，
+        // 页面也不拿别的话来凑。
+        if (reading.topicLine) {
+          const onTopic = document.createElement('p');
+          onTopic.className = 'verdict-say verdict-on-topic';
+          onTopic.textContent = reading.topicLine;
+          lead.append(onTopic);
+        }
+
+        // 把生克与旺衰两层都摆出来：事实表里那行「生克」只论体用生克这一层，
+        // 跟这里的总分差着一档。不说清楚，看的人只会以为算错了。
+        const calc = document.createElement('p');
+        calc.className = 'verdict-calc';
+        calc.textContent =
+          `怎么算的：${reading.verdict.key}，光看生克本为${reading.verdict.relationVerdict}；`
+          + `体卦逢当月令为「${reading.verdict.vitality}」，两下一合 ${reading.verdict.score} 分，落到${reading.verdict.label}。`;
+        lead.append(calc);
+
+        if (reading.advice.suitable.length > 0 || reading.advice.avoid.length > 0) {
+          const picks = document.createElement('div');
+          picks.className = 'verdict-picks';
+          if (reading.advice.suitable.length > 0) {
+            const good = document.createElement('div');
+            good.className = 'good';
+            good.innerHTML = `<h3>宜</h3><ul>${reading.advice.suitable.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+            picks.append(good);
+          }
+          if (reading.advice.avoid.length > 0) {
+            const bad = document.createElement('div');
+            bad.className = 'bad';
+            bad.innerHTML = `<h3>忌</h3><ul>${reading.advice.avoid.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+            picks.append(bad);
+          }
+          lead.append(picks);
+        }
+
+        if (reading.advice.caution) {
+          const warn = document.createElement('p');
+          warn.className = 'verdict-warn';
+          warn.textContent = reading.advice.caution;
+          lead.append(warn);
+        }
+        card.append(lead);
+
         const body = document.createElement('div');
         body.className = 'reading';
         body.style.marginTop = '16px';
@@ -2964,7 +3175,9 @@
         const rows = [
           ['体卦（我）', `${s.body.name} · ${s.body.element} · ${s.body.nature} · ${s.body.direction} · ${s.body.position}`],
           ['用卦（事）', `${s.use.name} · ${s.use.element} · ${s.use.nature} · ${s.use.direction} · ${s.use.position}`],
-          ['生克', `${reading.verdict.key} → ${reading.verdict.label}`],
+          // 写成「生克本为 X」而不是「A → B」：这一行是依据不是结论，箭头读起来
+          // 像「所以是 B」，而 B 已经不是这一行的结论了——总分还要过旺衰那一关。
+          ['生克', `${reading.verdict.key} · 生克本为${reading.verdict.relationVerdict}`],
           ['主客', `体在${s.shi.label}，用在${s.ying.label}`],
           jf ? ['六亲世应', `${jf.palaceName}${jf.stage}卦 · 世${jf.shi}爻持${jf.lines[jf.shi - 1].relative} · 应${jf.ying}爻为${jf.lines[jf.ying - 1].relative}`] : null,
           clashFact(reading) ? ['卦体冲合', clashFact(reading)] : null,
@@ -2981,11 +3194,8 @@
         }
         right.append(facts);
 
-        const summary = document.createElement('p');
-        summary.className = 'text-line anim-fade';
-        summary.textContent = reading.verdict.summary + '。' + reading.verdict.text;
-        right.append(summary);
-
+        // 原先这里还挂着一句 verdict.summary + verdict.text，已随结论块提到页首，
+        // 留着就是同一句话在屏幕上出现两遍。cadence 往下接。
         if (reading.cadence) {
           const cadence = document.createElement('div');
           cadence.className = 'cadence anim-rise';
@@ -2996,13 +3206,8 @@
           right.append(cadence);
         }
 
-        if (reading.advice.caution) {
-          const caution = document.createElement('div');
-          caution.className = 'caution anim-rise';
-          caution.setAttribute('role', 'note');
-          caution.textContent = reading.advice.caution;
-          right.append(caution);
-        }
+        // 提醒（advice.caution）已随结论块提到页首：它跟吉凶、宜忌是一件事，
+        // 留一份在这儿就是同一句话在屏幕上说两遍。
 
         // 八宫名单排在四卦推导前头：先认清自己在哪一宫的哪一级，再看梅花那四种推法。
         // 这一列是京房层的全貌，四卦推导是梅花层的推法，两层各管各的。
@@ -3058,13 +3263,8 @@
         body.append(right);
         card.append(body);
 
-        const advice = document.createElement('div');
-        advice.className = 'cols anim-rise';
-        advice.style.marginTop = '18px';
-        advice.innerHTML =
-          `<div class="good"><h3>宜</h3><ul>${reading.advice.suitable.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` +
-          `<div class="bad"><h3>忌</h3><ul>${reading.advice.avoid.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
-        card.append(advice);
+        // 宜忌已随结论块提到页首：它跟吉凶是一件事的两半，拆到页面最末尾，
+        // 等于让最该照着做的那几条落在最容易被跳过的地方。
 
         const detail = document.createElement('div');
         detail.className = 'cols anim-rise';

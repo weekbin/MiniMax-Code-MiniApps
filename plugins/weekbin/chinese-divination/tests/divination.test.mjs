@@ -250,8 +250,14 @@ test('体用生克定吉凶，主客相隔三位', () => {
   assert.match(reading.structure.shi.role, /动爻/);
   assert.match(reading.structure.ying.role, /配爻/);
   assert.ok(!/世爻|应爻/.test(reading.structure.shi.role + reading.structure.ying.role));
-  assert.ok(['大吉', '吉', '凶'].includes(reading.verdict.label));
+  // 徽章与结论行用的是同一份判语，两边对「吉凶有哪几档」的说法也得是同一套。
+  // 从前徽章只可能出现生克那三档、结论行却有五档，同一个字段两种词汇表。
+  assert.ok(['大吉', '吉', '平', '凶', '大凶'].includes(reading.verdict.label), `徽章冒出不在册的吉凶「${reading.verdict.label}」`);
   assert.match(reading.verdict.summary, /^(大吉|吉|平|凶|大凶)：/);
+  assert.ok(
+    reading.verdict.summary.startsWith(`${reading.verdict.label}：`),
+    `徽章说「${reading.verdict.label}」而结论行说「${reading.verdict.summary}」，两处吉凶不是一回事`,
+  );
 });
 
 test('旺相休囚死以春木令为基准', () => {
@@ -1275,6 +1281,7 @@ function loadTossPanel(client) {
     return client.slice(i, j + end.length);
   };
   const code = [
+    cut('function syncTossProgress() {', '\n      }'),
     cut('function syncTossButtons() {', '\n      }'),
     cut('function lockToss() {', '\n      }'),
     cut('async function tossOnce() {', '\n      }'),
@@ -1302,13 +1309,13 @@ function tossPanelDom(client) {
     replaceChildren() { this.children.length = 0; },
     prepend(node) { this.children.unshift(node); },
   };
-  const nodes = { ...buttons, coins, 'toss-log': tossLog };
+  const nodes = { ...buttons, coins, 'toss-log': tossLog, 'toss-fill': { style: {} }, 'toss-count': { textContent: '' } };
   const state = { tosses: [] };
   const announced = [];
   const make = (api) =>
     new Function(
       'el', 'state', 'api', 'announce', 'document', 'setTimeout',
-      `${loadTossPanel(client)}\nreturn { tossOnce, syncTossButtons, lockToss, renderToss };`,
+      `${loadTossPanel(client)}\nreturn { tossOnce, syncTossButtons, lockToss, renderToss, syncTossProgress };`,
     )(
       (id) => nodes[id],
       state,
@@ -1317,11 +1324,190 @@ function tossPanelDom(client) {
       { createElement: () => ({ innerHTML: '', style: {} }) },
       () => 0,
     );
-  return { make, buttons, state, announced };
+  return { make, buttons, state, announced, fill: nodes['toss-fill'], count: nodes['toss-count'] };
 }
+
+test('结论整块排在两栏之前：吉凶、缘由、宜忌一次读完，推导在下面', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const cut = (start, end) => {
+    const i = client.indexOf(start);
+    assert.ok(i >= 0, `客户端里找不到 ${start}`);
+    const j = client.indexOf(end, i);
+    assert.ok(j >= 0, `客户端里找不到 ${start} 的结尾`);
+    return client.slice(i, j + end.length);
+  };
+  const fn = cut('function renderReading(reading) {', '\n      }');
+
+  // 结论块要挂在那两栏（卦面 + 事实表与推导）之前。从前那句大白话排在右栏第四件，
+  // 前头压着九行技术事实表、后头跟着八宫名单与四卦推导，混在一堆里认不出来。
+  // 断的是「挂上去」这一步而不只是「写出来」：只查结论块那段代码在不在，
+  // 把 card.append(lead) 删了照样全绿，而页面上根本没有这块。
+  const leadAt = fn.indexOf("lead.className = 'verdict-block");
+  const appendAt = fn.indexOf('card.append(lead);');
+  const twoColAt = fn.indexOf("body.className = 'reading'");
+  assert.ok(leadAt > 0, '结果页没有结论块');
+  assert.ok(twoColAt > 0, '结果页没有那两栏');
+  assert.ok(appendAt > 0, '结论块写出来了却没挂到页面上，页面上根本没有它');
+  assert.ok(leadAt < appendAt, '结论块在挂上去之前就声明了，接线顺序反了');
+  assert.ok(appendAt < twoColAt, '结论块排在两栏之后，等于又埋回信息堆里');
+
+  // 块里四样东西按「吉凶 → 缘由 → 怎么算的 → 宜忌」这个次序摆出来。
+  const order = [
+    ["mark.className = 'verdict-mark'", '吉凶那个大字'],
+    ['markShort.className = \'verdict-say-short\'', '一句话结论'],
+    ["say.className = 'verdict-say'", '大白话正文'],
+    ['onTopic.className = \'verdict-say verdict-on-topic\'', '落到所问之事上的那句'],
+    ["calc.className = 'verdict-calc'", '怎么算的'],
+    ["picks.className = 'verdict-picks'", '宜忌'],
+    ["warn.className = 'verdict-warn'", '提醒'],
+  ];
+  let cursor = -1;
+  for (const [anchor, what] of order) {
+    const at = fn.indexOf(anchor);
+    assert.ok(at > 0, `结论块里没有${what}`);
+    assert.ok(at > cursor, `${what}排错了位置，该在它前头的那几样之后`);
+    cursor = at;
+  }
+
+  // 取象句要真的挂上那个开关。上一版只查「写没写出这句」，把开关改成永假照样全绿，
+  // 而页面上那句话从此不出现——那正是这一轮最初要解决的事，不能靠肉眼守。
+  assert.ok(
+    /if \(reading\.topicLine\) \{/.test(fn),
+    '取象句没挂在开关上：认不认得出事类都摆着，或者都摆不出来',
+  );
+  assert.ok(
+    /onTopic\.textContent = reading\.topicLine;/.test(fn),
+    '取象句建了元素却没把内容放进去，页面上会是一段空的',
+  );
+  // 大字已经摆着「大吉」，紧跟着那句要是原样搬来就成了「大吉 大吉：可进」，
+  // 同一个词在同一行里说两遍。冒号前那半要丢掉，只留可执行的那半。
+  assert.ok(
+    /markShort\.textContent = reading\.verdict\.summary\.split\('：'\)/.test(fn),
+    '大字旁边那句原样搬了 summary，页面上会把「吉凶」那一档连说两遍',
+  );
+
+  // 宜忌与提醒要跟着结论走，不能还留在页面里——那是最容易被跳过的地方，
+  // 而且留着就是同一句话在屏幕上说两遍。数的是真正渲染的那几处（`.map`、
+  // `textContent`），不是那几个 `length > 0` 的空判。
+  assert.equal(
+    (fn.match(/advice\.suitable\.map/g) || []).length,
+    1,
+    '「宜」在页面上渲染了不止一处：要么重复，要么还挂在页面末尾',
+  );
+  assert.equal(
+    (fn.match(/advice\.avoid\.map/g) || []).length,
+    1,
+    '「忌」在页面上渲染了不止一处',
+  );
+  assert.equal(
+    (fn.match(/textContent = reading\.advice\.caution/g) || []).length,
+    1,
+    '提醒在页面上渲染了不止一处',
+  );
+
+  // 同一句话不许在页首与右栏各说一遍。
+  assert.ok(
+    !/summary\.className = 'text-line'/.test(fn),
+    '右栏还留着那句结论，跟页首的结论块成了同一句话两遍',
+  );
+
+  // 事实表里那行「生克」是依据不是结论，不能再用箭头写成「所以是」。
+  assert.ok(
+    /生克本为\$\{reading\.verdict\.relationVerdict\}/.test(fn),
+    '事实表的生克行没标出这是生克那一层的断语，与页首的总分对不上会被当成算错',
+  );
+  assert.ok(
+    !/reading\.verdict\.key\}\s*→\s*\$\{reading\.verdict\.label\}/.test(fn),
+    '事实表仍把生克直接箭头连到总分，那正是同屏两个吉凶的老毛病',
+  );
+});
+
+test('写了所问何事，结论就落到那件事上；换问法只换取象，不换吉凶', () => {
+  const cast = castByNumbers(5, 2);
+  const now = new Date('2026-09-30T10:00:00+08:00');
+  const at = (question) => buildReading(cast, { now, question });
+
+  // 问跳槽与问进货拿到同一卦：吉凶必须一模一样（问事只定事类与应期，不改卦体），
+  // 但取象句要各自说到那件事上。少了后半句，同一句「体卦水克用卦火」就能对付
+  // 所有问题，等于没答所问。
+  const job = at('这工作该不该跳');
+  const goods = at('这批货该不该进');
+  assert.equal(job.verdict.label, goods.verdict.label, '换个问法把卦的吉凶改了');
+  assert.equal(job.verdict.score, goods.verdict.score, '换个问法把总分改了');
+  assert.ok(job.topicLine, '写了所问何事，结论却没有落到那件事上');
+  assert.ok(goods.topicLine, '写了所问何事，结论却没有落到那件事上');
+  assert.notEqual(job.topicLine, goods.topicLine, '问跳槽与问进货拿到的还是同一句');
+  assert.match(job.topicLine, /事业功名/, '问跳槽，结论没说到事业上去');
+  assert.match(job.topicLine, /这份前程/, '问跳槽，结论里没有那件事本身');
+  assert.match(goods.topicLine, /财运/, '问进货，结论没说到财运上去');
+  assert.match(goods.topicLine, /这笔进项/, '问进货，结论里没有那笔钱本身');
+
+  // 九个事类每一个都要有自己的那个东西，不能有两个事类共用一句话。
+  const questions = ['这工作该不该跳', '这批货该不该进', '他还会不会喜欢我吗', '这婚要不要定',
+    '这病要不要去治', '这次考试能过吗', '这房子该不该买', '这官司打得赢吗', '这趟出差顺利吗'];
+  const lines = new Set();
+  for (const question of questions) {
+    const reading = at(question);
+    assert.ok(reading.topicLine, `${question} 认出了事类却没给出取象句`);
+    lines.add(reading.topicLine);
+  }
+  assert.equal(lines.size, questions.length, '九类问法里有取象句重复的，说明那句还是笼统的');
+
+  // 认不出事类就不摆这句，也不拿别的话来凑：宁可没有，不要错的。
+  const vague = at('嗯');
+  assert.equal(vague.topicLine, undefined, '认不出事类却硬给了一句取象');
+  assert.equal(vague.topic, null, '「嗯」竟认出了事类');
+
+  // 取象句的强弱跟着总分那一档走，不跟着生克那一层的教科书断语走。
+  // 这三个卦的生克完全相同，都是体克用、生克本为小吉，只因体卦逢的月令不同，
+  // 总分落在大吉、平、吉三档。要是取象句跟着生克走，这三句会一模一样。
+  const lucky = buildReading(castByNumbers(1, 4), { now, question: '这工作该不该跳' });
+  const flat = buildReading(castByNumbers(1, 19), { now, question: '这工作该不该跳' });
+  const mild = buildReading(castByNumbers(6, 7), { now, question: '这工作该不该跳' });
+  for (const [name, reading, want] of [['大吉', lucky, '大吉'], ['平', flat, '平'], ['吉', mild, '吉']]) {
+    assert.equal(reading.verdict.label, want, `${name} 那一卦的总分改了`);
+    assert.equal(reading.verdict.relationVerdict, '小吉', `${name} 那一卦的生克层变了，样本就不作数了`);
+  }
+  assert.match(lucky.topicLine, /是顺的/, `大吉却说「${lucky.topicLine}」，强弱说反了`);
+  assert.match(flat.topicLine, /看不出强弱/, `平卦却说「${flat.topicLine}」，强弱说反了`);
+  assert.match(mild.topicLine, /是顺的/, `吉卦却说「${mild.topicLine}」，强弱说反了`);
+  // 顺的那一档收同一句话是有意的：取象句分的是「顺 / 看不出强弱 / 不顺」三档，
+  // 不是五个吉凶档——大吉与吉的分量差在页首那个大字上，这句只管落到什么事上。
+  // 所以这里要断的是平卦那句与吉卦那句确实不同，而不是三句两两不同。
+  assert.notEqual(flat.topicLine, lucky.topicLine, '平卦与大吉卦的取象句是同一句');
+  assert.equal(lucky.topicLine, mild.topicLine, '同为「顺」的一档却收了两句话');
+});
 
 test('掷钱与成卦解卦互为反面：摇满六次就禁掷钱、开成卦解卦', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 进度条与「已摇 n / 6 爻」是同一件事的两面：宽度由爻数算出来，不是另写
+  // 一份百分比。两边各写各的，条走满了字还停在 3/6，或者反过来。
+  {
+    const dom = tossPanelDom(client);
+    const panel = dom.make(async () => ({ coins: [true], sum: 7 }));
+    const widths = [];
+    for (let n = 0; n <= 6; n += 1) {
+      dom.state.tosses = Array.from({ length: n }, () => 7);
+      panel.syncTossProgress();
+      widths.push(dom.fill.style.width);
+      assert.equal(dom.count.textContent, `已摇 ${n} / 6 爻`, `摇了 ${n} 爻，计数没跟着走`);
+      assert.equal(
+        dom.fill.style.width,
+        `${(n / 6) * 100}%`,
+        `摇了 ${n} 爻，条宽与爻数对不上`,
+      );
+    }
+    assert.equal(widths[0], '0%', '一爻没摇，条上就已经有进度了');
+    assert.equal(widths[6], '100%', '摇满六次，条还没走完');
+    // 逐级递增，不许中途回落或跳过：一次摇钱只该推进一格。
+    for (let n = 1; n < 6; n += 1) {
+      assert.ok(
+        parseFloat(widths[n]) > parseFloat(widths[n - 1]),
+        `第 ${n} 次摇完进度反而没往前走：${widths[n - 1]} → ${widths[n]}`,
+      );
+    }
+  }
 
   // 静置态先定下来：0 摇 → 掷钱可点、成卦解卦禁着。这与 HTML 里初始写的 disabled 一致。
   {
@@ -1343,6 +1529,9 @@ test('掷钱与成卦解卦互为反面：摇满六次就禁掷钱、开成卦�
     assert.equal(state.tosses.length, i, `第 ${i} 次掷钱没有落进卦里`);
     assert.equal(buttons['toss-btn'].disabled, false, `才摇了 ${i} 爻就不让掷了`);
     assert.equal(buttons['toss-finish'].disabled, true, `才摇了 ${i} 爻就放「成卦解卦」过`);
+    // 进度条是掷钱这条路上自己带的更新，不靠别处补调：摇一次，界面就得长一格。
+    assert.equal(dom.count.textContent, `已摇 ${i} / 6 爻`, `掷完第 ${i} 次，进度计数没跟上`);
+    assert.equal(dom.fill.style.width, `${(i / 6) * 100}%`, `掷完第 ${i} 次，进度条没跟上`);
   }
 
   await panel.tossOnce();
@@ -1365,6 +1554,9 @@ test('掷钱与成卦解卦互为反面：摇满六次就禁掷钱、开成卦�
   panel.renderToss();
   assert.equal(buttons['toss-btn'].disabled, false, '重摇之后「掷钱」还禁着，这一卦没法重来');
   assert.equal(buttons['toss-finish'].disabled, true, '重摇之后「成卦解卦」还开着，卦里一爻都没有');
+  // 重来是最容易漏的一条：爻清空了，条还满着，读的人会以为六爻还在。
+  assert.equal(dom.count.textContent, '已摇 0 / 6 爻', '重摇之后进度计数还停在满格');
+  assert.equal(dom.fill.style.width, '0%', '重摇之后进度条没有退回空');
 
   // 两个按钮严格互斥：任何一爻数下都不该同时可点。
   for (const n of [0, 1, 3, 5, 6]) {
@@ -3048,7 +3240,16 @@ test('六神只说气氛，不改吉凶', async () => {
     // 同一个卦、同一句话，只有日子在动
     assert.equal(reading.hexagram.name, '风泽中孚', '卦变了，说明这一轮不是只换日子');
     assert.equal(reading.verdict.key, '体克用', `${day} 日竟改动了吉凶`);
-    assert.equal(reading.verdict.label, '小吉', `${day} 日竟改动了吉凶`);
+    // label 是「生克 + 旺衰」合出来的总分，不是光看生克那一层。这一卦体克用
+    // 本是生克小吉，可体卦当月令得旺，总分推上去一档，落到大吉。
+    assert.equal(reading.verdict.relationVerdict, '小吉', `${day} 日生克那一层变了`);
+    assert.equal(reading.verdict.label, '大吉', `${day} 日竟改动了吉凶`);
+    // 徽章与结论行必须说的是同一个吉凶。从前徽章取生克那一层、结论行取总分，
+    // 同一屏一个说小吉一个说大吉，读的人只会挑一个信。
+    assert.ok(
+      reading.verdict.summary.startsWith(`${reading.verdict.label}：`),
+      `${day} 日徽章说「${reading.verdict.label}」而结论行说「${reading.verdict.summary}」，两处吉凶不是一回事`,
+    );
     // 这一卦用神不上卦，走的是伏神那一路。断言就只认这一路的话——
     // 早先写成一句通用匹配，结果用神上卦那一路的话替它作了证，两路坏一路照样全绿。
     const text = reading.insights.find((item) => item.title === '用神').text;
