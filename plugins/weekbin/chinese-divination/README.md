@@ -1243,7 +1243,7 @@ to "打开灵签易占".
   purpose across the two container queries, the four column counts, the cell wrapper, the note box,
   the margin's single source, the left column's floor, and the negative case that no viewport query
   reaches either block. Each was checked to turn the matching assertion red, and all 27 were caught;
-  the suite reports 211 passing after the script restored the files. Two traps turned up while
+  the suite reports 212 passing after the script restored the files. Two traps turned up while
   writing the script, and one of them was a real gap in a test. The script had been matching each
   mutation's expected assertion against the *test name*, but those expectations are assertion
   messages, so a run in which every single mutation behaved correctly reported 26 of 27 unpinned;
@@ -1281,7 +1281,7 @@ to "打开灵签易占".
   implies a note-editing feature the package does not have. `GET /history/:id` stays: its store
   method is covered by a test, and it is the natural shape of the resource.
 - The fifteen assertions added for these three were each mutation-tested, and all 15 were caught
-  with the suite reporting 211 passing after the script restored the files. Three of the first
+  with the suite reporting 212 passing after the script restored the files. Three of the first
   run reported unpinned and all three were the script's fault rather than a loose test: one
   expectation named an assertion the mutation tripped *after* an earlier one had already fired, one
   mutation deleted the call that an earlier assertion already covered, and one threw out of the
@@ -1313,10 +1313,38 @@ to "打开灵签易占".
   the four-second beat was not observed directly — the round trip between tool calls is longer than
   that window — but the assignment sits in the same synchronous block as the `casting` flag that
   the double-click test proves took effect. The twelve assertions covering this were each
-  mutation-tested and all 12 were caught, the suite reporting 211 passing after the script restored
+  mutation-tested and all 12 were caught, the suite reporting 212 passing after the script restored
   the files. Two failed the first run for reasons in the script rather than in the test: one
   mutation was an empty change that altered no behaviour, and another removed the whole `finally`
   block, so it tripped the earlier "there is no finally" assertion rather than the one it aimed at.
+- The two coin-toss buttons used to contradict each other. `renderToss()` computed which one should be
+  disabled from how many tosses had landed, and then the tail of `tossOnce()` hard-wrote an unconditional
+  re-enable on top of that, wiping the "six tosses is enough, disable 掷钱" it had just computed. Past six
+  tosses both buttons were therefore live at once: a seventh toss could be thrown — a line that fits into
+  neither a six-line hexagram nor anything the user can take back, so the reading shifts — and the six
+  tosses could still be cast. Neither button meant anything. Availability now lives in one place,
+  `syncTossButtons()`, derived only from `state.tosses.length`, and the in-flight tail calls it to
+  recompute rather than blanket-enabling. Same lesson as the cast lock above: unlocking has to be computed
+  from state, never by clearing `disabled` wholesale.
+- Two related holes are closed in the same pass. 重来 is held while a toss is in flight — resetting
+  halfway through would drop the line already on its way into a list that was just emptied, leaving a line
+  in the hexagram with no visible origin. And the "six tosses, then 重来" path runs no in-flight tail at
+  all, so its button state has to come from the redraw itself rather than from whatever the previous tail
+  happened to leave behind.
+- This part of the suite **runs** the logic instead of matching source text: `syncTossButtons`, `lockToss`,
+  `tossOnce` and `renderToss` are lifted out verbatim and driven against a fake DOM and a fake fetch
+  through seven paths — idle, one to five tosses, the sixth, a seventh, 重来, in-flight, and a failed
+  request. The defect lived in *who writes `disabled` last*, which source text cannot show. All
+  thirty-six assertions were mutation-tested and all 15 mutations were caught, the suite reporting 212
+  passing after the script restored the files. Seven failed the first run for reasons in the script: the
+  expect named a later assertion while the test went red on an earlier one carrying the same meaning —
+  relaxing "成卦解卦 is always enabled" to `> 6`, for instance, trips the idle-state assertion first.
+  **One of them was a genuinely loose test**: it measured "did a failed toss record a line?" by counting
+  rows in the hexagram log, but a failed request never reaches `renderToss`, so the log is empty no
+  matter what — it now measures `state.tosses.length` directly.
+- Verified on the running page as well: with a throwaway runtime up, six clicks on 掷钱 left `#toss-btn`
+  carrying `disabled=""` and `#toss-finish` enabled, and 重来 put both back exactly at the start state
+  (one clickable, one disabled).
 - The casting beat used to play only the engine's own 取数 steps — two for the coins, three for
   numbers — so the speech ran out before the hexagram was even formed. It now follows with the four
   lines that come after, in order of importance: the upper trigram, lower trigram and resulting
@@ -1337,7 +1365,7 @@ to "打开灵签易占".
   number), four on the beat (all four lines present, the three important ones never squeezed, the
   closing line kept, the fixed height fitting 11 lines), and two on the timings (not through the
   budget, hold taken from the constant). Each implementation was broken on purpose to confirm the
-  matching test really went red; all 22 were caught, and the suite reports 211 passing after the
+  matching test really went red; all 22 were caught, and the suite reports 212 passing after the
   script restored the files. One trap turned up while writing the script: restoring only in
   `finally` means mutation N runs against the file mutation 1 already broke, so anchors go missing
   and the red counts climb — which reads as "the test never pinned it" when it was contamination.
@@ -1434,7 +1462,7 @@ mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear;
 twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
 each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-211 passing.
+212 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

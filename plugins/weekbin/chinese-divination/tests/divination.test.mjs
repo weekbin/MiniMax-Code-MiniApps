@@ -1263,6 +1263,148 @@ test('起卦在飞时锁住触发控件，按原值还原，失败也得解锁',
   );
 });
 
+/** 摇钱那一块要真跑：坏在「谁最后写 disabled」上，源码文本看不出谁盖谁，
+    只能让代码自己跑一遍。抠出 syncTossButtons/lockToss/tossOnce/renderToss
+    四个真函数，配一套假 DOM 与假 fetch。 */
+function loadTossPanel(client) {
+  const cut = (start, end) => {
+    const i = client.indexOf(start);
+    assert.ok(i >= 0, `客户端里找不到 ${start}`);
+    const j = client.indexOf(end, i);
+    assert.ok(j >= 0, `客户端里找不到 ${start} 的结尾`);
+    return client.slice(i, j + end.length);
+  };
+  const code = [
+    cut('function syncTossButtons() {', '\n      }'),
+    cut('function lockToss() {', '\n      }'),
+    cut('async function tossOnce() {', '\n      }'),
+    cut('function renderToss(latest) {', '\n      }'),
+  ].join('\n');
+  return code;
+}
+
+function fakeClassList() {
+  const set = new Set();
+  return { add: (c) => set.add(c), remove: (c) => set.delete(c), has: (c) => set.has(c) };
+}
+
+/** 起一套只够摇钱用的假页面。返回的 buttons 就是断言要看的那几个状态。 */
+function tossPanelDom(client) {
+  const buttons = {};
+  for (const id of ['toss-btn', 'toss-finish', 'toss-reset']) {
+    buttons[id] = { id, disabled: false };
+  }
+  const coin = { classList: fakeClassList(), textContent: '', offsetWidth: 0 };
+  const slot = { classList: fakeClassList(), querySelector: (s) => (s === '.coin' ? coin : null) };
+  const coins = { children: [slot, { ...slot, querySelector: slot.querySelector }, { ...slot, querySelector: slot.querySelector }] };
+  const tossLog = {
+    children: [],
+    replaceChildren() { this.children.length = 0; },
+    prepend(node) { this.children.unshift(node); },
+  };
+  const nodes = { ...buttons, coins, 'toss-log': tossLog };
+  const state = { tosses: [] };
+  const announced = [];
+  const make = (api) =>
+    new Function(
+      'el', 'state', 'api', 'announce', 'document', 'setTimeout',
+      `${loadTossPanel(client)}\nreturn { tossOnce, syncTossButtons, lockToss, renderToss };`,
+    )(
+      (id) => nodes[id],
+      state,
+      api,
+      (msg) => announced.push(msg),
+      { createElement: () => ({ innerHTML: '', style: {} }) },
+      () => 0,
+    );
+  return { make, buttons, state, announced };
+}
+
+test('掷钱与成卦解卦互为反面：摇满六次就禁掷钱、开成卦解卦', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 静置态先定下来：0 摇 → 掷钱可点、成卦解卦禁着。这与 HTML 里初始写的 disabled 一致。
+  {
+    const dom = tossPanelDom(client);
+    dom.make(async () => ({ coins: [], sum: 0 })).syncTossButtons();
+    assert.equal(dom.buttons['toss-btn'].disabled, false, '还没摇钱就不让掷钱，起点就错了');
+    assert.equal(dom.buttons['toss-finish'].disabled, true, '一爻没摇就能「成卦解卦」，这个入口是空的');
+  }
+
+  // 一路摇到第六次。这是这一轮真正坏掉的地方：renderToss 算出「摇够了该禁掷钱」，
+  // 紧接着 tossOnce 的 finally 又硬写了一次解禁，把刚算出来的状态盖回可点，
+  // 结果两个按钮同时可点——既能再摇第七爻，又能就着六爻成卦，两头都不作数。
+  const dom = tossPanelDom(client);
+  const { buttons, state } = dom;
+  const panel = dom.make(async () => ({ coins: [true, false, true], sum: 7 }));
+
+  for (let i = 1; i <= 5; i += 1) {
+    await panel.tossOnce();
+    assert.equal(state.tosses.length, i, `第 ${i} 次掷钱没有落进卦里`);
+    assert.equal(buttons['toss-btn'].disabled, false, `才摇了 ${i} 爻就不让掷了`);
+    assert.equal(buttons['toss-finish'].disabled, true, `才摇了 ${i} 爻就放「成卦解卦」过`);
+  }
+
+  await panel.tossOnce();
+  assert.equal(state.tosses.length, 6, '第六次掷钱没有落进卦里');
+  assert.equal(
+    buttons['toss-btn'].disabled,
+    true,
+    '摇满六次后「掷钱」还是可点：能摇出第七爻，多出来的这一爻既排不进卦也撤不回',
+  );
+  assert.equal(buttons['toss-finish'].disabled, false, '摇满六次了「成卦解卦」还禁着，六爻白摇');
+
+  // 第七次不能摇进去。这条比按钮状态更要紧：多出来的一爻既排不进六爻的卦里，
+  // 也撤不回——卦上多一爻，解读会跟着偏。
+  await panel.tossOnce();
+  assert.equal(state.tosses.length, 6, '摇满六次之后还能再摇，卦里多出了第七爻');
+
+  // 「重来」走的是另一条路：它直接清空列表重画，不经过任何在飞中的收尾，
+  // 所以按钮状态必须由重画本身算出来，不能指望上一次收尾顺带带出来。
+  state.tosses = [];
+  panel.renderToss();
+  assert.equal(buttons['toss-btn'].disabled, false, '重摇之后「掷钱」还禁着，这一卦没法重来');
+  assert.equal(buttons['toss-finish'].disabled, true, '重摇之后「成卦解卦」还开着，卦里一爻都没有');
+
+  // 两个按钮严格互斥：任何一爻数下都不该同时可点。
+  for (const n of [0, 1, 3, 5, 6]) {
+    state.tosses = Array.from({ length: n }, () => 7);
+    panel.syncTossButtons();
+    assert.notEqual(
+      buttons['toss-btn'].disabled,
+      buttons['toss-finish'].disabled,
+      `摇了 ${n} 爻时两个按钮同时可点或同时禁着，掷钱与成卦解卦没有互为反面`,
+    );
+  }
+
+  // 在飞的时候要按住「重来」：飞到一半点重来，已经在飞的那一爻会落进刚被清空的
+  // 列表，卦里就多出一爻看不见来源的东西。
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const slow = tossPanelDom(client);
+  const running = slow.make(async () => {
+    await held;
+    return { coins: [true, true, false], sum: 8 };
+  });
+  const flying = running.tossOnce();
+  assert.equal(slow.buttons['toss-btn'].disabled, true, '一次摇钱在飞，「掷钱」还能点，连点会连摇两次');
+  assert.equal(slow.buttons['toss-reset'].disabled, true, '一次摇钱在飞，「重来」还能点，在飞的那一爻会落进刚被清空的列表');
+  release();
+  await flying;
+  assert.equal(slow.buttons['toss-btn'].disabled, false, '摇完一次就没法再掷，整页锁死了');
+  assert.equal(slow.buttons['toss-reset'].disabled, false, '摇完一次「重来」还禁着，没法重摇');
+
+  // 摇钱失败也要解开：一次网络失败就把这一页锁死，用户只能刷新。
+  const broken = tossPanelDom(client);
+  const failing = broken.make(async () => { throw new Error('取不到卦'); });
+  await failing.tossOnce();
+  assert.equal(broken.buttons['toss-btn'].disabled, false, '一次摇钱失败就把「掷钱」永久禁用了');
+  assert.equal(broken.buttons['toss-reset'].disabled, false, '一次摇钱失败就把「重来」永久禁用了');
+  assert.equal(broken.announced.length, 1, '摇钱失败没有报给用户');
+  // 量的必须是 state.tosses，不是卦象日志的 DOM 条数：失败时 renderToss 压根没跑，
+  // 日志当然是空的，量它等于什么都没量。
+  assert.equal(broken.state.tosses.length, 0, '摇钱失败却往卦里写了一爻');
+});
 
 test('八卦环在起卦那一拍里转得肉眼看得见', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');

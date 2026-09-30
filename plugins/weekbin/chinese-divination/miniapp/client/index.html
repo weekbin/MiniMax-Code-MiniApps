@@ -2604,10 +2604,30 @@
         cast({ method: 'coins', question: el('question').value.trim(), sums: state.tosses });
       });
 
+      /** 掷钱与成卦解卦互为反面，只由「摇到第几次」一处说了算：没摇够就
+          掷钱可点、成卦解卦禁着；摇满六次就反过来。原先这两行散在
+          renderToss() 里，摇钱途中的收尾又硬写了一次解禁，把刚算出来的
+          「摇够了，该禁」又盖回可点——两个按钮同时可点，等于两头都不作数。 */
+      function syncTossButtons() {
+        el('toss-btn').disabled = state.tosses.length >= 6;
+        el('toss-finish').disabled = state.tosses.length !== 6;
+      }
+
+      /** 只在一次摇钱在飞的时候按住这两个：连点会连摇两次；飞到一半点「重来」
+          会把已经在飞的那一爻落进一个刚被清空的列表。收尾交给 syncTossButtons
+          按摇到第几次重新出状态，不是一律解禁。 */
+      function lockToss() {
+        el('toss-btn').disabled = true;
+        el('toss-reset').disabled = true;
+        return function unlockToss() {
+          el('toss-reset').disabled = false;
+          syncTossButtons();
+        };
+      }
+
       async function tossOnce() {
         if (state.tosses.length >= 6) return;
-        const button = el('toss-btn');
-        button.disabled = true;
+        const unlock = lockToss();
         try {
           const data = await api('/toss', { method: 'POST' });
           const slots = el('coins').children;
@@ -2631,7 +2651,7 @@
         } catch (error) {
           announce(error.message);
         } finally {
-          button.disabled = false;
+          unlock();
         }
       }
 
@@ -2647,10 +2667,8 @@
           if (isLatest) row.style.color = 'var(--seal)';
           log.prepend(row);
         });
-        el('toss-finish').disabled = state.tosses.length !== 6;
-        el('toss-btn').disabled = state.tosses.length >= 6;
+        syncTossButtons();
       }
-
       /* ---------- 解卦渲染 ---------- */
 
       /** 去掉「爻题：」前缀，只留正文。 */
