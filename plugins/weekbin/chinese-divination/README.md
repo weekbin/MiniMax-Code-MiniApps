@@ -1243,7 +1243,7 @@ to "打开灵签易占".
   purpose across the two container queries, the four column counts, the cell wrapper, the note box,
   the margin's single source, the left column's floor, and the negative case that no viewport query
   reaches either block. Each was checked to turn the matching assertion red, and all 27 were caught;
-  the suite reports 210 passing after the script restored the files. Two traps turned up while
+  the suite reports 211 passing after the script restored the files. Two traps turned up while
   writing the script, and one of them was a real gap in a test. The script had been matching each
   mutation's expected assertion against the *test name*, but those expectations are assertion
   messages, so a run in which every single mutation behaved correctly reported 26 of 27 unpinned;
@@ -1281,7 +1281,7 @@ to "打开灵签易占".
   implies a note-editing feature the package does not have. `GET /history/:id` stays: its store
   method is covered by a test, and it is the natural shape of the resource.
 - The fifteen assertions added for these three were each mutation-tested, and all 15 were caught
-  with the suite reporting 210 passing after the script restored the files. Three of the first
+  with the suite reporting 211 passing after the script restored the files. Three of the first
   run reported unpinned and all three were the script's fault rather than a loose test: one
   expectation named an assertion the mutation tripped *after* an earlier one had already fired, one
   mutation deleted the call that an earlier assertion already covered, and one threw out of the
@@ -1291,6 +1291,32 @@ to "打开灵签易占".
   `assert.equal` without a message throw Node's default text, so any keyword-based "did this
   mutation pin anything" check can never match. Two of those assertions carry an explicit message
   for that reason.
+- The 起卦 button had no in-flight guard, and that is the other half of the id defect above. The
+  cast beat holds for `CASTING_HOLD_MS` — over four seconds — and throughout it every method
+  button and the 起卦 button stayed clickable, so an ordinary double-click sent two cast requests,
+  two casting logs typed over each other, and whichever answered last won. The only `disabled` in
+  that panel belonged to `toss-finish`, and that one encodes a different rule — six tosses
+  required — not "a cast is in flight". All three casting paths (daily/time, numbers, coins) go
+  through `cast()`, so that is where the gate now lives: a `casting` flag set synchronously before
+  the first `await`, and the triggers locked for the duration.
+- The restore is the part that is easy to get wrong, so it is pinned explicitly. Unlock puts every
+  control back to the value it had rather than clearing `disabled` across the board: `toss-finish`
+  is meant to be disabled whenever fewer than six coins have been thrown, and a blanket re-enable
+  would leave a "成卦解卦" button that looks available and does nothing. The unlock sits in
+  `finally`, because a single failed request must not leave the whole casting panel permanently
+  dead. And `cast()` now returns whether the reading was actually cast: the numbers path clears
+  its two inputs only on success, since clearing them after a skipped or failed cast throws away
+  what the user just typed.
+- Verified on the running page rather than by reading: double-clicking 时间起卦 produced exactly
+  one `POST /api/divination/cast` in the network log, and after the cast finished `toss-finish`
+  still carried `disabled=""` while the method buttons carried none. The disabled state *during*
+  the four-second beat was not observed directly — the round trip between tool calls is longer than
+  that window — but the assignment sits in the same synchronous block as the `casting` flag that
+  the double-click test proves took effect. The twelve assertions covering this were each
+  mutation-tested and all 12 were caught, the suite reporting 211 passing after the script restored
+  the files. Two failed the first run for reasons in the script rather than in the test: one
+  mutation was an empty change that altered no behaviour, and another removed the whole `finally`
+  block, so it tripped the earlier "there is no finally" assertion rather than the one it aimed at.
 - The casting beat used to play only the engine's own 取数 steps — two for the coins, three for
   numbers — so the speech ran out before the hexagram was even formed. It now follows with the four
   lines that come after, in order of importance: the upper trigram, lower trigram and resulting
@@ -1311,7 +1337,7 @@ to "打开灵签易占".
   number), four on the beat (all four lines present, the three important ones never squeezed, the
   closing line kept, the fixed height fitting 11 lines), and two on the timings (not through the
   budget, hold taken from the constant). Each implementation was broken on purpose to confirm the
-  matching test really went red; all 22 were caught, and the suite reports 210 passing after the
+  matching test really went red; all 22 were caught, and the suite reports 211 passing after the
   script restored the files. One trap turned up while writing the script: restoring only in
   `finally` means mutation N runs against the file mutation 1 already broke, so anchors go missing
   and the red counts climb — which reads as "the test never pinned it" when it was contamination.
@@ -1408,7 +1434,7 @@ mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear;
 twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
 each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-210 passing.
+211 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

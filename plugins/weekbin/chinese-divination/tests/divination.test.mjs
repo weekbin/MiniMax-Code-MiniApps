@@ -1207,6 +1207,62 @@ test('解读页左栏不窄过 300px，窄过就会把纳甲挤到右栏去', as
   );
 });
 
+test('起卦在飞时锁住触发控件，按原值还原，失败也得解锁', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 三条起卦路（每日/时间、数字、铜钱）都走 cast()。原先只有 toss-finish 有个
+  // disabled，那是「摇够六次」的规矩；四个起法按钮与「起卦」按钮从来不禁用，
+  // 而 cast() 自己也没有闸。连点一下会连发两次请求，两卦的推演日志互相顶替。
+  // 实测过：双击「时间起卦」，网络里只该出现一次 POST /api/divination/cast。
+  const castFn = /async function cast\(payload\) \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(castFn, '找不到 cast()');
+  const body = castFn[1];
+
+  assert.ok(/let casting = false;/.test(client), '起卦在飞这件事没有被记下来，或者初始值不是「没在起卦」');
+  assert.ok(
+    /if \(casting\) return false;/.test(body),
+    'cast() 没有先问「是不是已经在起卦了」——连点会连发两次请求',
+  );
+
+  // 锁的是状态不是某一个按钮：三条起卦路一次锁齐，才不会漏掉哪条。
+  const triggers = /function castTriggers\(\) \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(triggers, '找不到 castTriggers()');
+  for (const id of ['num-submit', 'num-random', 'toss-btn', 'toss-reset', 'toss-finish']) {
+    assert.ok(triggers[1].includes(`'${id}'`), `${id} 没被锁住，推演那几秒里仍能改动这一卦`);
+  }
+  assert.ok(/querySelectorAll\('\[data-method\]'\)/.test(triggers[1]), '四个起法按钮没被锁住');
+
+  // 解锁按各自原值还原，不是一律解禁。toss-finish 平时就该是禁着的（还没摇够六次），
+  // 跟着一起解禁等于凭空开出一个没摇够也能「成卦解卦」的入口。
+  const lock = /function lockCasting\(\) \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(lock, '找不到 lockCasting()');
+  assert.ok(/const saved = nodes\.map\(\(node\) => \[node, node\.disabled\]\)/.test(lock[1]), '锁之前没记下各控件原本的 disabled');
+  assert.ok(
+    /for \(const \[node, was\] of saved\) node\.disabled = was;/.test(lock[1]),
+    '解锁不是按原值还原——toss-finish 会被凭空解禁',
+  );
+
+  // 解锁放 finally：出错也必须解开，否则一次网络失败就把整个起卦页永久锁死。
+  // 不给 finally 那段加结尾锚点：外层那个捕获组已经把 cast() 末尾的收尾吃掉了。
+  const tail = /\}\s*catch \(error\) \{[\s\S]*?\}\s*finally \{([\s\S]*)$/.exec(body);
+  assert.ok(tail, 'cast() 的 catch 之后没有 finally');
+  assert.ok(/unlock\(\)/.test(tail[1]), '解锁没放在 finally 里：起卦失败一次，起卦页就再也点不动了');
+  assert.ok(/casting = false;/.test(tail[1]), 'finally 里没有把 casting 复位，下一卦永远起不了');
+
+  // 返回值要能回答「这一卦到底起成了没有」：数字那条清空输入框全靠它。
+  assert.ok(/return true;/.test(body), 'cast() 没有报告「起成了」');
+  const submit = /el\('num-submit'\)\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n      \}\);/.exec(client);
+  assert.ok(submit, '找不到数字起卦的提交处理');
+  assert.ok(
+    /const ran = await cast\(/.test(submit[1]),
+    '数字起卦没接住 cast() 的返回值，不知道这一卦起没起成',
+  );
+  assert.ok(
+    /if \(!ran\) return;[\s\S]*?el\('num-upper'\)\.value = '';/.test(submit[1]),
+    '被锁跳过或起卦失败时照样清空输入框——等于替用户把没起成的卦也扔了',
+  );
+});
+
 
 test('八卦环在起卦那一拍里转得肉眼看得见', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');

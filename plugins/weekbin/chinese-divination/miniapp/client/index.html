@@ -1994,8 +1994,11 @@
           announce('请填写两个正整数');
           return;
         }
-        await cast({ method: 'numbers', question: el('question').value.trim(), upper, lower });
-        // 起完即清，免得连点「起卦」看着像结果被写死
+        const ran = await cast({ method: 'numbers', question: el('question').value.trim(), upper, lower });
+        // 起完即清，免得连点「起卦」看着像结果被写死。
+        // 但只在真起成卦时才清：这一卦被锁跳过、或起卦失败时把用户刚填的两个数抹掉，
+        // 等于替用户把没起成的卦也扔了，还得重填一遍。
+        if (!ran) return;
         el('num-upper').value = '';
         el('num-lower').value = '';
       });
@@ -2187,7 +2190,52 @@
         });
       }
 
+      /* 起卦在飞：所有能发起起卦的控件一并锁住。
+         从前只有 toss-finish 有个 disabled，那是「摇够六次」的规矩，跟「正在起卦」
+         是两回事；四个起法按钮与「起卦」按钮从来不禁用，而 cast() 也没有闸。
+         连点「时间起卦」会连发两次请求，两卦的推演日志互相顶替，
+         最后落到哪一卦看谁先回来——实测两次会得到同一个 id，卦历里删一条连带删另一条。
+         这里锁的是状态而不是某一个按钮：三条起卦路（每日/时间、数字、铜钱）都走 cast()，
+         在那一处设闸，三条路一次锁齐。 */
+      let casting = false;
+
+      /** 能发起或改动一次起卦的控件。toss-btn/toss-reset 也在内：推演那几秒里
+          再摇一次，state.tosses 会和正在成卦的那份对不上。 */
+      function castTriggers() {
+        return [
+          ...el('methods').querySelectorAll('[data-method]'),
+          el('num-random'),
+          el('num-submit'),
+          el('toss-btn'),
+          el('toss-reset'),
+          el('toss-finish'),
+        ];
+      }
+
+      /** 锁住并返回解锁函数。解锁按各自原值还原，不是一律解禁：
+          toss-finish 平时就该是禁着的（还没摇够六次），跟着一起解禁，
+          等于凭空开出一个没摇够也能「成卦解卦」的入口。 */
+      function lockCasting() {
+        const nodes = castTriggers();
+        const saved = nodes.map((node) => [node, node.disabled]);
+        for (const node of nodes) node.disabled = true;
+        return () => {
+          for (const [node, was] of saved) node.disabled = was;
+        };
+      }
+
+      /**
+       * 起一卦。
+       * @param {object} payload
+       * @returns {Promise<boolean>} 真的起了返回 true；已在起卦中、本次被跳过，
+       * 或起卦失败，也返回 false——调用方据此决定要不要清掉用户刚填的东西。
+       */
       async function cast(payload) {
+        // 已经在起卦就直接返回。三条起卦路都走这里，在这一处设闸就够了，
+        // 不用每个按钮各自记一份「我正在忙」。
+        if (casting) return false;
+        casting = true;
+        const unlock = lockCasting();
         const slot = el('result-slot');
         try {
           // 先起卦、再显结果：跳过这一拍，结果就只是一次文本替换。
@@ -2206,10 +2254,16 @@
           state.reading = data.reading;
           renderReading(data.reading);
           announce(`得卦 ${data.reading.hexagram.name}，${data.reading.verdict.label}`);
+          return true;
         } catch (error) {
           slot.replaceChildren();
           announce(error.message);
           window.alert(error.message);
+          return false;
+        } finally {
+          // 解锁放 finally：出错也必须解开，否则一次网络失败就把整个起卦页永久锁死。
+          unlock();
+          casting = false;
         }
       }
 
