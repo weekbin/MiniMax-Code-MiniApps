@@ -28,8 +28,8 @@ import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
   voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui,
-  useGodCircle, dayClashReading, heCombineReading, hexagramClash } from './jingfang.mjs';
-import { detectTopic, godRelation } from './topics.mjs';
+  useGodCircle, dayClashReading, heCombineReading, punishReading, hexagramClash } from './jingfang.mjs';
+import { detectTopic, godRelation, TOPIC_CLASSES } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
 const OVERCOMES = Object.freeze({ 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' });
@@ -543,7 +543,13 @@ export function buildReading(cast, options = {}) {
     title: '用神',
     text: useGod
       ? useGodText(topic, useGod, jf, movingPositions, calendar, circle, darkPositions, pressedPositions)
-      : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。',
+      // 写没写问题与写了但认不出是两回事。都说成「未写所问何事」，等于把话没说到位
+      // 赖到问卦的人头上——他明明写了，是这张事类表没接住那句话。
+      : (question
+        ? `写了问题，但这句话里没有本包认得的事类词。用神是「问何事取何亲」，认不出所问何事就取不出用神——`
+          + `表里接得住的是${TOPIC_CLASSES.map((item) => item.label).join('、')}这九类，`
+          + '把话里带上具体那一件事再看这一段。'
+        : '未写所问何事，取不出用神——六亲各管一摊事，没有所指就没有用神。写下问题再看这一段。'),
   });
 
   // 这一段紧接用神：暗动章的吉凶两路（喜、忌）判的正是元神与忌神是不是在暗中动手，
@@ -564,6 +570,13 @@ export function buildReading(cast, options = {}) {
   const combine = heCombineReading(jf, calendar, changedJf);
   if (combine.hasAny) {
     insights.push({ title: '逢合 · 合起合绊合好化扶', text: heCombineText(combine, calendar) });
+  }
+
+  // 爻之刑。三刑章那句话自带一个很紧的前提，判定放在 punishText 里核。
+  // 排在逢合之后：那一段讲合住，这一段讲刑伤，都是拿日月与别爻对着这一爻看。
+  const punish = punishReading(jf, calendar);
+  if (punish.hasAny) {
+    insights.push({ title: '犯刑', text: punishText(punish, jf, circle, calendar) });
   }
 
   // 六冲章的六种冲，前一路（日月冲爻）刚在上面逐爻算过，这里接着数剩下几路。
@@ -653,6 +666,8 @@ export function buildReading(cast, options = {}) {
         // 逢合：这一爻合于日月、与另一动爻相合、或动爻化出之爻回头相合，三路任一即是。
         // 与上面那三个不互斥——冲的是被冲来的那一边，合的是被缠住的那一边，同一爻可以又逢冲又逢合。
         combined: combine.hitPositions.includes(line.position),
+        // 犯刑：与「逢合」不是互斥的两路。合是被缠住，刑是被伤着，同一爻可以又合又刑。
+        punished: punish.hitPositions.includes(line.position),
         rescues: v.rescues,
         empties: v.empties,
       };
@@ -667,6 +682,11 @@ export function buildReading(cast, options = {}) {
     // 爻之合那四名各是哪些爻。合起与合绊互斥（一爻要么静要么动），
     // 合好与化扶可以与它们同落一爻。日月合爻最常见，合好要两爻皆动、化扶要动爻化出之爻
     // 回头相合，都少得多。四路皆空时断语里不出这一段。
+    // 爻之刑。方向原样带出去（谁刑谁），不折成「这几爻犯刑」——折了就看不出是谁动的。
+    punish: {
+      linePairs: punish.linePairs.map((pair) => [pair.from.position, pair.to.position, pair.self]),
+      outside: punish.outside.map((item) => [item.line.position, item.source, item.from, item.to, item.self]),
+    },
     combine: {
       rise: combine.rise.map((item) => [item.line.position, item.source]),
       bind: combine.bind.map((item) => [item.line.position, item.source]),
@@ -1221,6 +1241,69 @@ function heCombineText(combine, calendar) {
   // 原书把话收在这一句上，且收在吉凶之前。合不是判词，这一句照录，不替它翻成断语。
   parts.push('以上只说合的关系，不据此断吉凶：同章说「然必用神有气相宜，用若失陷无益」，'
     + '又说「用神受克，六合有何益哉」，末了一句「宜合吉，不宜合凶」——合吉合凶仍要看用神旺衰。');
+  return parts.join('');
+}
+
+/**
+ * 《增删卜易·三刑章第二十一》。这一章只有六句话，判语却比六句话还紧，全在最后那半句上。
+ *
+ *   「寅刑巳、巳刑申、子刑卯、卯刑午、丑戌相刑、未辰相刑。又云：辰午酉亥谓之自刑。
+ *     夫三刑者，予屡试之，或因用神休囚又兼他爻犯之，刑者则见凶，
+ *     而独犯三刑得验者少，占过数十年只验得一卦。」
+ *
+ * **所以「犯刑」本身不是判词，这是原书自己说的。** 野鹤试了几十年，单靠犯刑只验中一卦；
+ * 要见凶还得搭上两条前提：用神休囚，且另有一爻也犯刑。所以这一段把两条前提逐条核出来摆明，
+ * 成立不成立都照实说，不拿「犯刑」两个字替用神断吉凶——这跟本包在六冲、六合两章上的处置
+ * 是同一条线，只是这一条的依据直接来自原书。
+ *
+ * 书上那个卦例照录在下面，寅月庚申日占痘症得风火家人变离卦：月建寅刑五爻巳火子孙，
+ * 五爻巳又刑申日，两路都落在同一爻上。子孙当春令、旺相得很，原书仍断「后死于寅日寅时」。
+ * 可见刑伤得行的不是休囚那一头，旺相的爻照样被刑。
+ *
+ * @param {import('./jingfang.mjs').ReturnType<typeof import('./jingfang.mjs').punishReading>} punish
+ * @param {object} jingfang 本卦
+ * @param {object|null} circle 用神那一圈，用神定不下来时为 null
+ * @param {{ monthBranch: number, dayBranch: number, monthElement: string }} calendar
+ * @returns {string}
+ */
+function punishText(punish, jingfang, circle, calendar) {
+  const parts = ['按《增删卜易·三刑章第二十一》「寅刑巳、巳刑申、子刑卯、卯刑午、丑戌相刑、未辰相刑。'
+    + '又云：辰午酉亥谓之自刑」：刑有方向，下面按「谁刑谁」原样摆出来。'];
+  if (punish.linePairs.length > 0) {
+    const said = punish.linePairs
+      .map((pair) => `${pair.from.label}${pair.from.branch}${pair.self ? '自刑' : `刑${pair.to.branch}`}`
+        + `${pair.to.label}`)
+      .join('、');
+    parts.push(`卦中${said}。`);
+  }
+  if (punish.outside.length > 0) {
+    // 自刑那一支若照非自刑那样拼，会成「月建三爻酉」——读起来像在说月建就是三爻的酉。
+    // 明写「自刑」，跟上面卦中那半句一个口径。
+    const said = punish.outside
+      .map((item) => (item.self
+        ? `${item.source}与${item.line.label}${item.line.branch}自刑`
+        : `${item.source}${item.from}刑${item.line.branch}`))
+      .join('、');
+    parts.push(`${said}。`);
+  }
+
+  // 两条前提，逐条核。用神定不下来时没有圈，第一条就明说缺哪一层，不空谈。
+  if (!circle) {
+    parts.push('原书说「或因用神休囚又兼他爻犯之，刑者则见凶」——这两条前提本卦核不了第一条：'
+      + '用神定不下来。写下问题再看这一段，或者由着它只是一条关系，不作吉凶。');
+  } else {
+    const godTone = vitality(circle.god.element, calendar.monthElement);
+    const rests = ['休', '囚', '死'].includes(godTone.key);
+    const others = punish.hitPositions.filter((position) => position !== circle.god.position);
+    parts.push(`原书说「或因用神休囚又兼他爻犯之，刑者则见凶」。拿本卦核这两条：`
+      + `用神在${circle.god.label}${circle.god.element}，于月建${godTone.key}`
+      + `，${rests ? '正合「用神休囚」那条' : '不算休囚，那条不成立'}；`
+      + `另有${others.length > 0 ? `${others.map((position) => jingfang.lines[position - 1].label).join('、')}犯之` : '没有别的爻犯之'}，`
+      + `「又兼他爻犯之」那条${others.length > 0 ? '成立' : '不成立'}。`);
+  }
+  // 这一句是原书的收口，也是本段不许由刑断吉凶的凭据，逐字照录。
+  parts.push('但原书紧接着自己收了一句：「而独犯三刑得验者少，占过数十年只验得一卦」——'
+    + '所以这一段只报刑落在哪里、由谁动的手，不据此断吉凶。');
   return parts.join('');
 }
 

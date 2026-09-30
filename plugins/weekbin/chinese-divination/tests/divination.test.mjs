@@ -1792,6 +1792,18 @@ test('断语给出用神，且分男女与不上卦都不硬编', () => {
   const bare = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29) });
   assert.equal(bare.useGod, null);
   assert.match(bare.insights.find((item) => item.title === '用神').text, /未写所问何事/);
+
+  // 写了问题、但表里没这一类，是另一回事，不能也说成「未写所问何事」——
+  // 问卦的人明明写了字，把话没说到位赖到他头上，是把缺的那一层说错了。
+  const offTable = buildReading(castByNumbers(3, 8), { now: new Date(2026, 8, 29), question: '这次合作能不能谈成' });
+  assert.equal(offTable.useGod, null, '「合作」本就不在任何一类里');
+  const offText = offTable.insights.find((item) => item.title === '用神').text;
+  assert.ok(!/未写所问何事/.test(offText), '写了问题却说人家没写');
+  assert.ok(/认得的事类词/.test(offText), '没说是「表里没接住」这一层');
+  // 九类要列全，且是从表里取的，不是写死一份
+  for (const item of TOPIC_CLASSES) {
+    assert.ok(offText.includes(item.label), `认不出事类时没列出${item.label}`);
+  }
 });
 
 test('用神不上卦时不编，如实说是缺哪一层', () => {
@@ -3732,6 +3744,191 @@ test('卦体给逢合的爻挂「合」小标，MCP 另给 combine 字段与【�
   assert.ok(!/必成|定成|准能/.test(combineBlock), '抬头替合断成了必成');
   void callDivinationHttp;
   void startDivinationServer;
+});
+
+// ── 爻之刑：三刑章第二十一 ──────────────────────────────────────────────────
+
+test('三刑照底本那六条排，不照命理那八条，两套不许混', async () => {
+  // 底本：「寅刑巳、巳刑申、子刑卯、卯刑午、丑戌相刑、未辰相刑。又云：辰午酉亥谓之自刑。」
+  // 命理那八条是「寅刑巳、巳刑申、申刑寅、丑刑戌、戌刑未、未刑丑、子刑卯、卯刑子」，
+  // 两处实质不同：底本作「卯刑午」不作「卯刑子」；底本作「未辰相刑」不作「未刑丑、戌刑未」。
+  // 两套一起排就成了十四条，「有几爻犯刑」这句话立刻没有意义，所以分开判。
+  const { punishReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  // 卯刑午：底本有
+  const mz = HEXAGRAM_LIST.find((h) => h.name === '天泽履');
+  const got = punishReading(jingfang(mz), { monthBranch: 0, dayBranch: 0 });
+  const keys = [...got.linePairs.map((p) => `${p.from.branch}刑${p.to.branch}`),
+    ...got.outside.map((o) => `${o.from}刑${o.to}`)];
+  // 反过来：命理有的那两条，底本一条都不许冒出来
+  for (const forbidden of ['申刑寅', '未刑丑', '戌刑未', '卯刑子']) {
+    assert.ok(!keys.includes(forbidden), `出现了${forbidden}——底本没有这一条，是命理那一套`);
+  }
+  // 底本那六条每一条都得在六十四卦上碰得出卦
+  const base = ['寅刑巳', '巳刑申', '子刑卯', '卯刑午', '丑刑戌', '未刑辰'];
+  const seen = new Set();
+  for (const hexagram of HEXAGRAM_LIST) {
+    const one = punishReading(jingfang(hexagram), { monthBranch: 0, dayBranch: 0 });
+    for (const pair of one.linePairs) seen.add(`${pair.from.branch}刑${pair.to.branch}`);
+  }
+  for (const key of base) {
+    assert.ok(seen.has(key), `底本那六条里的${key}在六十四卦上一次也碰不出，多半是写错了字`);
+  }
+});
+
+test('刑有方向：卯刑午成立，午刑卯不成立', async () => {
+  // 「寅刑巳」说的是寅去刑巳，不是反过来。方向在六十四卦上确实落出差别：
+  // 丑刑戌有十二卦，戌刑未只四卦——所以判成无向就等于把这两路并成一路。
+  const { punishReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  // 扫的是「判出来的结果」，不是「一卦里有没有同时出现这两支」——后者本来就是对称的，
+  // 跟判没判成刑无关，拿它来量方向，量出来的是同卦有两支这个事实，不是方向。
+  const pairs = ['卯刑午', '午刑卯', '丑刑戌', '戌刑丑', '寅刑巳', '巳刑寅'];
+  const counted = new Map(pairs.map((key) => [key, 0]));
+  for (const hexagram of HEXAGRAM_LIST) {
+    const one = punishReading(jingfang(hexagram), { monthBranch: 0, dayBranch: 0 });
+    for (const pair of one.linePairs) {
+      const key = `${pair.from.branch}刑${pair.to.branch}`;
+      if (counted.has(key)) counted.set(key, counted.get(key) + 1);
+    }
+  }
+  assert.ok(counted.get('卯刑午') > 0, '卯刑午在六十四卦上一次也判不出');
+  assert.equal(counted.get('午刑卯'), 0, '午刑卯也判成了刑——刑有方向，反向不成立');
+  assert.ok(counted.get('丑刑戌') > 0, '丑刑戌在六十四卦上一次也判不出');
+  assert.equal(counted.get('戌刑丑'), 0, '戌刑丑也判成了刑，反向不成立');
+  assert.equal(counted.get('巳刑寅'), 0, '巳刑寅也判成了刑，反向不成立');
+  // 整句扫一遍：凡报出来的对，反向一次都不许在表里
+  const src = await readFile(new URL('../miniapp/node/jingfang.mjs', import.meta.url), 'utf8');
+  assert.ok(/const PUNISH_PAIRS = Object\.freeze\(\[\s*\n?\s*\['寅', '巳'\], \['巳', '申'\], \['子', '卯'\], \['卯', '午'\], \['丑', '戌'\], \['未', '辰'\],?\s*\]\);/.test(src),
+    '底本那六条不再是原样这六条');
+});
+
+test('自刑里辰一支在六十四卦上一次也碰不出，这是纳甲定死的', async () => {
+  // 自刑四支辰午酉亥来自同章的「又云」。但辰只装在内卦三爻（乾内子寅辰、坎内寅辰午、艮内辰午申），
+  // 一卦只有一个下卦，所以一卦里最多一个辰——辰自刑在六十四卦上永远碰不出来。
+  // 底本没有这一句，是纳甲装出来的结构事实；但它要是被当成「自刑四支都能碰」就会写错文案。
+  //
+  // 这里数的是 punishReading 报出来的自刑，不是照着纳甲自己重算一遍：重算只能证明纳甲长什么样，
+  // 证不了 SELF_PUNISH_BRANCHES 是不是真按四支在跑——把那两支从表里删掉，重算照样全绿。
+  const { punishReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  const self = new Map();
+  for (const hexagram of HEXAGRAM_LIST) {
+    const branches = jingfang(hexagram).lines.map((line) => line.branch);
+    // 一卦里最多一个辰
+    assert.ok(branches.filter((b) => b === '辰').length <= 1,
+      `${hexagram.name}里有两个辰，纳甲表错了`);
+    // 只数爻与爻那一路。日月那一路另算，辰在月建那里是碰得着的。
+    const pairs = punishReading(jingfang(hexagram), { monthBranch: 0, dayBranch: 0 })
+      .linePairs.filter((pair) => pair.self);
+    // 自刑本就对称，同一对只能报一次。两头都收的话，断语会把
+    // 「二爻亥自刑四爻」与「四爻亥自刑二爻」并排说一遍，看着像两件事。
+    for (const pair of pairs) {
+      assert.ok(pair.from.position < pair.to.position,
+        `${hexagram.name}的自刑成对报了两遍：${pair.from.position}与${pair.to.position}`);
+    }
+    for (const pair of pairs) {
+      self.set(pair.to.branch, (self.get(pair.to.branch) || 0) + 1);
+    }
+  }
+  assert.equal(self.get('辰') || 0, 0, '辰自刑在六十四卦上碰出来了，纳甲表错了');
+  for (const branch of ['午', '酉', '亥']) {
+    assert.ok((self.get(branch) || 0) > 0, `${branch}自刑一次也碰不出，自刑那一路空转了`);
+  }
+});
+
+test('书上那个卦例逐步复现：寅月申日，风火家人五爻巳被月建与日辰两头刑', async () => {
+  // 《增删卜易·三刑章第二十一》：「如寅月庚申日占子痘症，得风火家人变离卦……
+  // 断曰：巳火子孙既当春令，子孙旺相许之可治，后死于寅日寅时。后悟月建在寅，
+  // 日建在申，与巳爻子孙共作三刑，独此一卦，无他爻之伤也。」
+  const { punishReading, jingfang } = await import('../miniapp/node/jingfang.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  const jia = HEXAGRAM_LIST.find((h) => h.name === '风火家人');
+  assert.ok(jia, '缺风火家人');
+  const jf = jingfang(jia);
+  // 寅月（支序 2）、申日（支序 8）
+  const got = punishReading(jf, { monthBranch: 2, dayBranch: 8 });
+  const yi = jf.lines.find((line) => line.branch === '巳');
+  assert.ok(yi, '风火家人六支里没有巳');
+  assert.equal(yi.relative, '子孙', '书上那一爻是子孙');
+  // 月建寅刑巳
+  assert.ok(got.outside.some((o) => o.source === '月建' && o.from === '寅' && o.to === '巳' && o.line.position === yi.position),
+    '月建寅没有刑到巳爻');
+  // 巳刑申日
+  assert.ok(got.outside.some((o) => o.source === '日辰' && o.from === '巳' && o.to === '申' && o.line.position === yi.position),
+    '巳爻没有刑到申日');
+  // 「共作三刑」：两路都落在同一爻上，这是这一卦的全部关键
+  const onYi = got.outside.filter((o) => o.line.position === yi.position);
+  assert.equal(onYi.length, 2, '两路没有都落在巳爻上，「共作三刑」就说不成了');
+  assert.deepEqual(got.hitPositions, [yi.position], '还有别的爻也被刑到了，与原书「无他爻之伤也」不合');
+});
+
+test('断语「犯刑」不由刑断吉凶，且把原书那两条前提逐条核出来', async () => {
+  // 野鹤自己收的：「或因用神休囚又兼他爻犯之，刑者则见凶，而独犯三刑得验者少，
+  // 占过数十年只验得一卦。」所以这一段要摆明两条前提成立不成立，而不是拿刑字断吉凶。
+  // 两个「成立/不成立」都要真的各出现过一次，所以初值是 false；当初写成 true 时
+  // 外层的 !(sawRest && sawNotRest) 一上来就是假，循环一次都没跑，扫了个空还报「一个都没出」。
+  let sawAny = false;
+  let sawRest = false;
+  let sawNotRest = false;
+  // 「测试」两个字匹配不到任何事类，取不出用神，那一条前提就永远核不成；
+  // 所以轮流换几个真事类，让用神有定下来的时候，两条前提才真的都被核过。
+  const questions = ['测试', '求财', '占病', '问官司', '寻人', '问婚姻', '考功名'];
+  for (let day = 0; day < 40; day += 1) {
+    for (let mask = 0; mask < 64; mask += 1) {
+      // 6 老阴、7 老阳、8 少阴、9 少阳：只取 6 与 7 的话两爻同为动且同为阴，
+      // 摇出来永远是坤为地——而坤为地六支全是奇数支，一条刑也碰不出。四值齐上卦才真的在变。
+      const coins = [8, 8, 8, 8, 8, 8];
+      for (let i = 0; i < 6; i += 1) coins[i] = [6, 7, 8, 9][(mask + i * 5) % 4];
+      const reading = buildReading(castByCoins(coins), { question: questions[(day + mask) % questions.length], now: new Date(2026, 5, 1 + day, 7, 0, 0) });
+      const section = reading.insights.find((item) => item.title === '犯刑');
+      if (!section) continue;
+      sawAny = true;
+      const text = section.text;
+      assert.ok(text.includes('独犯三刑得验者少，占过数十年只验得一卦'), '原书收口那一句没照录');
+      assert.ok(!/诸事必败|定败|必凶|准能成/.test(text), '断语拿刑字断成了凶');
+      // 两条前提要么核出来成立、要么核出来不成立，不许含糊
+      if (reading.states.some((s) => s.combined)) continue;
+      if (/两条前提本卦核不了第一条/.test(text)) continue;
+      assert.ok(/正合「用神休囚」那条|那条不成立/.test(text), '「用神休囚」那条没有逐条核出来');
+      // 核了第一条，就说明用神定下来了，第二条「又兼他爻犯之」也得有话说
+      assert.ok(/又兼他爻犯之.*(成立|不成立)/s.test(text), '「又兼他爻犯之」那条没有逐条核出来');
+      if (/那条不成立/.test(text)) sawNotRest = true;
+      if (/正合「用神休囚」那条/.test(text)) sawRest = true;
+    }
+  }
+  assert.ok(sawAny, '扫了这么多卦，一个犯刑段都没出');
+  assert.ok(sawRest && sawNotRest,
+    `两条前提的成立与不成立没各出现过一次：休囚那条出现过 ${sawRest}，不成立出现过 ${sawNotRest}`);
+});
+
+test('卦体给犯刑的爻挂「刑」小标，MCP 另给 punish 字段与【犯刑】抬头', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const mcp = await readFile(new URL('../miniapp/node/mcp/divination-http.mjs', import.meta.url), 'utf8');
+  assert.ok(/st\.punished \? '刑' : ''/.test(client), '卦体没有给犯刑的爻挂「刑」小标');
+  // 刑不上朱砂：跟「合」同理，原书既没定它吉也没定它凶
+  const stRules = [...client.matchAll(/^\s*([^\n{]*\.st[^\n{]*)\{([\s\S]*?)\}/gm)];
+  for (const [, selector, body] of stRules) {
+    if (!/var\(--seal\)/.test(body)) continue;
+    for (const cls of [...selector.matchAll(/\.st\.([a-z-]+)/g)].map((m) => m[1])) {
+      assert.ok(cls === 'po' || cls === 'tomb', `小标 .st.${cls} 染上了朱砂`);
+    }
+  }
+  const markLine = /\.map\(\(word\) => `<span class="st(.*?)tomb/.exec(client);
+  assert.ok(markLine, '找不到画小标那行');
+  assert.ok(!markLine[1].includes("word === '刑'"), '「刑」被并进了 po/tomb 那一档，会跟着染上朱砂');
+  assert.ok(/title="此爻犯刑/.test(client), '「刑」小标没有悬停说明');
+  assert.ok(/独犯三刑得验者少/.test(client), '悬停说明里没有原书那句收口');
+  // MCP
+  assert.ok(/punish: reading\.punish \?\? null,/.test(mcp), 'MCP 没有给 punish 字段');
+  assert.ok(/`【犯刑】\$\{bits\.join\('，'\)\}`/.test(mcp), 'MCP 没有【犯刑】抬头');
+  assert.ok(/punishLine,/.test(mcp), '抬头那一行没有接进输出');
+  // 每一项自己都带来源（日辰／月建）。前面再加「日月」两个字会拼成「日月月建与3爻酉自刑」。
+  assert.ok(!/bits\.push\(`日月/.test(mcp), '日月那一支前面多加了「日月」两字');
+  // 自刑那一项得把支摆出来：只说「月建与3爻自刑」而不说哪一支，等于没说清。
+  assert.ok(/`\$\{source\}与\$\{position\}爻\$\{to\}自刑`/.test(mcp), '日月自刑那一项没把那支摆出来');
+  const block = mcp.slice(mcp.indexOf('const punishLine'), mcp.indexOf('})();', mcp.indexOf('const punishLine')));
+  assert.ok(!/必凶|定凶|诸事必败/.test(block), '抬头拿刑字断成了凶');
 });
 test('六十四卦里三对要么全撞要么全不撞，没有只撞一对的卦', async () => {
   const { hexagramClash } = await import('../miniapp/node/jingfang.mjs');

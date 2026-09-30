@@ -174,6 +174,23 @@ function readingToText(reading) {
     }
     return bits.length === 0 ? null : `【逢合】${bits.join('，')}`;
   })();
+  // 爻之刑。只报名目与来路，不带吉凶——原书「独犯三刑得验者少」是它的收口。
+  const punishLine = (() => {
+    const punish = reading.punish;
+    if (!punish) return null;
+    const bits = [];
+    if (punish.linePairs.length > 0) {
+      bits.push(`卦内${punish.linePairs.map(([a, b, self]) => `${self ? '自' : ''}${a}刑${b}`).join('、')}`);
+    }
+    if (punish.outside.length > 0) {
+      // 自刑那一支照原样拼会成「月建酉刑酉」，读着像句病话，单独说。
+      // 每一项自己都带来源，前面不再加「日月」两个字——加了会拼成「日月月建与…」。
+      bits.push(punish.outside.map(([position, source, from, to, self]) => (
+        self ? `${source}与${position}爻${to}自刑` : `${source}${from}刑${to}（${position}爻）`
+      )).join('、'));
+    }
+    return bits.length === 0 ? null : `【犯刑】${bits.join('，')}`;
+  })();
   // 卦体冲合。六冲卦十个、六合卦八个，都是整卦的定性；变卦那两路要等动起来才谈得上。
   // 六十四卦里有四十六卦既不是六冲也不是六合，那种「不是」不值一行，不出。
   const clashLine = (() => {
@@ -200,6 +217,7 @@ function readingToText(reading) {
     clashLine,
     dayClashLine,
     combineLine,
+    punishLine,
     `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
     `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
     `【断语】\n${insights}`,
@@ -300,6 +318,9 @@ function callTool(name, args) {
         // 爻之合那四名各是哪些爻。合起/合绊是「合于日月」，按动静分两路，互不相交；
         // 合好是两动爻相合（成对给出），化扶是动爻化出之爻回头相合（只给本爻位）。
         // 四路皆空时是空对象，不占结构。卦级那三法在 clash 里，不在这里重复。
+        // 爻之刑。方向原样给出（谁刑谁），不折成「这几爻犯刑」——折了就看不出是谁动的。
+        // 刑本身不是判词：三刑章说独犯三刑得验者少，所以这里只给位置与来路。
+        punish: reading.punish ?? null,
         combine: reading.combine ?? null,
         clash: reading.clash,
         timing: reading.timing,

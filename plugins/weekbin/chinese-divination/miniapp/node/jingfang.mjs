@@ -891,6 +891,113 @@ export function hexagramClash(hexagram, prepared) {
   return Object.freeze({ chong, he, pairs: Object.freeze(pairs) });
 }
 
+/**
+ * 地支相刑。出处是《增删卜易》卷一·三刑章第二十一，该章原文只有这六句：
+ *
+ *   「寅刑巳、巳刑申、子刑卯、卯刑午、丑戌相刑、未辰相刑。又云：辰午酉亥谓之自刑。」
+ *
+ * **本包照这六条原样排，不照八字那一套。** 子平命理流行的八条是「寅刑巳、巳刑申、申刑寅、
+ * 丑刑戌、戌刑未、未刑丑、子刑卯、卯刑子」，与此有两处实质不同：
+ *   一、增删卜易作「卯刑午」，命理作「卯刑子」；
+ *   二、增删卜易作「未辰相刑」，命理作「未刑丑、戌刑未」两条。
+ * 两套在六十四卦上落出来的卦也不一样：底本这六条碰得出三十七卦，命理那八条碰得出四十八卦。
+ * 底本既是本包据以立论的那一部，异说在这里记明，不混着排——两套一起排就成了二十四条，
+ * 断语里「有几爻犯刑」这句话立刻失去意义。
+ *
+ * **刑是有向的。** 「寅刑巳」说的是寅去刑巳，不是巳去刑寅。方向在六十四卦上确实落出差别：
+ * 丑刑戌有十二卦，戌刑未只四卦。所以这里存成有序的二元组，按 a 刑 b 逐对判，不做成无向表。
+ * 子卯那一对两向都刑（底本作「子刑卯、卯刑午」，命理作「子刑卯、卯刑子」，两向都在），
+ * 但那是两条分别的话，不是同一条的镜像，所以照样分开存。
+ *
+ * 自刑四支辰午酉亥出自同章的「又云」，不是那六句之一，另存一处。
+ */
+const PUNISH_PAIRS = Object.freeze([
+  ['寅', '巳'], ['巳', '申'], ['子', '卯'], ['卯', '午'], ['丑', '戌'], ['未', '辰'],
+]);
+
+/** 自刑四支：辰午酉亥再见同支为刑。 */
+const SELF_PUNISH_BRANCHES = Object.freeze(['辰', '午', '酉', '亥']);
+
+/** a 是否刑 b。取自 {@link PUNISH_PAIRS}，有序。 */
+function branchPunishes(a, b) {
+  return PUNISH_PAIRS.some(([from, to]) => from === a && to === b);
+}
+
+/** 自刑只在本支见本支时成立，别的支之间没有自刑一说。 */
+function branchSelfPunishes(a, b) {
+  return a === b && SELF_PUNISH_BRANCHES.includes(a);
+}
+
+/**
+ * 爻之刑。三刑章那句话是这一层唯一的主张，而它自带一个很紧的前提。
+ *
+ * 原文：「夫三刑者，予屡试之，**或因用神休囚又兼他爻犯之**，刑者则见凶，
+ * 而**独犯三刑得验者少，占过数十年只验得一卦**。」
+ *
+ * 也就是说「犯刑」本身不是判词：野鹤自己试了几十年，单靠犯刑只验中一卦，要见凶还得搭上
+ * 用神休囚与另一爻也犯刑两条。所以本函数只报「谁刑了谁」，那两条前提由断语核，
+ * 吉凶仍旧归用神旺衰——这跟本包在六冲、六合两章上的处置是同一条线。
+ *
+ * 三路都报：爻与爻相刑、动变两爻之外的本支自刑、以及日月与爻相刑。
+ * 刑不像冲，方向明确（见 {@link PUNISH_PAIRS} 的注），所以报的时候把「谁刑谁」原样带出去，
+ * 不折成一句「此爻犯刑」——折了就看不出是谁动的。
+ *
+ * @param {Jingfang} jingfang
+ * @param {{ monthBranch: number, dayBranch: number }} calendar
+ * @returns {{
+ *   linePairs: readonly { from: JingfangLine, to: JingfangLine, self: boolean }[],
+ *   outside: readonly { line: JingfangLine, source: string, from: string, to: string, self: boolean }[],
+ *   hitPositions: readonly number[], hasAny: boolean,
+ * }}
+ */
+export function punishReading(jingfang, calendar) {
+  const linePairs = [];
+  for (let a = 1; a <= 6; a += 1) {
+    for (let b = 1; b <= 6; b += 1) {
+      if (a === b) continue;
+      const from = jingfang.lines[a - 1];
+      const to = jingfang.lines[b - 1];
+      if (branchPunishes(from.branch, to.branch)) {
+        linePairs.push(Object.freeze({ from, to, self: false }));
+      } else if (branchSelfPunishes(from.branch, to.branch) && a < b) {
+        // 自刑本就对称，同一对（a 刑 b / b 刑 a）只算一次。
+        // 两头都收的话，断语会把「二爻亥自刑四爻」和「四爻亥自刑二爻」并排说一遍，
+        // 看着像两件事，其实是一对。相刑那六条有方向，不必这样收。
+        linePairs.push(Object.freeze({ from, to, self: true }));
+      }
+    }
+  }
+  // 日月与爻。日辰月建当作一只「爻」来看，方向照旧。
+  const outside = [];
+  for (const source of [
+    { name: '日辰', branch: BRANCH_ORDER[calendar.dayBranch] },
+    { name: '月建', branch: BRANCH_ORDER[calendar.monthBranch] },
+  ]) {
+    for (const line of jingfang.lines) {
+      if (branchPunishes(source.branch, line.branch)) {
+        outside.push(Object.freeze({ line, source: source.name, from: source.branch, to: line.branch, self: false }));
+      } else if (branchPunishes(line.branch, source.branch)) {
+        outside.push(Object.freeze({ line, source: source.name, from: line.branch, to: source.branch, self: false }));
+      } else if (branchSelfPunishes(source.branch, line.branch)) {
+        outside.push(Object.freeze({ line, source: source.name, from: line.branch, to: source.branch, self: true }));
+      }
+    }
+  }
+  const hit = new Set();
+  for (const item of linePairs) {
+    hit.add(item.from.position);
+    hit.add(item.to.position);
+  }
+  for (const item of outside) hit.add(item.line.position);
+  const hitPositions = [...hit].sort((a, b) => a - b);
+  return Object.freeze({
+    linePairs: Object.freeze(linePairs),
+    outside: Object.freeze(outside),
+    hitPositions: Object.freeze(hitPositions),
+    hasAny: linePairs.length > 0 || outside.length > 0,
+  });
+}
+
 /** 纳甲六爻的配对位：内卦初二三与外卦四五六错开一位，隔三位相配。 */
 const CLASH_PAIR_OFFSETS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
 
@@ -1066,6 +1173,75 @@ for (let branch = 0; branch < 12; branch += 1) {
       + '则被日辰冲的静爻还能得日辰生扶，「暗动不靠日辰生扶」这条取舍得重核');
   }
 }
+
+// 三刑章那六条与自刑四支，落在这六十四卦的纳甲上是什么样子，在这里钉死。
+// 要钉的是三件能查的事：每一条都碰得出卦（碰不出的条目等于写错了字）、六条合起来碰出
+// 三十七卦（数目错一条就露）、以及自刑里辰一支在六十四卦上一次都不出现。
+{
+  const SELF_TOTAL = 4;
+  // 一、辰只装在内卦三爻（乾内子寅辰、坎内寅辰午、艮内辰午申），一卦只有一个下卦，
+  //    所以一卦里最多一个辰，自刑辰在六十四卦上一次也碰不出来。底本没有这一条，
+  //    是纳甲装出来的结构事实——写代码的人若以为自刑四支都能碰到，就得在这里撞一下。
+  let selfChen = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const branches = jingfang(hexagram).lines.map((line) => line.branch);
+    const chen = branches.filter((branch) => branch === '辰').length;
+    if (chen > 1) {
+      throw new Error(`纳甲校验不过：${hexagram.name}里出现了${chen}个辰，`
+        + '一卦只有一个下卦，辰只装在内卦三爻，碰不出两个——纳甲表有问题');
+    }
+  }
+  for (const hexagram of HEXAGRAM_LIST) {
+    const branches = jingfang(hexagram).lines.map((line) => line.branch);
+    for (let a = 0; a < 6; a += 1) {
+      for (let b = 0; b < 6; b += 1) {
+        if (a === b) continue;
+        if (branchSelfPunishes(branches[a], branches[b]) && branches[a] === '辰') selfChen += 1;
+      }
+    }
+  }
+  if (selfChen !== 0) {
+    throw new Error(`自刑校验不过：辰自刑在六十四卦上碰出了${selfChen}次，`
+      + '辰只装在内卦三爻，一卦最多一个，碰不出自刑辰——纳甲表或自刑四支有问题');
+  }
+  // 二、那六条每一条都得碰得出卦。碰不出就是写错了字，刑这一路会静悄悄少掉一条。
+  const pairHits = new Map(PUNISH_PAIRS.map(([from, to]) => [`${from}刑${to}`, 0]));
+  let hexWithPunish = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jf = jingfang(hexagram);
+    let hit = false;
+    for (let a = 1; a <= 6 && !hit; a += 1) {
+      for (let b = 1; b <= 6; b += 1) {
+        if (a === b) continue;
+        const key = `${jf.lines[a - 1].branch}刑${jf.lines[b - 1].branch}`;
+        if (!pairHits.has(key)) continue;
+        pairHits.set(key, pairHits.get(key) + 1);
+        hit = true;
+      }
+    }
+    if (hit) hexWithPunish += 1;
+  }
+  for (const [key, count] of pairHits) {
+    if (count === 0) {
+      throw new Error(`三刑校验不过：${key}在六十四卦上一次也碰不出，`
+        + '这一条多半是写错了字，刑这一路会静悄悄少掉一条');
+    }
+  }
+  // 六条合起来碰出二十八卦。加上自刑那三支能碰着的（辰一支永远碰不着）才是三十七卦——
+  // 两个数别混，早先就把这两个数记串过一次。
+  if (hexWithPunish !== 28) {
+    throw new Error(`三刑校验不过：底本那六条在六十四卦上碰出${hexWithPunish}卦，应为二十八卦——`
+      + '改了刑的条目或纳甲表，这里立刻响');
+  }
+  // 三、刑有向这件事本身查不出来（表是有序二元组，judge 天然按序判），
+  //    真正要防的是「顺手把底本那六条补成命理那八条」。所以直接数条目：底本是六条。
+  if (PUNISH_PAIRS.length !== 6) {
+    throw new Error(`三刑校验不过：底本那六条现在是${PUNISH_PAIRS.length}条。`
+      + '命理那八条另存一处可以，别混进来——两套一起排，「有几爻犯刑」这句话就没意义了');
+  }
+  void SELF_TOTAL;
+}
+
 
 // 爻之合那一层的地基。六合是十二支上的两两配对，这个函数把「四名」的判定整个架在上面：
 // 配对若不严格互斥，「与谁合」就有两个答案，同一爻会落进两路，卦体上的小标也要打架。

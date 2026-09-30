@@ -36,6 +36,9 @@ matter you are asking about, and that changes what the reading emphasises:
 Be specific. "Should I take this offer" gets a topic, a 类神, and a real 应期; "how's my luck
 lately" gets nothing and falls back to the 用卦. If what you wrote genuinely does not match a
 topic, the app does not force one — it says so in the reading and falls back to the 用卦.
+**"You wrote nothing" and "you wrote something this table does not cover" are different, and the
+reading says so differently.** The second case lists the nine topic classes it does cover, naming
+the layer that is missing, instead of telling you that you failed to ask.
 
 **Your question does not change the verdict.** The same hexagram asked about money and asked
 about marriage cannot flip from 凶 to 吉: 吉凶 comes from the hexagram's own 体用生克 and the
@@ -79,8 +82,8 @@ every single time.
 | Title | your question if you wrote one, otherwise the method's name |
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, the 动爻's 爻辞 with its 象传 quoted under the 本卦; and, on the eighteen 六冲/六合 hexagrams, three thin arcs in the margin joining 初四、二五、三六 |
-| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, 爻之合 (合起, 合绊, 合好, 化扶 on each line that meets a combination), the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
-| 断语 | seventeen to twenty sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
+| Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, 爻之合 (合起, 合绊, 合好, 化扶 on each line that meets a combination), 爻之刑 (who punishes whom), the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
+| 断语 | seventeen to twenty-one sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings); 【犯刑】 follows 【逢合】 and appears only when a line really is punished by another line or by the day's or the month's branch (about 90% of readings — 37 of the sixty-four have 纳甲 that collides on its own, and the rest are covered by the day/month path), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -841,6 +844,47 @@ Measured over 365 days × 256 toss patterns (93,440 readings): about **81%** pro
 six. 合起 and 合绊 both appear in the same reading about 12% of the time (one still line lifted while
 another moving line is held).
 
+**爻之刑 — 犯刑**
+
+三刑章第二十一: 「寅刑巳、巳刑申、子刑卯、卯刑午、丑戌相刑、未辰相刑。又云：辰午酉亥谓之自刑。」
+
+**The base text's six, not the fate-reading set of eight.** They differ in two substantive places: the
+base text has 卯刑午, not 卯刑子, and it has 未辰相刑 as one entry rather than splitting it into
+未刑丑 and 戌刑未. The eight touch 48 of the sixty-four; the six touch 28. Merging both sets into
+fourteen would leave 「how many lines are punished」 without an answer, so the variant reading is recorded
+here and kept out of the table.
+
+**Punishment has a direction.** 丑刑戌 comes out on twelve hexagrams, 卯刑午 on eight. The direction is
+carried through as it stands — who punishes whom — and never folded into a flat 「this line is punished」,
+because folding it away loses the only thing that says who acted.
+
+**Of the four self-punishing branches, 辰 can never come out on the line-to-line path.** That is not an
+oversight but a structural fact: 辰 only sits in the three inner lines (乾 carries 子寅辰, 坎 carries
+寅辰午, 艮 carries 辰午申), and a hexagram has one lower trigram, so at most one 辰 appears and
+本支见本支 cannot be formed. 午, 酉 and 亥 all come out (8, 6 and 8 hexagrams). The 辰 branch is not dead
+either — when the month's branch is 辰 and a 辰 line is present, 「月建自刑辰爻」 holds, and 4.2% of
+readings over 365 days take that path. The load-time check pins 「self-punishing 辰 is always 0 on the
+line-to-line path」 so nobody later adds it back as an apparent omission.
+
+All three paths are reported: line against line, 本支见本支 self-punishment, and the day or month branch
+against a line. Self-punishment is symmetric, so a pair is reported once; collecting it from both
+ends would put 「二爻亥自刑四爻」 and 「四爻亥自刑二爻」 side by side, which reads as two separate
+things. The six directed pairs are unaffected. The book's own case reproduces step by step — 寅月申日, 风火家人 changing to 离卦: the
+month branch 寅 punishes the fifth line's 巳, and the day branch 申 is punished by that same 巳. Both
+land on one line, which is the 子孙 line.
+
+**This layer does not decide 吉凶, and here the book draws the line itself.** 「夫三刑者，予屡试之，
+或因用神休囚又兼他爻犯之，刑者则见凶，而独犯三刑得验者少，占过数十年只验得一卦。」 Ye He tried it
+himself for decades and it verified on a single reading. So the reading reports who punishes whom and
+then checks the two preconditions — 用神休囚 and 又兼他爻犯之 — one by one, saying plainly whether each
+holds; the verdict stays with 用神 vitality. The 「刑」 mark on the hexagram is muted, like 「合」, and
+never takes 朱砂.
+
+Measured over 19,800 readings by the numbers method: about **90%** carry this section. A separate sweep of
+the sixty-four hexagrams across 365 days (23,260 readings) gives 90.7%, and the two agree. Of those, 58%
+come from the line-to-line path and 80% from the day/month path, averaging 1.05 punished lines per
+reading and at most three.
+
 **What is deliberately not here.** 卦身 and 世身 appear on most traditional charts, and this package
 draws neither. Not an oversight: 《增删卜易》 is the base text here, and removing them is stated as
 one of the book's own features — 「删除卦身世身、星煞本命，使人无歧路之虞」. 《卜筮全书》 and
@@ -1155,11 +1199,11 @@ one-moving/one-still contrast); 化扶 requires a moving line whose transformed 
 combined-line positions are exactly the union of the four paths; the reading names all four without
 deciding 吉凶 (both closing lines of the chapter are quoted verbatim); the hexagram gets a muted 「合」
 mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear; and MCP carries a
-`combine` field plus a 【逢合】 header line. A load-time check sweeps all sixty-four hexagrams across
+`combine` field plus a 【逢合】 header line. 爻之刑 is checked too. Six checks: the base text's six and the fate-reading set of eight are not merged (卯刑午 stands, not 卯刑子, and 未辰相刑 is not split into 未刑丑 and 戌刑未, since merging both sets would make 「how many lines are punished」 meaningless); punishment has a direction (卯刑午 holds while 午刑卯 does not); self-punishing 辰 is always 0 across the sixty-four, fixed by the 纳甲 (辰 only sits in the inner lines and a hexagram has one lower trigram), while 午, 酉 and 亥 all come out and a self-punishing pair is reported only once; the book's case reproduces step by step (寅月申日, 风火家人 changing to 离卦, the month branch 寅 punishing the fifth line's 巳 and the day branch 申 punished by that same 巳, both on one line); the reading does not decide 吉凶 from punishment and checks 「用神休囚」 and 「又兼他爻犯之」 one by one; the hexagram gets a muted 「刑」 mark and MCP carries a `punish` field plus a 【犯刑】 header line. A load-time check sweeps all sixty-four hexagrams across
 twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
 each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-181 passing.
+187 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
