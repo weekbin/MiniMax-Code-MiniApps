@@ -4035,3 +4035,272 @@ test('冲合连线画在两列之间的空隙里，不占卦面宽度', async ()
   assert.ok(/\{ pairs: reading\.clash\.changedPairs \|\| \[\] \}/.test(reading),
     '变卦那层弧没接上变卦的冲合数据');
 });
+
+/* ---------- 反伏与卦变（反伏章第二十五） ---------- */
+
+test('反伏章的三例逐步复现：观之坤、巽之观、升之观各落在正确的一档', async () => {
+  // 《增删卜易·反伏章第二十五》把反伏摆成三种情形，各举一例：
+  //   「外卦反伏而内卦不动者，如观之坤是也」
+  //   「内卦反伏而外卦不动者如巽之观是也」
+  //   「爻变者内外爻动而反伏者，非同一卦也。如升之观是也」
+  // 三例换过去的那三支，无一例外都是本卦那一三支的**逐位六冲**。
+  // 本包照这一条判，判据见 fanfuReading 里的 inner / outer 两个条件。
+  //
+  // 卦名按本包卦表取：这里「观」是 000011 风地观（坤下巽上），
+  // 「升」是 011000 地风升（巽下坤上）。升与观恰好互为内外易位，
+  // 动二三五六四爻，两卦的内卦外卦就整个对调——正是章里「内外爻动」那一例。
+  const D = await import('../miniapp/node/divination.mjs');
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  const byName = new Map(HEXAGRAM_LIST.map((h) => [h.name, h]));
+  const byKey = new Map(HEXAGRAM_LIST.map((h) => [h.key, h]));
+  const flip = (key, positions) => {
+    const lines = key.split('').map(Number);
+    for (const p of positions) lines[p - 1] = lines[p - 1] ? 0 : 1;
+    return lines.join('');
+  };
+  const PAIRS6 = [['子', '午'], ['丑', '未'], ['寅', '申'], ['卯', '酉'], ['辰', '戌'], ['巳', '亥']];
+  const clashOf = (b) => {
+    for (const [x, y] of PAIRS6) { if (x === b) return y; if (y === b) return x; }
+    return '?';
+  };
+  // 铜钱约定：6 老阴（阴动变阳）、9 老阳（阳动变阴）、7 少阳、8 少阴，都静。
+  // 由卦象串与动爻反推这一手该掷出什么，这样三例不必手写死数，也就不会写错卦。
+  const coinsFor = (key, moving) => [...key].map((d, i) => {
+    const isMoving = moving.includes(i + 1);
+    if (isMoving) return d === '1' ? 9 : 6;
+    return d === '1' ? 7 : 8;
+  });
+  const cases = [
+    { from: '风地观', label: '观之坤', to: '坤为地', moving: [5, 6], inner: false, outer: true },
+    { from: '巽为风', label: '巽之观', to: '风地观', moving: [2, 3], inner: true, outer: false },
+    { from: '地风升', label: '升之观', to: '风地观', moving: [2, 3, 5, 6], inner: true, outer: true },
+  ];
+  for (const item of cases) {
+    const label = item.label;
+    const fromHex = byName.get(item.from);
+    assert.ok(fromHex, `卦表里没有 ${item.from}`);
+    // 先从卦表和动爻走一遍真实的铜钱起卦，确认这一例真能起得出来。
+    const cast = D.castByCoins(coinsFor(fromHex.key, item.moving));
+    assert.equal(cast.hexagram.name, fromHex.name, `${label}：起出来的本卦不是 ${item.from}`);
+    assert.deepEqual(cast.positions, item.moving, `${label}：动爻不是 ${item.moving.join('')}`);
+    const changed = byKey.get(flip(cast.hexagram.key, cast.positions));
+    assert.equal(changed.name, item.to, `${label}：变卦不是 ${item.to}`);
+    const hit = J.fanfuReading(J.jingfang(cast.hexagram), { movingPositions: cast.positions }, J.jingfang(changed));
+    assert.equal(hit.inner, item.inner, `${label}：内卦该${item.inner ? '' : '不'}反伏`);
+    assert.equal(hit.outer, item.outer, `${label}：外卦该${item.outer ? '' : '不'}反伏`);
+    // 反伏的一侧：换过去的那三支必须逐位与本卦那三支相冲——这是本包的判据，不能只对卦名。
+    for (const [on, from3, to3, side] of [
+      [hit.inner, hit.innerFrom, hit.innerTo, '内'],
+      [hit.outer, hit.outerFrom, hit.outerTo, '外'],
+    ]) {
+      if (on) {
+        assert.equal(to3, [...from3].map(clashOf).join(''), `${label}：${side}卦换过去的那一组不是逐位六冲`);
+      } else {
+        // 章里「内卦不动」「外卦不动」两句：不反伏的那一侧得连一支都没换。
+        assert.equal(to3, from3, `${label}：${side}卦说不反伏，却换了纳支`);
+      }
+    }
+    // 反伏那一档与卦变那一档不相交，这三例也不能被当成卦变。
+    assert.equal(hit.guaChange, false, `${label}被误判成卦变`);
+    assert.equal(hit.kind, item.inner && item.outer ? '内外' : item.inner ? '内卦' : '外卦', `${label}的 kind 落错档`);
+  }
+});
+
+test('卦变那一档：六爻全动换到对宫的八纯卦，与反伏那一档不相交', async () => {
+  // 章里第一句「卦變者內外動而反伏者同一卦也。如乾卦變坤卦」举的乾变坤，
+  // 纳支逐位一支都不冲（子对未、寅对巳、辰对卯），所以它不属于反伏那一档。
+  // 它靠的是「同一卦」——本卦与变卦同为八纯卦、两两相对，全翻才换得到。
+  // 少一个「全动」条件就会出岔：乾只动初四两爻也变得到巽为风，两头都是八纯卦。
+  const D = await import('../miniapp/node/divination.mjs');
+  const J = await import('../miniapp/node/jingfang.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  const byKey = new Map(HEXAGRAM_LIST.map((h) => [h.key, h]));
+  const flip = (key, positions) => {
+    const lines = key.split('').map(Number);
+    for (const p of positions) lines[p - 1] = lines[p - 1] ? 0 : 1;
+    return lines.join('');
+  };
+  const PAIRS_OF_PURE = [['乾为天', '坤为地'], ['坎为水', '离为火'], ['震为雷', '巽为风'], ['艮为山', '兑为泽']];
+  for (const [from, to] of PAIRS_OF_PURE) {
+    const hexagram = HEXAGRAM_LIST.find((h) => h.name === from);
+    const all = [1, 2, 3, 4, 5, 6];
+    const hit = J.fanfuReading(J.jingfang(hexagram), { movingPositions: all },
+      J.jingfang(byKey.get(flip(hexagram.key, all))));
+    assert.equal(hit.guaChange, true, `${from}全动变${to}不该走卦变那一档`);
+    assert.equal(hit.kind, '卦变', `${from}的 kind 该是卦变`);
+    // 卦变那一档不在逐位六冲那一档里——两档不相交，不是同一件事。
+    assert.equal(hit.inner, false, `${from}全动竟然被算成内卦反伏`);
+    assert.equal(hit.outer, false, `${from}全动竟然被算成外卦反伏`);
+    assert.equal(J.jingfang(byKey.get(flip(hexagram.key, all))).stage, '本宫', '对宫那一头该也是八纯卦');
+  }
+  // 全量扫一遍，两档交集必须为零。
+  let overlap = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    for (let mask = 1; mask < 64; mask += 1) {
+      const movingPositions = [];
+      for (let i = 0; i < 6; i += 1) if (mask & (1 << i)) movingPositions.push(i + 1);
+      const hit = J.fanfuReading(J.jingfang(hexagram), { movingPositions },
+        J.jingfang(byKey.get(flip(hexagram.key, movingPositions))));
+      if (hit.guaChange && (hit.inner || hit.outer)) overlap += 1;
+    }
+  }
+  assert.equal(overlap, 0, '卦变与反伏两档出现了重叠，判据被放宽了');
+  void D;
+});
+
+test('断语「反伏与卦变」不由这一层定吉凶，且把章末那两条前提逐条核出来', async () => {
+  const D = await import('../miniapp/node/divination.mjs');
+  // 由卦象串与动爻反推这一手该掷出什么：6 老阴（阴动变阳）、9 老阳（阳动变阴）、
+  // 7 少阳、8 少阴都静。写死铜钱数容易把卦起错，这样就不会错。
+  const coinsFor = (key, moving) => [...key].map((d, i) => {
+    const isMoving = moving.includes(i + 1);
+    return isMoving ? (d === '1' ? 9 : 6) : (d === '1' ? 7 : 8);
+  });
+  const textOf = (key, moving, question, now) => {
+    const reading = D.buildReading(D.castByCoins(coinsFor(key, moving)), { now, question });
+    return {
+      fanfu: reading.fanfu,
+      text: reading.insights.find((item) => item.title === '反伏与卦变').text,
+    };
+  };
+
+  // 认不出事类时先说缺哪一层，不空谈。
+  const bare = textOf('011011', [2, 3], undefined, new Date(2026, 8, 30));
+  assert.ok(/取不出用神/.test(bare.text), '取不出用神时没明说缺哪一层');
+  assert.ok(/用神旺相不變沖克者則反復/.test(bare.text), '章末那句没照录');
+  assert.ok(/没写所问何事/.test(bare.text), '没写所问何事时没说明事类接不上');
+
+  // 认出事类时：接上章里那一条，并把两条前提各说一句。
+  const asked = textOf('011011', [2, 3], '该不该换工作', new Date(2026, 8, 30));
+  assert.ok(/占功名者/.test(asked.text), '事业功名这一类没接上章里的占功名那条');
+  assert.ok(/「用神旺相」那条(成立|不成立)/.test(asked.text), '没逐条核「用神旺相」');
+  assert.ok(/「用神化回头冲克」那条(成立|不成立)/.test(asked.text), '没逐条核「用神化回头冲克」');
+  // 断语不许把「事之必成」当成无条件判词——那要有两条前提同时成立。
+  assert.ok(/只在这两条同时成立时才有/.test(asked.text), '「事之必成」被当成了无条件判词');
+  assert.ok(!/必然成|一定成|定成/.test(asked.text), '这一层擅自把吉凶定了');
+  // 判据出处要照录，读者才知道那六支是怎么挑的。
+  assert.ok(/如乾卦變坤卦/.test(asked.text), '没照录章里「同一卦」那一例');
+  assert.ok(/逐位六冲/.test(asked.text), '没写清判据是逐位六冲');
+
+  // 章末那两条前提有四种组合，一句笼统的匹配替不了事。逐种各造一例，坏哪一路红哪一路。
+  // 下面是扫过卦表与月建挑出来的真实日子，不是凭空编的：
+  //   坤为地动二三 → 地风升，内卦未巳卯换成丑亥酉（逐位六冲，反伏那一档）
+  //   乾为天六爻全动 → 坤为地，两头都是八纯卦（卦变那一档，纳支一支都不冲）
+  const cases = [
+    {
+      name: '用神旺相成立、且化回头冲克',
+      key: '000000', moving: [2, 3], question: '该不该换工作', now: new Date(2026, 1, 15),
+      expect: [/「用神旺相」那条成立（旺不属休囚）/, /「用神化回头冲克」那条成立。/],
+    },
+    {
+      name: '用神休囚、且本爻不在动',
+      key: '000000', moving: [2, 3], question: '这笔钱能不能赚到', now: new Date(2026, 1, 15),
+      expect: [
+        /「用神旺相」那条不成立（休正属休囚）/,
+        /用神本爻不在动，谈不上「化」，回头冲克那条不成立/,
+      ],
+    },
+    {
+      name: '卦变那一档、用神旺相但回头冲克不成立',
+      key: '111111', moving: [1, 2, 3, 4, 5, 6], question: '该不该换工作', now: new Date(2026, 1, 15),
+      expect: [
+        /本卦六爻全动，变出坤为地/,
+        /「用神旺相」那条成立（相不属休囚）/,
+        /「用神化回头冲克」那条不成立（变出来的那一爻不克本爻）/,
+      ],
+    },
+  ];
+  for (const item of cases) {
+    const got = textOf(item.key, item.moving, item.question, item.now);
+    for (const re of item.expect) {
+      assert.ok(re.test(got.text), `${item.name}：断语里没有「${re.source}」`);
+    }
+  }
+
+  // 「休囚就是休囚」这一半不能写反，也不能在两处说两样话。
+  const xiang = textOf('000000', [2, 3], '该不该换工作', new Date(2026, 1, 15));
+  const qiu = textOf('000000', [2, 3], '该不该换工作', new Date(2026, 0, 15));
+  assert.ok(/「用神旺相」那条不成立（囚正属休囚）/.test(qiu.text), '囚该算休囚');
+  // 被观测的那一项必须真的转过轮，否则验的是常量等于常量。
+  assert.notEqual(xiang.text, qiu.text, '旺衰没变，说明月建根本没参与判定');
+
+  // 两档的措辞各归各的：卦变那一档说「同一卦」，反伏那一档说逐位六冲，混了就是没分清。
+  const guaChange = textOf('111111', [1, 2, 3, 4, 5, 6], '该不该换工作', new Date(2026, 1, 15));
+  assert.ok(/这一档换过去的纳支并不逐位相冲/.test(guaChange.text), '卦变那一档没说清它不属逐位六冲');
+  assert.ok(!/判据是\*\*逐位六冲\*\*/.test(guaChange.text), '卦变那一档被写成了逐位六冲');
+  // 反伏那一档要报出换的是哪一组，不能只说「反伏」。
+  assert.ok(/内卦未巳卯换成丑亥酉/.test(xiang.text), '反伏那一档没报出换过去的那一组纳支');
+  // 三种情形各有各的那句，内外的不能串。
+  assert.ok(/內卦反伏，內則不安/.test(xiang.text), '内卦反伏该引「內則不安」');
+  assert.ok(/內卦反伏，我亂他定/.test(xiang.text), '内卦反伏该引「我亂他定」');
+  const outerCase = textOf('000000', [1, 5, 6], '该不该换工作', new Date(2026, 1, 15));
+  if (outerCase.fanfu && outerCase.fanfu.outer) {
+    assert.ok(/外卦反伏，外則不寧/.test(outerCase.text), '外卦反伏该引「外則不寧」');
+    assert.ok(/他亂我定/.test(outerCase.text), '外卦反伏该引「他亂我定」');
+    assert.ok(!/內卦反伏，我亂他定/.test(outerCase.text), '外卦反伏串到了内卦那一支');
+  }
+});
+
+test('MCP 另给 fanfu 字段与【反伏与卦变】抬头，两档不合成一条', async () => {
+  const mcp = await readFile(new URL('../miniapp/node/mcp/divination-http.mjs', import.meta.url), 'utf8');
+  assert.ok(/fanfu: reading\.fanfu \?\? null,/.test(mcp), 'MCP 没有给 fanfu 字段');
+  assert.ok(/fanfuLine,/.test(mcp), '抬头那一行没有接进输出');
+  assert.ok(/【反伏与卦变】/.test(mcp), '没有【反伏与卦变】抬头');
+  const block = mcp.slice(mcp.indexOf('const fanfuLine'), mcp.indexOf('})();', mcp.indexOf('const fanfuLine')));
+  assert.ok(!/必凶|定凶|大凶|事之必成/.test(block), '抬头拿反伏断成了凶');
+  // 两档要各报各的：卦变那一支与纳支相冲那一支都必须在，不能合成一句。
+  assert.ok(/guaChange/.test(block) && /inner/.test(block) && /outer/.test(block),
+    '抬头没有把两档分开报');
+});
+
+test('断语正文里不许残留 markdown 或 HTML 标记——页面转义后不解析，星号会原样露给读者', async () => {
+  // 客户端用 escapeHtml 把断语正文当纯文本插进页面，不解析 markdown。
+  // 写断语时顺手加的 ** 粗体到了页面上就是两个星号，不是强调。
+  // 这条曾经真发生过：反伏那一段写「判据是**逐位六冲**」，页面上就显示了星号。
+  // 全量扫过一遍（40320 次起卦、823256 段）确认只有那一处，这里留成常驻断言。
+  const D = await import('../miniapp/node/divination.mjs');
+  const { HEXAGRAM_LIST } = await import('../miniapp/node/hexagrams.mjs');
+  const QUESTIONS = ['', '该不该换工作', '这笔钱能不能赚到', '这病几时能好', '这次考试能不能过'];
+  // 覆盖到反伏、卦变、六冲、逢合、犯刑、用神等各种段落都要走到的动静组合
+  const MASKS = [0b111111, 0b000011, 0b001100, 0b101010, 0b010101, 0b110000, 0b000000 | 0b100000];
+  const FORBIDDEN = [
+    [/\*\*/, 'markdown 粗体星号'],
+    [/`[^`]*`/, '反引号'],
+    [/<\/?[a-z][^>]*>/i, 'HTML 标签'],
+    [/&(amp|lt|gt|quot|#\d+);/, 'HTML 实体'],
+    [/\bundefined\b/, 'undefined'],
+    [/\bNaN\b/, 'NaN'],
+    [/\[object Object\]/, '[object Object]'],
+  ];
+  const offenders = [];
+  let readings = 0;
+  let segments = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    for (const mask of MASKS) {
+      const movingPositions = [];
+      for (let i = 0; i < 6; i += 1) if (mask & (1 << i)) movingPositions.push(i + 1);
+      const coins = [...hexagram.key].map((d, i) => (
+        movingPositions.includes(i + 1) ? (d === '1' ? 9 : 6) : (d === '1' ? 7 : 8)
+      ));
+      const cast = D.castByCoins(coins);
+      for (const question of QUESTIONS) {
+        const reading = D.buildReading(cast, {
+          now: new Date(2026, mask % 12, 1 + (mask % 27)),
+          question: question || undefined,
+        });
+        readings += 1;
+        for (const item of reading.insights) {
+          segments += 1;
+          for (const [pattern, why] of FORBIDDEN) {
+            if (pattern.test(item.text)) offenders.push(`${why}｜${hexagram.name}·${item.title}：${item.text.match(pattern)[0]}`);
+          }
+        }
+      }
+    }
+  }
+  // 样本本身得够大，否则「一条都没查到」也可能是压根没生成几段
+  assert.ok(segments > 5000, `样本太小（只扫了 ${segments} 段），扫不到问题不说明干净`);
+  assert.deepEqual(offenders, [], `断语正文里有会原样露给读者的标记：${offenders.slice(0, 5).join('；')}`);
+  void readings;
+});

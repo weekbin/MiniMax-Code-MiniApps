@@ -83,7 +83,7 @@ every single time.
 | Top right | the verdict and the 体用 relation |
 | Left | 本卦 and 变卦 as six-line diagrams with 卦辞 and 象辞; each line carries its 六神 to the left of the bars, and the 干支 and 六亲 to the right, with 世 and 应 boxed in red, a 伏神 under its line in dashed small type, and 空 / 破 / 墓 / 暗 / 日破 / 冲散 as small marks, with the 用神's 元神 / 忌神 / 仇神 tagged 元 / 忌 / 仇 on their own lines; moving lines marked in red, the 动爻's 爻辞 with its 象传 quoted under the 本卦; and, on the eighteen 六冲/六合 hexagrams, three thin arcs in the margin joining 初四、二五、三六 |
 | Right | 体卦/用卦 elements and directions, 主客, 六亲世应, 卦体冲合 (whether this hexagram is 六冲 or 六合, and what the changed one is), 用神 (saying where the line sits, or which line the 伏神 hides under), 暗动 · 日破 · 冲散 when the day's branch clashes a line, 爻之合 (合起, 合绊, 合好, 化扶 on each line that meets a combination), 爻之刑 (who punishes whom), the month's vitality, the 旬空 and the month's 月破, the 八宫名单 (one palace's eight hexagrams in generation order, each marking the lines it flips), the four-derivation diagram, and the 消长 ring |
-| 断语 | seventeen to twenty-one sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings); 【犯刑】 follows 【逢合】 and appears only when a line really is punished by another line or by the day's or the month's branch (about 90% of readings — 37 of the sixty-four have 纳甲 that collides on its own, and the rest are covered by the day/month path), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%) |
+| 断语 | seventeen to twenty-two sections, with 【动爻爻辞】 as the second; 【暗动 · 日破 · 冲散】 is inserted after 【用神】 only when the day's branch actually clashes a line (about 46% of readings); 【犯刑】 follows 【逢合】 and appears only when a line really is punished by another line or by the day's or the month's branch (about 90% of readings — 37 of the sixty-four have 纳甲 that collides on its own, and the rest are covered by the day/month path), and 【六冲】 only when the hexagram itself is 六冲 or 六合, or the changed hexagram is, or a moving line clashes its own transformed line (about 48%); 【反伏与卦变】 follows 【犯刑】 and appears only when there really is a 反伏 or a 卦变 — about 6.4% of hand-tossed readings, and never under 时间, 每日 or 数字 casting, all three of which move exactly one line |
 | 宜 / 忌 | when the verdict is 吉 but the 用卦 drains the 体卦, a caution rather than a clean yes |
 | 起卦依据 | every number that went into the cast, shown rather than hidden |
 | 存入卦历 | add a one-line note and keep it on this machine |
@@ -139,12 +139,12 @@ still works, but no topic will be recognised and the timing falls back to the �
 
 Two blocks come back: `content[0].text` is prose written for the model, and `structuredContent` is
 for programs (`method` / `question` / `topic` / `hexagram` / `changed` / `verdict` / `useGod` /
-`transforms` / `dayClash` / `clash` / `timing` / `disclaimer`). `dayClash` gives the 爻 positions of any 暗动,
+`transforms` / `dayClash` / `clash` / `fanfu` / `timing` / `disclaimer`). `fanfu` names the branch this reading falls in (`kind` is 「内卦」, 「外卦」, 「内外」 or 「卦变」), says whether the inner and outer trigrams are 反伏, and on the 反伏 side gives the 纳支 set it came from and the one it changed to (`innerSwap` / `outerSwap`); `dayClash` gives the 爻 positions of any 暗动,
 日破 and 冲散, and the header gains a 【日冲】 line only when there is something to say. `clash` gives
 whether the hexagram is a 六冲卦 or a 六合卦, whether the changed one is, whether the pair is
 六合变六冲 or 六冲变六冲, which moving lines clash their own transformed line, the three 爻 pairs with
 each one's verdict, and any incidental 爻与爻冲 as 爻-position pairs; the header gains a 【卦体】 line
-when there is something to say — which is most readings, so the line is kept to a few words.
+when there is something to say — which is most readings, so the line is kept to a few words. The header also gains a 【反伏与卦变】 line, on about 6.4% of readings, reporting the two branches separately because they cannot be merged. Both lines stay short on purpose.
 `useGod` names the 六亲 taken and, when the 用神 is not on the hexagram,
 carries the 伏神 as `hidden` — `position`, `hushen`, `feishen`, `flying` and an `emerges` verdict —
 and, when a single 用神 is settled, carries its circle as `circle` — the 爻 positions of the 元神, 忌神
@@ -350,7 +350,7 @@ element stands to the 体卦.
 Three more come and go with the reading. 暗动 · 日破 · 冲散 appears only when the day's branch really
 does clash a line. 化爻 · 变出之爻 appears whenever anything moves. 六冲 appears when the hexagram
 itself is 六冲 or 六合, or the changed one is, or a moving line clashes its own transformed line. So a
-reading runs seventeen to twenty sections.
+reading runs seventeen to twenty-two sections.
 
 **动爻爻辞 — the line that actually moved**
 
@@ -893,6 +893,66 @@ writers split three ways. A package that follows 《增删卜易》 as its spine
 deleted would be arguing with its own source. The rules are recorded here for anyone who wants them
 — 阳世从初爻起子、阴世起午，数至世爻那一支便是卦身; 世身按世爻地支定爻位（子午居初、丑未居二、
 寅申居三、卯酉居四、辰戌居五、巳亥居六）— but they are not drawn and not used to judge anything.
+
+**反伏与卦变 — the two ends of the same thing turn over**
+
+反伏章第二十五 puts two things side by side from its first line, but their conditions do not match, so
+this package reports them as two separate branches rather than folding them into one:
+
+> 卦有卦變，爻有爻變。卦變者內外動而反伏者同一卦也。如乾卦變坤卦。爻變者內外爻動而反伏者，非同一卦也。
+> 如升之觀是也。又有外卦反伏而內卦不動者，如觀之坤是也。又有內卦反伏而外卦不動者如巽之觀是也
+
+**The 反伏 branch: the inner or outer trigram's 纳支 has been replaced, as a set, by the one that clashes
+with it position by position.** All three of the book's cases fit that: 观之坤 moves the fifth and sixth
+lines, so only the outer set changed; 巽之观 moves the second and third, so only the inner set did; 升之观
+moves the second, third, fifth and sixth, so both did. In every case the set it changed to clashes with the
+original position by position — 观's outer 巽 carries 未巳卯 and 坤's carries 丑亥酉, and each of the three
+pairs really is a 六冲 pair. The package judges inner and outer separately, so 「inner only」, 「outer only」
+and 「both」 stay distinguishable instead of being flattened into one flat 「this hexagram is 反伏」.
+Across the sixty-four hexagrams and the sixty-three non-empty moving patterns — 4,032 combinations — this
+branch lands on 252 (4 with both, 124 inner only, 124 outer only).
+
+**The 卦变 branch: all six lines move, and both the original and the changed hexagram are 八纯卦.** The
+乾变坤 in the book's first line clashes in not a single position (子 against 未, 寅 against 巳, 辰 against 卯),
+so it is not in the branch above — what it rests on is 「同一卦」: 乾坤, 坎离, 震巽, 艮兑, the four
+complementary pairs. The 「all six」 condition cannot be dropped: 乾 moving only the first and fourth also
+reaches 巽为风, and both ends are 八纯卦, but nothing like the book's 「內外動」 happened. A full sweep puts
+this branch at eight, and its overlap with the 反伏 branch is **zero** — fold them into one and 乾变坤 is
+either dropped or the 反伏 criterion has to be loosened until it can no longer be checked. The load-time
+self-check pins both the zero overlap and the count (252 + 8 = 260).
+
+**Each of the three situations has its own line, and this package does not pick one for you.** When both
+the inner and the outer trigram are 反伏, both of the book's lines — 「內卦反伏，我亂他定」 and
+「外卦反伏，他亂我定」 — apply, and the reading says so rather than reciting one.
+
+**This layer does not decide 吉凶, and here the book draws the line itself.** The closing line leaves no
+room:
+
+> 反伏卦用神旺相不變沖克者則反復，事之必成，第恐用神而化回頭之沖克者，卽是卦變大凶之象。
+
+Both preconditions are stated in terms of the 用神, so the reading only checks them: 用神旺相 is checked
+against the 用神's vitality in the month's branch, and 用神化回头冲克 is checked by whether the 用神 line
+moves at all and whether the line it turns into 克s it back. Each is reported plainly as holding or not, and
+**「事之必成」 is never stated as an unconditional verdict**. When no 用神 can be taken, the first
+precondition cannot be checked at all, and the reading says which layer is missing rather than talking past it.
+
+**Only the 分占 lines that match the topic asked are taken from the chapter's ten.** 占功名, 占财物,
+占墳墓宅捨, 占婚姻, 占疾病, 占盗贼官非 and 占出行 each land on one of this package's topics (恋爱 and 婚嫁
+share 占婚姻), and the 占彼此 line is quoted separately for the inner and the outer case. 占天时 and 占行人
+have no matching topic here, and rather than borrow another 占法 to fill the gap the reading says it cannot
+connect them.
+
+Measured by hand-tossed coins: about **6.4%** of readings carry this section — 内卦 47.7%, 外卦 47.7%,
+both 1.5%, 卦变 3.1%. **时间起卦, 每日一卦 and 数字起卦 never produce it**: not an omission, but a
+consequence of the method — all three move exactly one line by the book's own rule (the moving line is the
+total divided by six), while 反伏 needs at least two moving lines and 卦变 needs all six, so the conditions
+cannot meet. Zero hits in 9,125 casts; 6.4% across the sixty-four hexagrams × 63 moving patterns × 31 sampled
+days (124,992 readings).
+
+**What is deliberately not here: a 反伏 mark on the hexagram.** 空, 破, 墓, 暗, 日破, 冲, 合 and 刑 all hang
+on a single line; 反伏 and 卦变 cannot, because they describe the relation between the original and the
+changed hexagram rather than any one line's situation, and pinning them to a line would point at the wrong
+place. They reach the reading and the MCP header only.
 
 **六神 — what the day's stem says about the mood**
 

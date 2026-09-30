@@ -998,6 +998,94 @@ export function punishReading(jingfang, calendar) {
   });
 }
 
+/** 十二支的六冲配对，子午丑未寅申卯酉辰戌巳亥，两两互冲。 */
+const SIX_CLASH_PAIRS = Object.freeze([
+  ['子', '午'], ['丑', '未'], ['寅', '申'], ['卯', '酉'], ['辰', '戌'], ['巳', '亥'],
+]);
+
+/** 冲不到返回空串。 */
+function branchClash6(branch) {
+  for (const [x, y] of SIX_CLASH_PAIRS) {
+    if (x === branch) return y;
+    if (y === branch) return x;
+  }
+  return '';
+}
+
+/** 取内卦（初二三）或外卦（四五六）三爻的纳支，连成三字。 */
+function trigramBranches(jingfang, inner) {
+  return jingfang.lines.slice(inner ? 0 : 3, inner ? 3 : 6).map((line) => line.branch).join('');
+}
+
+/**
+ * 反伏与卦变。反伏章第二十五把两者摆在一起说，但它们各自的条件对不上，
+ * 所以这里分成两档报，不合成一条——理由见下面两段注。
+ *
+ * **一、反伏：内卦或外卦的纳支被整体换成与之逐位六冲的那一组。**
+ *
+ * 章里给的三例都对得上这一条：
+ *   「外卦反伏而内卦不动者，如观之坤」→ 观→坤 动五、六，只有外纳支换了
+ *   「内卦反伏而外卦不动者，如巽之观」→ 巽→观 动二、三，只有内纳支换了
+ *   「爻变者内外爻动…如升之观是也」    → 升→观 动二、三、五、六，内外都换了
+ * 三例换过去的那一组，无一例外都是本卦那一组的逐位六冲。六十四卦配六十三种
+ * 非空动静扫下来，这一档落在 252 种上（内外都反 4、只内反 124、只外反 124）。
+ *
+ * **二、卦变：六爻全动，且本卦与变卦都是八纯卦。**
+ *
+ * 章里第一句「卦变者内外动而反伏者同一卦也。如乾卦变坤卦」举的乾变坤，
+ * 纳支逐位**一个都不冲**（子对未、寅对巳、辰对卯），所以它不属于上面那一档。
+ * 它属于的显然是「同一卦」那四个字：乾与坤都是八纯卦，两两相对
+ * （乾坤、坎离、震巽、艮兑）。全动之后还能落到另一个八纯卦的只有这八组。
+ * 扫描证实：这一档与反伏那一档**交集为零**，所以确实该分开报——
+ * 合成一条的话，乾变坤要么被漏掉，要么得为了它把反伏的判据放宽到不再可核。
+ *
+ * @param {Jingfang} jingfang 本卦
+ * @param {{ movingPositions: readonly number[] }} calendar
+ * @param {Jingfang|null} changedJingfang 变卦；六爻皆静时为 null
+ * @returns {{
+ *   inner: boolean, outer: boolean, both: boolean, hasAny: boolean,
+ *   guaChange: boolean, allSixMoving: boolean,
+ *   innerFrom: string, innerTo: string, outerFrom: string, outerTo: string,
+ *   kind: '内外' | '内卦' | '外卦' | '卦变' | '',
+ * }}
+ */
+export function fanfuReading(jingfang, calendar, changedJingfang) {
+  const moving = new Set(calendar.movingPositions);
+  const allSixMoving = jingfang.lines.every((line) => moving.has(line.position));
+  // 六爻皆静就没有变卦，没有变卦就没什么伏不伏的——这一支是「压根没得算」。
+  // 注意别顺手把 allSixMoving 也当成闸门：反伏只要求内卦或外卦那一组换了，
+  // 章里「內卦反伏而外卦不動」「外卦反伏而內卦不動」两句说的正是只动一侧。
+  if (!changedJingfang) {
+    return Object.freeze({
+      inner: false, outer: false, both: false, hasAny: false,
+      guaChange: false, allSixMoving,
+      innerFrom: '', innerTo: '', outerFrom: '', outerTo: '',
+      kind: '',
+    });
+  }
+  const innerFrom = trigramBranches(jingfang, true);
+  const innerTo = trigramBranches(changedJingfang, true);
+  const outerFrom = trigramBranches(jingfang, false);
+  const outerTo = trigramBranches(changedJingfang, false);
+  const inner = innerFrom !== innerTo && innerTo === [...innerFrom].map(branchClash6).join('');
+  const outer = outerFrom !== outerTo && outerTo === [...outerFrom].map(branchClash6).join('');
+  // 卦变那一档：六爻全动，且本卦与变卦都是八纯卦——也就是两两相对的那四组
+  // （乾坤、坎离、震巽、艮兑），书里「同一卦也」四个字指的就是这个。
+  // 「全动」这一条不能省：乾只动初、四两爻也能变到巽为风，两头都是八纯卦，
+  // 可那一爻没动全，谈不上章里说的「內外動」。八纯卦两两互补，全翻才换得到对宫。
+  // 后面那半个条件是被前半个蕴含的——八纯卦两两互补，全翻必落到另一个八纯卦，
+  // 所以只查本卦与只查两头结果一样。留着是为了把书上「同一卦」那句原样写出来。
+  const guaChange = allSixMoving
+    && jingfang.stage === '本宫' && changedJingfang.stage === '本宫';
+  const both = inner && outer;
+  return Object.freeze({
+    inner, outer, both, guaChange, allSixMoving,
+    innerFrom, innerTo, outerFrom, outerTo,
+    hasAny: inner || outer || guaChange,
+    kind: guaChange ? '卦变' : both ? '内外' : inner ? '内卦' : outer ? '外卦' : '',
+  });
+}
+
 /** 纳甲六爻的配对位：内卦初二三与外卦四五六错开一位，隔三位相配。 */
 const CLASH_PAIR_OFFSETS = Object.freeze([[1, 4], [2, 5], [3, 6]]);
 
@@ -1240,6 +1328,71 @@ for (let branch = 0; branch < 12; branch += 1) {
       + '命理那八条另存一处可以，别混进来——两套一起排，「有几爻犯刑」这句话就没意义了');
   }
   void SELF_TOTAL;
+}
+
+
+// 反伏与卦变那一层的地基。两档各自的事实都在这里钉死，改了判据立刻响，
+// 免得日后有人把「反伏」放宽成「内外纳支换了就算」而不自知——那会把乾变坤
+// 混进来，而它明明属于「同一卦」那一档。
+{
+  // 一、卦变那档：六爻全动之后还能落到八纯卦的，只有八组两两相对。
+  let guaChange = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jingfangValue = jingfang(hexagram);
+    const allSix = [1, 2, 3, 4, 5, 6];
+    const changedKey = flip(hexagram.key, allSix);
+    const changedHexagram = HEXAGRAMS_BY_KEY.get(changedKey);
+    const hit = fanfuReading(jingfangValue, { movingPositions: allSix },
+      jingfang(changedHexagram));
+    if (!hit.allSixMoving) {
+      throw new Error(`反伏校验不过：${hexagram.name}六爻全动却没认成全动`);
+    }
+    if (hit.guaChange) guaChange += 1;
+  }
+  if (guaChange !== 8) {
+    throw new Error(`反伏校验不过：六爻全动能落到八纯卦的现在是${guaChange}组，应为八组`
+      + '（乾坤、坎离、震巽、艮兑）。改了「本宫」的判法，这里立刻响');
+  }
+
+  // 二、反伏那档：六十四卦配六十三种非空动静共 4032 种，并集 252 种
+  //    （内外都反 4、只内反 124、只外反 124）。数目不是从判据推的，是从卦表数出来的。
+  //    inner / outer 按并集计（内外都反的那几种两头都算），所以各是 128 而不是 124；
+  //    124 是互斥口径。两处报数对不上号最容易看糊涂，故在此写明。
+  let inner = 0;
+  let outer = 0;
+  let both = 0;
+  let union = 0;
+  let overlapWithGuaChange = 0;
+  for (const hexagram of HEXAGRAM_LIST) {
+    const jingfangValue = jingfang(hexagram);
+    for (let mask = 1; mask < 64; mask += 1) {
+      const movingPositions = [];
+      for (let i = 0; i < 6; i += 1) if (mask & (1 << i)) movingPositions.push(i + 1);
+      const changedHexagram = HEXAGRAMS_BY_KEY.get(flip(hexagram.key, movingPositions));
+      const hit = fanfuReading(jingfangValue, { movingPositions }, jingfang(changedHexagram));
+      if (hit.inner) inner += 1;
+      if (hit.outer) outer += 1;
+      if (hit.both) both += 1;
+      if (hit.hasAny) union += 1;
+      if (hit.guaChange && (hit.inner || hit.outer)) overlapWithGuaChange += 1;
+    }
+  }
+  if (inner !== 128 || outer !== 128 || both !== 4 || union !== 260) {
+    throw new Error(`反伏校验不过：内反${inner}、外反${outer}、内外都反${both}、反伏或卦变共${union}种，`
+      + '应为 128、128、4、260（252 反伏 + 8 卦变）。改了纳甲表或逐位六冲的判定，这里立刻响');
+  }
+  // 三、两档必须不相交。乾变坤不在逐位六冲那一档里——它换过去的那一组一支都不冲，
+  //    靠的是「同一卦」。要是哪天把判据放宽到两者有交，这里会响。
+  if (overlapWithGuaChange !== 0) {
+    throw new Error(`反伏校验不过：卦变与反伏那一档出现了${overlapWithGuaChange}处重叠，`
+      + '两档原本互不相交，重叠说明「反伏」的判据被放宽了');
+  }
+  // 四、六爻皆静时没有变卦，反伏与卦变都该是零——不是「算出来没有」，是压根没得算。
+  const still = jingfang(HEXAGRAM_LIST[0]);
+  const quiet = fanfuReading(still, { movingPositions: [] }, null);
+  if (quiet.hasAny || quiet.kind !== '') {
+    throw new Error('反伏校验不过：六爻皆静却报出了反伏或卦变');
+  }
 }
 
 

@@ -28,7 +28,7 @@ import { lineXiang } from './xiang-chuan.mjs';
 import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
   voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui,
-  useGodCircle, dayClashReading, heCombineReading, punishReading, hexagramClash } from './jingfang.mjs';
+  useGodCircle, dayClashReading, heCombineReading, punishReading, hexagramClash, fanfuReading } from './jingfang.mjs';
 import { detectTopic, godRelation, TOPIC_CLASSES } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
@@ -579,6 +579,23 @@ export function buildReading(cast, options = {}) {
     insights.push({ title: '犯刑', text: punishText(punish, jf, circle, calendar) });
   }
 
+  // 变出之爻：本卦这一爻是「谁」，变出来的那一爻是它「往哪儿去」。
+  // 提前算在这里，不只是为了下面那一段——章末那句「用神化回头冲克」的判定
+  // 只有 transformReading 这一处有，在别处重算一遍就是两套说法。
+  const transforms = changedJf
+    ? movingPositions.map((position) => transformReading(position, jf, changedJf, calendar))
+    : [];
+
+  // 反伏与卦变。反伏章第二十五把两者摆在一起说，但条件对不上（见 jingfang 的注），
+  // 所以分两档报。排在犯刑之后：前面几段都是拿单爻说话，这一段才看整卦的内与外。
+  const fanfu = fanfuReading(jf, calendar, changedJf);
+  if (fanfu.hasAny) {
+    insights.push({
+      title: '反伏与卦变',
+      text: fanfuText(fanfu, changed.name, topic, circle, calendar, movingPositions, transforms),
+    });
+  }
+
   // 六冲章的六种冲，前一路（日月冲爻）刚在上面逐爻算过，这里接着数剩下几路。
   // 触发条件取「卦体本身是六冲或六合」加「变卦是六冲」加「动爻变冲」——
   // 卦内零散爻与爻冲六十四卦里有三十卦都有，单拿它当触发会让大半卦都多出这一段，
@@ -588,11 +605,6 @@ export function buildReading(cast, options = {}) {
     insights.push({ title: '六冲', text: clashText(kinds, circle, topic, calendar) });
   }
 
-  // 变出之爻：本卦这一爻是「谁」，变出来的那一爻是它「往哪儿去」。前一段说完六亲，
-  // 这一段接着说动爻的去向，京房这层到这里才算装齐。
-  const transforms = changedJf
-    ? movingPositions.map((position) => transformReading(position, jf, changedJf, calendar))
-    : [];
   insights.push({ title: '化爻 · 变出之爻', text: transformText(transforms, circle) });
 
   // 「世应」这两个字留给京房那边：世爻恒由本卦的宫与世次定，与动爻无关。梅花这一层
@@ -682,6 +694,16 @@ export function buildReading(cast, options = {}) {
     // 爻之合那四名各是哪些爻。合起与合绊互斥（一爻要么静要么动），
     // 合好与化扶可以与它们同落一爻。日月合爻最常见，合好要两爻皆动、化扶要动爻化出之爻
     // 回头相合，都少得多。四路皆空时断语里不出这一段。
+    // 反伏与卦变。两档不合成一条：卦变换过去的纳支并不逐位相冲，
+    // 合成一条报，乾变坤就得被漏掉。内/外各报出换过去的那三支，方向不折。
+    fanfu: {
+      kind: fanfu.kind,
+      inner: fanfu.inner,
+      outer: fanfu.outer,
+      guaChange: fanfu.guaChange,
+      innerSwap: fanfu.inner ? [fanfu.innerFrom, fanfu.innerTo] : null,
+      outerSwap: fanfu.outer ? [fanfu.outerFrom, fanfu.outerTo] : null,
+    },
     // 爻之刑。方向原样带出去（谁刑谁），不折成「这几爻犯刑」——折了就看不出是谁动的。
     punish: {
       linePairs: punish.linePairs.map((pair) => [pair.from.position, pair.to.position, pair.self]),
@@ -1304,6 +1326,117 @@ function punishText(punish, jingfang, circle, calendar) {
   // 这一句是原书的收口，也是本段不许由刑断吉凶的凭据，逐字照录。
   parts.push('但原书紧接着自己收了一句：「而独犯三刑得验者少，占过数十年只验得一卦」——'
     + '所以这一段只报刑落在哪里、由谁动的手，不据此断吉凶。');
+  return parts.join('');
+}
+
+/**
+ * 反伏与卦变的断语。判据在 jingfang.fanfuReading 里，两档为什么必须分开、
+ * 乾变坤为什么落在卦变那一档，理由都记在那儿。
+ *
+ * **这一层不定吉凶，依据是原书自己给的。** 章末那句把话说死了：
+ * 「反伏卦用神旺相不變沖克者則反復，事之必成，第恐用神而化回頭之沖克者，卽是卦變大凶之象。」
+ * 两条都以用神为轴，所以这里只把两条前提核出来，判词仍旧归用神旺衰那一路——
+ * 与六冲、六合、爻之合、爻之刑各章同一条线。
+ *
+ * 章里那十条分占的断语（占功名、占财物、占坟茔宅舍、占天时、占婚姻、占疾病、
+ * 占盗贼官非、占出行、占行人、占彼此），本包只接住所问事类对得上的那几条，
+ * 接不住的明说接不住，不拿别的占法来顶。
+ */
+
+/** 章里的占法与本包九类事类对得上的几条。key 取 topics.mjs 的事类标识。 */
+const FANFU_BY_TOPIC = Object.freeze({
+  career: '占功名者，用爻旺相，遷而又行往他處，去而仍復來',
+  wealth: '占財物聚散不常，買賣經營興衰往來不定',
+  property: '占墳墓宅捨，欲遷不遷，或遷之而再遷，或目下就有遷移之事',
+  marriage: '占婚姻反復難成',
+  love: '占婚姻反復難成',
+  health: '占疾病愈而有病',
+  journey: '占出行，行至中途變反，卽使到彼，一事無成',
+  dispute: '占盜賊官非，見而又見',
+});
+
+/** 反伏章开头那三句，判据的出处，每次都照录，免得读者不知这六支是怎么挑的。 */
+const FANFU_ORIGINAL = '卦有卦變，爻有爻變。卦變者內外動而反伏者同一卦也。如乾卦變坤卦。'
+  + '爻變者內外爻動而反伏者，非同一卦也。如升之觀是也。'
+  + '又有外卦反伏而內卦不動者，如觀之坤是也。又有內卦反伏而外卦不動者如巽之觀是也';
+
+/** 章末那两条前提的原文。 */
+const FANFU_CLOSING = '反伏卦用神旺相不變沖克者則反復，事之必成，'
+  + '第恐用神而化回頭之沖克者，卽是卦變大凶之象';
+
+/**
+ * @param {ReturnType<typeof import('./jingfang.mjs').fanfuReading>} fanfu
+ * @param {string} changedName 变卦卦名
+ * @param {{ key: string, label: string }|null} topic
+ * @param {ReturnType<typeof circleReading>|null} circle
+ * @param {{ monthElement: string }} calendar
+ * @param {readonly number[]} movingPositions
+ * @param {readonly { position: number, relation: string }[]} transforms
+ */
+function fanfuText(fanfu, changedName, topic, circle, calendar, movingPositions, transforms) {
+  const parts = [];
+
+  if (fanfu.guaChange) {
+    parts.push(`按《增删卜易·反伏章第二十五》「${FANFU_ORIGINAL}」：本卦六爻全动，`
+      + `变出${changedName}——章里「同一卦」四个字指的就是本卦与变卦同为八纯卦、`
+      + '两两相对（乾坤、坎离、震巽、艮兑）。这一档换过去的纳支并不逐位相冲，'
+      + '所以与下面那一档不是一回事，本包分成两路报，合在一起的话乾变坤就得被漏掉。');
+  } else {
+    const swaps = [];
+    if (fanfu.inner) swaps.push(`内卦${fanfu.innerFrom}换成${fanfu.innerTo}`);
+    if (fanfu.outer) swaps.push(`外卦${fanfu.outerFrom}换成${fanfu.outerTo}`);
+    parts.push(`按《增删卜易·反伏章第二十五》「${FANFU_ORIGINAL}」：本卦变出${changedName}，`
+      + `其中${swaps.join('，')}。判据是逐位六冲——换过去的那三支与本卦那三支一一相冲，`
+      + '章里三例（观之坤、巽之观、升之观）换过去的那一组，无一例外都是这样。');
+    const say = fanfu.both
+      ? '內外反伏者，內外不寧之象也'
+      : (fanfu.inner ? '內卦反伏，內則不安' : '外卦反伏，外則不寧');
+    parts.push(`${say}。章里紧接着列了一串对称的说法：「皆主成而敗，敗而成，有而卽無，`
+      + '無而卽有，得而失，失而得，來而去，去而來，散而聚，聚而散，動而思靜，靜而思動」'
+      + '——说的是同一件事的两头会翻面，不是判吉凶。');
+    if (fanfu.inner !== fanfu.outer) {
+      parts.push(fanfu.inner
+        ? '章里另有一条能直接对上号：「占彼此之形勢者，內卦反伏，我亂他定」——内卦反伏，这一路说的是我这一头先乱。'
+        : '章里另有一条能直接对上号：「占彼此之形勢者……外卦反伏，他亂我定」——外卦反伏，这一路说的是对方那头先乱。');
+    } else {
+      parts.push('章里那条「占彼此之形勢者，內卦反伏，我亂他定，外卦反伏，他亂我定」，'
+        + '内外都反伏时两句都沾得上，本包不替你择一句。');
+    }
+  }
+
+  const line = topic ? FANFU_BY_TOPIC[topic.key] : null;
+  if (line) {
+    parts.push(`所问落在「${topic.label}」，章里正有这一条：${line}。`);
+  } else if (topic) {
+    parts.push(`所问落在「${topic.label}」，反伏章这一节没有对得上的占法——`
+      + '章里那十条各管一桩事，别的占法挪过来顶就是替人选了，故此处不接。');
+  } else {
+    parts.push('没写所问何事，反伏章那十条占法各管一桩事，接不上；写下问题再按事类看这一段。');
+  }
+
+  // 章末那两条前提，逐条核。核不了的那一层，明说缺哪一层。
+  if (!circle) {
+    parts.push(`章末收口的是「${FANFU_CLOSING}」——这两条要以用神为轴，`
+      + '而本卦取不出用神，第一条就核不了。写下问题再看这一段。');
+    return parts.join('');
+  }
+  const godTone = vitality(circle.god.element, calendar.monthElement);
+  const strong = !['休', '囚', '死'].includes(godTone.key);
+  const godMoving = movingPositions.includes(circle.god.position);
+  const huiTouKe = transforms.some(
+    (item) => item.position === circle.god.position && item.relation === '回头克',
+  );
+  const close = `章末收口的是「${FANFU_CLOSING}」。拿本卦核这两条：`
+    + `用神在${circle.god.label}${circle.god.element}，于月建${godTone.key}，`
+    + `「用神旺相」那条${strong ? '成立' : '不成立'}`
+    + `（${godTone.key}${strong ? '不属休囚' : '正属休囚'}）`
+    + (godMoving
+      ? `；用神本爻在动，「用神化回头冲克」那条${huiTouKe ? '成立' : '不成立（变出来的那一爻不克本爻）'}。`
+      : '；用神本爻不在动，谈不上「化」，回头冲克那条不成立。')
+    + '章里那句「事之必成」只在这两条同时成立时才有；'
+    + '化回头冲克成立时，章里接着说那是「卦變大凶之象」。'
+    + '两条都以用神为轴，所以这一段不另下吉凶判词，判词仍归用神旺衰那一路。';
+  parts.push(close);
   return parts.join('');
 }
 

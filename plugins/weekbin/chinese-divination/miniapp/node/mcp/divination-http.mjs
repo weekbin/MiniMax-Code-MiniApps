@@ -191,6 +191,19 @@ function readingToText(reading) {
     }
     return bits.length === 0 ? null : `【犯刑】${bits.join('，')}`;
   })();
+  // 反伏与卦变。两档分开报：卦变是六爻全动换到对宫八纯卦，反伏是内卦或外卦
+  // 的纳支被换成逐位六冲的那一组。合起来报会把乾变坤漏掉——那一卦的纳支一支都不冲。
+  const fanfuLine = (() => {
+    const fanfu = reading.fanfu;
+    if (!fanfu) return null;
+    const bits = [];
+    if (fanfu.guaChange) bits.push('六爻全动，换到对宫的八纯卦');
+    const swaps = [];
+    if (fanfu.inner) swaps.push(`内卦${fanfu.innerFrom}→${fanfu.innerTo}`);
+    if (fanfu.outer) swaps.push(`外卦${fanfu.outerFrom}→${fanfu.outerTo}`);
+    if (swaps.length > 0) bits.push(`纳支逐位相冲：${swaps.join('，')}`);
+    return bits.length === 0 ? null : `【反伏与卦变】${fanfu.kind}｜${bits.join('；')}`;
+  })();
   // 卦体冲合。六冲卦十个、六合卦八个，都是整卦的定性；变卦那两路要等动起来才谈得上。
   // 六十四卦里有四十六卦既不是六冲也不是六合，那种「不是」不值一行，不出。
   const clashLine = (() => {
@@ -218,6 +231,7 @@ function readingToText(reading) {
     dayClashLine,
     combineLine,
     punishLine,
+    fanfuLine,
     `【月令旺衰】当令 ${reading.structure.monthElement}，体 ${reading.structure.bodyVitality}、用 ${reading.structure.useVitality}`,
     `【吉凶】${reading.verdict.label} —— ${reading.verdict.summary}`,
     `【断语】\n${insights}`,
@@ -320,6 +334,9 @@ function callTool(name, args) {
         // 四路皆空时是空对象，不占结构。卦级那三法在 clash 里，不在这里重复。
         // 爻之刑。方向原样给出（谁刑谁），不折成「这几爻犯刑」——折了就看不出是谁动的。
         // 刑本身不是判词：三刑章说独犯三刑得验者少，所以这里只给位置与来路。
+        // 反伏与卦变。两档不合成一条：卦变换过去的纳支并不逐位相冲，合起来报会漏掉乾变坤。
+        // 也不由这一层下吉凶——章末那两句都以用神为轴，判词仍归用神旺衰。
+        fanfu: reading.fanfu ?? null,
         punish: reading.punish ?? null,
         combine: reading.combine ?? null,
         clash: reading.clash,
