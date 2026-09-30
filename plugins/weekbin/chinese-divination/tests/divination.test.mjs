@@ -821,9 +821,13 @@ test('标题与分区合成一条钉住的顶栏', async () => {
   assert.ok(/backdrop-filter: blur/.test(style), '顶栏底色不透明，滑下去内容会硬生生撞上来');
   assert.ok(/border-bottom: 1px solid/.test(style), '顶栏下缘没有分隔线');
   // 底色要拉成整条，就得抵消 .app 的上内边距与左右内边距。
-  const margin = /margin: (-?\d+)px (-?\d+)px/.exec(style);
+  // 抵消量写死成 -32px 的话，版心内边距一收放，底色就不贴视口边了；
+  // 现在它取 --app-pad 的相反数（下面那条断言钉住这一点），这里只管「必须是负的」。
+  const margin = /margin: ([^;]+);/.exec(style);
   assert.ok(margin, '找不到顶栏的外边距');
-  assert.ok(Number(margin[1]) < 0 && Number(margin[2]) < 0, '顶栏没抵消 .app 的内边距，底色只在内容区那条窄带里');
+  const parts = margin[1].trim().split(/\s+(?![^(]*\))/);
+  const negative = (v) => /^-/.test(v) || /\*\s*-\d/.test(v);
+  assert.ok(parts.length >= 2 && negative(parts[0]) && negative(parts[1]), '顶栏没抵消 .app 的内边距，底色只在内容区那条窄带里');
 
   const open = /<div class="topbar">([\s\S]*?)<\/div>\s*<main/.exec(client);
   assert.ok(open, '顶栏没把标题与分区一起包住');
@@ -861,6 +865,241 @@ test('解读页左栏钉住，错开量取顶栏高度而不是另写一个数',
   );
   assert.ok(/pagehide[\s\S]{0,120}?topbarObserver\.disconnect\(\)/.test(client), '观察者没有断开');
 });
+
+/* ---------- 响应式：按展示区域自己的宽度排，不按视口宽度排 ---------- */
+
+/** 取出 CSS 里某个 at-rule 的每一段内容，按花括号配对，不靠猜缩进。 */
+function atRuleBlocks(css, keyword) {
+  const out = [];
+  const re = new RegExp(`@${keyword}\\b`, 'g');
+  let m;
+  while ((m = re.exec(css)) !== null) {
+    const open = css.indexOf('{', m.index);
+    if (open === -1) continue;
+    let depth = 0;
+    let i = open;
+    for (; i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    out.push(css.slice(open + 1, i));
+  }
+  return out;
+}
+
+/** 读某条选择器上 repeat(n, ...) 的 n；不是 repeat 就返回 null。 */
+function repeatCount(css, selector) {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const block = new RegExp(`${esc} \\{([\\s\\S]*?)\\n\\s*\\}`).exec(css);
+  if (!block) return null;
+  const m = /grid-template-columns:\s*repeat\((\d+)/.exec(block[1]);
+  return m ? Number(m[1]) : null;
+}
+
+test('四卦推导按自己有多宽换列，不按视口', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 推导图在右栏里，右栏多宽由左栏与版心说了算，跟视口宽度不是一回事：
+  // 视口拉宽而左栏也拉宽时，右栏未必跟着变宽。拿视口定列数，
+  // 宽视口配窄右栏就会把四支挤成参差的一行。
+  const box = /\.derive \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(box, '找不到 .derive 的样式');
+  assert.ok(/container-type: inline-size/.test(box[1]), '推导图没有按自身宽度做容器查询');
+  const name = /container-name: ([\w-]+)/.exec(box[1]);
+  assert.ok(name, '推导图的容器没有起名，@container 认不出问的是谁');
+
+  const wide = repeatCount(client, '.derive .derive-row');
+  assert.equal(wide, 4, `推导图宽时应当四列，实得 ${wide} 列`);
+  assert.equal(4 % wide, 0, '四列除不尽四个取法，末行会落单');
+
+  const narrow = new RegExp(
+    `@container ${name[1]} \\(max-width: (\\d+)px\\)[\\s\\S]*?\\.derive \\.derive-row \\{[\\s\\S]*?repeat\\((\\d+)`,
+  ).exec(client);
+  assert.ok(narrow, '推导图没有按容器宽度降列');
+  assert.equal(Number(narrow[2]), 2, `推导图窄时应当两列，实得 ${narrow[2]} 列`);
+  assert.equal(4 % Number(narrow[2]), 0, '两列除不尽四个取法，末行会落单');
+
+  // 反向钉住：视口媒体查询一律不许碰推导图与八宫。
+  // 一碰，列数就又被绑回视口宽度，前面那条容器查询等于白写。
+  for (const block of atRuleBlocks(client, 'media')) {
+    assert.ok(
+      !/\.(derive|palace)\b/.test(block),
+      '有 @media 规则改了推导图或八宫的排布，列数被绑回视口宽度了',
+    );
+  }
+});
+
+test('箭头与卦裹成一格排，本卦横跨整行', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 格子才是排布单位。原先箭头与卦是平级的 flex item，注记长短一差，
+  // 后面的卦就被挤偏，四列的间距也不相等。
+  assert.ok(
+    /<div class="derive-step">/.test(client),
+    '推导格没有把箭头与卦裹进同一格，两者仍是平级的 flex item',
+  );
+  const step = /\.derive \.derive-step \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(step, '找不到 .derive-step 的样式');
+  assert.ok(/display: flex/.test(step[1]), '一格内部不是 flex');
+  assert.ok(/align-items: center/.test(step[1]), '一格内部没有上下居中');
+
+  // 一行四格，别再用 flex 换行：换行在窄容器下会折成 3+1，末格孤零零居中。
+  const row = /\.derive \.derive-row \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(row, '找不到 .derive-row 的样式');
+  assert.ok(/display: grid/.test(row[1]), '推导行还在用 flex 换行，窄容器下会折成参差的两排');
+  assert.ok(!/flex-wrap/.test(row[1]), '推导行还留着 flex-wrap');
+
+  // 本卦那行只有一格，不跨列就贴到第 1 列，看着像四种取法里的头一个。
+  const span = /\.derive \.derive-row > \.unit:only-child \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(span, '本卦那一格没有单独定过位置');
+  assert.ok(/grid-column: 1 \/ -1/.test(span[1]), '本卦那一格没有横跨整行，会贴在第 1 列');
+});
+
+test('注记留两行高、按数据断行，四支箭头才落在同一条线上', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  const block = /\.derive \.arrow \.how \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(block, '找不到注记的样式');
+  const style = block[1];
+
+  const fontSize = Number(/font-size: (\d+)px/.exec(style)[1]);
+  const lineHeight = Number(/line-height: ([\d.]+)/.exec(style)[1]);
+  const minHeight = /min-height: ([\d.]+)em/.exec(style);
+  assert.ok(minHeight, '注记没有定高：互卦那条两行、其余各一行，箭头高度一差就不在一条线上');
+  assert.ok(
+    Number(minHeight[1]) >= 2 * lineHeight - 1e-9,
+    `注记只留了 ${minHeight[1]}em，装不下两行（需 ${(2 * lineHeight).toFixed(2)}em）`,
+  );
+
+  // 一行字要落在两行高的盒子正中。块级元素默认贴顶，一行就会比两行高半行。
+  assert.ok(
+    /display: flex/.test(style) && /align-items: center/.test(style),
+    '注记不是上下居中排的，一行两行会差半行',
+  );
+
+  // DERIVE_HOW 里的 \n 必须真的断行。不写这条，\n 会被折成空格，
+  // 换行变成靠 max-width 碰运气折出来——改个字号就可能折成一行或三行。
+  assert.ok(/white-space: pre-line/.test(style), '注记没有按数据里的 \\n 断行，换行靠碰运气');
+
+  // 硬断出来的每一段都要放得下，否则会被再折一行，箭头又对不齐。
+  // 量法跟排版一致：CJK 一个字 1em，其余按半个字宽算。
+  const table = /const DERIVE_HOW = \{([\s\S]*?)\n      \};/.exec(client);
+  assert.ok(table, '找不到取法说明表');
+  const notes = [...table[1].matchAll(/\['([^']+)',\s*'([^']+)'\]/g)].map((m) => m[2]);
+  assert.equal(notes.length, 4, `四种取法应当四条注记，实得 ${notes.length} 条`);
+
+  const maxWidth = Number(/max-width: (\d+)px/.exec(style)[1]);
+  for (const note of notes) {
+    for (const seg of note.split('\\n')) {
+      const em = [...seg].reduce((sum, ch) => sum + (/[⺀-鿿豈-﫿]/.test(ch) ? 1 : 0.5), 0);      const need = em * fontSize;
+      assert.ok(
+        need <= maxWidth,
+        `注记「${seg}」要 ${need.toFixed(0)}px，max-width 只有 ${maxWidth}px，会被再折一行，四支箭头就对不齐了`,
+      );
+    }
+  }
+});
+
+test('一宫八卦按自己有多宽换列，八格与四格都整除八卦', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  const box = /\.palace \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(box, '找不到 .palace 的样式');
+  assert.ok(/container-type: inline-size/.test(box[1]), '八宫名单没有按自身宽度做容器查询');
+  const name = /container-name: ([\w-]+)/.exec(box[1]);
+  assert.ok(name, '八宫名单的容器没有起名，@container 认不出问的是谁');
+
+  const wide = repeatCount(client, '.palace .palace-row');
+  assert.equal(wide, 8, `八宫名单应当八列，实得 ${wide} 列`);
+  assert.equal(8 % wide, 0, '八宫名单的列数除不尽八卦，末行会落单');
+
+  const narrow = new RegExp(
+    `@container ${name[1]} \\(max-width: (\\d+)px\\)[\\s\\S]*?\\.palace \\.palace-row \\{[\\s\\S]*?repeat\\((\\d+)`,
+  ).exec(client);
+  assert.ok(narrow, '八宫名单没有按容器宽度降列');
+  assert.equal(Number(narrow[2]), 4, `八宫名单窄时应当四列，实得 ${narrow[2]} 列`);
+  assert.equal(8 % Number(narrow[2]), 0, '四列除不尽八卦，末行会落单');
+});
+
+test('版心内边距只有一个来源，顶栏取它的相反数', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  // 写死 32px 时，1000px 上下的视口要白占掉 64px 宽度，
+  // 推导图与八宫正是被这一点挤到换行的。
+  const defined = client.match(/--app-pad(?![\w-])\s*:/g) ?? [];
+  assert.equal(defined.length, 1, `--app-pad 定义了 ${defined.length} 次`);
+  assert.ok(
+    /--app-pad:\s*clamp\(/.test(client),
+    '版心内边距是死数，没有跟着视口收放',
+  );
+
+  const app = /\.app \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(app, '找不到 .app 的样式');
+  assert.ok(/padding: var\(--app-pad\)/.test(app[1]), '.app 没用 --app-pad');
+
+  // 顶栏要拉成整条，就得抵消 .app 的上内边距与左右内边距。
+  // 两处各写一个 32 的话，内边距一收放，顶栏底色就不贴视口边了。
+  const topbar = /\.topbar \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(topbar, '找不到 .topbar 的样式');
+  assert.ok(
+    /calc\(var\(--app-pad\) \* -1\)/.test(topbar[1]),
+    '顶栏没有取 --app-pad 的相反数，内边距一收放底色就露边',
+  );
+  assert.ok(
+    !/margin: -?\d+px -\d+px/.test(topbar[1]),
+    '顶栏的外边距写死了数字，跟 --app-pad 各走各的',
+  );
+  assert.ok(/padding: 18px var\(--app-pad\)/.test(topbar[1]), '顶栏的内边距没有跟着 --app-pad 走');
+});
+
+test('解读页左栏不窄过 300px，窄过就会把纳甲挤到右栏去', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  const reading = /\.reading \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(reading, '找不到 .reading 的样式');
+  const track = /grid-template-columns:\s*([^;]+);/.exec(reading[1]);
+  assert.ok(track, '解读页没有分左右两栏');
+
+  const width = /clamp\((\d+)px/.exec(track[1]);
+  assert.ok(width, `左栏不是一个随视口收放的区间，写的是：${track[1].trim()}`);
+
+  // 爻行那一格是 34+42+1fr+32+auto 再加四道 12px 的缝，固定部分就吃掉 156px；
+  // 留给纳甲（干支+六亲+世应+旬空月破，全是 nowrap）的那格还得有 140px 出头。
+  // 压到 300 以下，纳甲就撑破格子往右栏探，卦画同时被挤没——阴阳都读不出来。
+  const line = /\.gua-line \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(line, '找不到 .gua-line 的样式');
+  const fixed = [...line[1].matchAll(/(\d+)px/g)]
+    .map((m) => Number(m[1]))
+    .filter((n) => n <= 42);
+  const seams = (line[1].match(/gap:\s*(\d+)px/) ?? [null, 0])[1];
+  const chrome = fixed.reduce((a, b) => a + b, 0) + Number(seams) * 4;
+
+  assert.ok(
+    Number(width[1]) >= 300,
+    `左栏下限 ${width[1]}px 装不下爻行：固定列与缝就吃掉 ${chrome}px，留给纳甲的还得有 140px 出头`,
+  );
+  assert.ok(
+    /min-width: 0/.test(/\.gua-line \.rel \{([\s\S]*?)\n      \}/.exec(client)[1]),
+    '纳甲那一格没有 min-width: 0，撑破格子时不会让出位置',
+  );
+
+  // 栏间距也跟着视口收放：左栏与版心都在动，缝写死就有一处对不上。
+  assert.ok(/gap:\s*clamp\(/.test(reading[1]), '解读页的栏间距是死数');
+
+  // 窄到这个宽度，两栏并排已经各自装不下了，换单列。
+  // 收尾那个分号别省：写成 grid-template-columns: 1fr 的话，1fr 1fr 也照样匹配，
+  // 断言就替两栏那一条作了证。
+  const narrow = atRuleBlocks(client, 'media').filter((b) => b.includes('.reading'));
+  assert.ok(narrow.length > 0, '解读页没有在窄屏换单列');
+  assert.ok(
+    narrow.some((b) => /grid-template-columns:\s*1fr\s*;/.test(b)),
+    '解读页在窄屏没有换单列，两栏各自都装不下',
+  );
+});
+
 
 test('八卦环在起卦那一拍里转得肉眼看得见', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');

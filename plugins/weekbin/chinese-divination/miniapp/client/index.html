@@ -24,6 +24,9 @@
         /* 顶栏实测高：18px 上内边距 + 标题行 + 12px + 分区条 + 12px 下内边距 + 1px 边。
          * 解读页左栏要按它错开，两者不能各写各的。 */
         --topbar-h: 132px;
+        /* 页面左右内边距。.app 用它，.topbar 用它的相反数——两处各写一个数，
+         * 内边距一收放，顶栏底色就不贴视口边了。 */
+        --app-pad: clamp(14px, 2.1vw, 32px);
         color-scheme: light;
       }
 
@@ -269,6 +272,10 @@
         border: 1px solid var(--border);
         border-radius: 10px;
         background: var(--surface-sunken, rgba(0, 0, 0, 0.015));
+        /* 按这块自己有多宽来排，不按视口。这块在右栏里，视口再宽它也未必宽；
+         * 拿视口宽度定列数，窄右栏配宽视口就会挤成参差的一行。 */
+        container-type: inline-size;
+        container-name: derive;
       }
 
       .derive-head {
@@ -282,17 +289,40 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 12px;
+        gap: 14px;
       }
 
       /* 本卦一行，四种取法一行。挤在一行里最后一卦会折行、断得莫名其妙，
          分成两行反而把「本卦 vs 推出来的四卦」这层关系讲清了。 */
       .derive .derive-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        align-items: center;
+        justify-items: center;
+        gap: 10px 4px;
+        width: 100%;
+      }
+
+      /* 箭头加卦，一格。格内自己居中，四格之间由网格定距，间距一律相等。 */
+      .derive .derive-step {
         display: flex;
         align-items: center;
         justify-content: center;
-        flex-wrap: wrap;
         gap: 4px;
+        min-width: 0;
+      }
+
+      /* 本卦那行只有一格，让它横跨整行再由 justify-items 居中。
+       * 不跨列的话它会落在第 1 列，看着像「本卦」是四种取法里的头一个。 */
+      .derive .derive-row > .unit:only-child {
+        grid-column: 1 / -1;
+      }
+
+      @container derive (max-width: 720px) {
+        .derive .derive-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px 8px;
+        }
       }
 
       .unit {
@@ -312,14 +342,24 @@
         border: 1px solid var(--border);
         border-radius: 10px;
         background: var(--surface-sunken, rgba(0, 0, 0, 0.015));
+        container-type: inline-size;
+        container-name: palace;
       }
 
+      /* 八格按网格均分，间距一律相等。原先是 flex 换行：容器一窄就折成
+       * 「七格 + 一格」，末行那格孤零零居中，看着像掉了出去。 */
       .palace .palace-row {
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: 10px;
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        align-items: start;
+        justify-items: center;
+        gap: 12px 6px;
+      }
+
+      @container palace (max-width: 860px) {
+        .palace .palace-row {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
       }
 
       /* 本卦那一格：朱砂只给「就是你这一卦」，不给另外七个——宫是一处，不是吉凶。
@@ -375,11 +415,22 @@
       }
 
       .derive .arrow .how {
+        /* 互卦那条注记两行、其余各一行。不定死排法的话，一行字会贴在 2.7em
+         * 的盒子顶上、两行字占满盒子，四支箭头就不在一条线上。改成 flex 上下
+         * 居中，一行两行都落在同一个中心，箭头一律贴在同一条基线上。 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
         font-size: 13px;
         line-height: 1.35;
         color: var(--text-muted);
         text-align: center;
-        max-width: 88px;
+        max-width: 96px;
+        width: 100%;
+        min-height: 2.7em;
+        /* DERIVE_HOW 里的 \n 要真的断行。不写这条，\n 会被折叠成空格，
+         * 换行变成靠 max-width 碰巧折出来——改个字号就可能折成一行或三行。 */
+        white-space: pre-line;
       }
 
       .derive .arrow svg {
@@ -665,7 +716,10 @@
       .app {
         max-width: 1340px;
         margin: 0 auto;
-        padding: 32px 32px 72px;
+        /* 内边距随视口收放。原先是死 32px：窄屏上白白吃掉 64px 宽度，
+         * 推导图与八宫名单正是被这一条挤到换行的。
+         * 顶栏要抵消它才能贴到视口边，所以这个值只能有一个来源。 */
+        padding: var(--app-pad) var(--app-pad) clamp(40px, 5vw, 72px);
         display: flex;
         flex-direction: column;
         gap: 22px;
@@ -681,9 +735,10 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
-        /* 抵消 .app 的上内边距，让顶栏贴到视口顶边；左右也拉满，底色才是整条。 */
-        margin: -32px -32px 0;
-        padding: 18px 32px 12px;
+        /* 抵消 .app 的上内边距，让顶栏贴到视口顶边；左右也拉满，底色才是整条。
+         * 取 --app-pad 的相反数，不另写一个 32——内边距收放时两处要一起动。 */
+        margin: calc(var(--app-pad) * -1) calc(var(--app-pad) * -1) 0;
+        padding: 18px var(--app-pad) 12px;
         background: color-mix(in srgb, var(--bg) 88%, transparent);
         backdrop-filter: blur(14px) saturate(1.2);
         -webkit-backdrop-filter: blur(14px) saturate(1.2);
@@ -896,8 +951,13 @@
 
       .reading {
         display: grid;
-        grid-template-columns: minmax(300px, 366px) 1fr;
-        gap: 26px;
+        /* 左栏跟着视口在 300-366px 之间走，不往 300 以下压。
+         * 爻行那一格是 34+42+1fr+32+auto 再加四道 12px 的缝，固定部分就吃掉 156px，
+         * 留给纳甲（干支+六亲+世应+旬空月破，全是 nowrap）的那一格还得有 140px 出头。
+         * 左栏一旦窄过 300，纳甲就撑破格子往右栏探，两个板块会撞在一起。
+         * 真正能收放的是右边：--app-pad 收边距、推导图与八宫各自按容器宽度换列。 */
+        grid-template-columns: clamp(300px, 26vw, 366px) 1fr;
+        gap: clamp(16px, 1.8vw, 26px);
         align-items: start;
       }
 
@@ -2379,11 +2439,15 @@
             const [label, how] = DERIVE_HOW[kind];
             const isChanged = kind === 'changed';
             return (
+              // 箭头与卦裹在一格里：格子才是排布的单位。原先箭头与卦是
+              // 平级的 flex item，注记长短一差就把后面的卦挤偏，四列间距不等。
+              `<div class="derive-step">` +
               arrow(label, how) +
               `<div class="unit">` +
               miniGua(target.key, isChanged ? touched : null) +
               `<span class="unit-name">${escapeHtml(target.name)}</span>` +
               `<span class="unit-tag">${escapeHtml(label)}</span>` +
+              `</div>` +
               `</div>`
             );
           })

@@ -1205,6 +1205,54 @@ to "打开灵签易占".
   fallback, and the two places no longer carry a number each. Narrowing the content area does not
   stand in for a real narrow viewport: below the 760px breakpoint the page is still unchecked on a
   real screen.
+- The four-hexagram derivation and the eight-palace roster now lay themselves out from their own
+  width rather than the viewport's. Both were flex-wrap: narrow the content area and the four steps
+  folded into 3+1, the eight cells into 7+1, and the orphan sat centred on its own as though it had
+  dropped out of the list. Each block is now a named container (`container-type: inline-size`) and
+  its column count comes from `@container` — four or two for the derivation, eight or four for the
+  roster, every count dividing the total so that no row is left one short. Both sit in the right-hand
+  column, whose width the left column and the page margin decide rather than the viewport; a
+  viewport query would happily pair a wide screen with a narrow column and pack them unevenly. A
+  test asserts that no `@media` rule touches either block, which is what keeps the column count from
+  drifting back onto the viewport.
+- Inside the derivation the arrow and the hexagram are one cell now, not two siblings. The
+  mutual-hexagram note runs to two lines and the other three to one, and the arrow was a centred
+  flex column, so that one sat half a line below the other three and the four were not on a line. The
+  note is a centred flex box held at two lines tall, the current hexagram's lone cell spans the whole
+  row so it centres instead of sitting in the first column, and the line break comes from the `\n` in
+  the data (`white-space: pre-line`) rather than from wherever `max-width` happened to fall. That
+  width was 88px, and the longest note segment is seven CJK characters — 91px at the note's 13px — so
+  that note wrapped to three lines and pushed its arrow off the line with the others. A test measures
+  every hard-broken segment against the note's width, so a box narrower than the text goes red.
+- The page margin is one value now. `.app` padded 32px either side, spending 64px of width on a
+  1149px viewport, and that is what pushed the derivation and the roster into wrapping. It is
+  `--app-pad: clamp(14px, 2.1vw, 32px)`; `.app` uses it and `.topbar` uses its negation, because two
+  places carrying a number each drift apart the moment the margin moves. The top bar's margin and
+  padding, the gap between the reading page's two columns, and the left column's width are each
+  asserted to follow that one value.
+- The left column was briefly narrowed to `clamp(232px, 21vw, 366px)` to give the right column more
+  room, and that was wrong. A hexagram row is `34px + 42px + 1fr + 32px + auto` plus four 12px seams,
+  so 156px is gone to the fixed parts before the 纳甲 cell — ganzhi, relative, 世 and 应, void and
+  broken, every one of them `nowrap` — gets its 140-odd px to live in. Under 300px the 纳甲 pushes
+  through its track into the right column, and the line drawing is squeezed flat at the same time, so
+  yin and yang stop being readable at a glance. It is `clamp(300px, 26vw, 366px)` now, with the
+  floor asserted against the width the rows actually need. `minmax(clamp(...), 366px)` was tried
+  first and is a no-op: with a fixed maximum the track sits at 366px for as long as the content is
+  wide enough, so the lower bound never comes into play.
+- The six tests added for this round were each mutation-tested: twenty-seven mutations broken on
+  purpose across the two container queries, the four column counts, the cell wrapper, the note box,
+  the margin's single source, the left column's floor, and the negative case that no viewport query
+  reaches either block. Each was checked to turn the matching assertion red, and all 27 were caught;
+  the suite reports 207 passing after the script restored the files. Two traps turned up while
+  writing the script, and one of them was a real gap in a test. The script had been matching each
+  mutation's expected assertion against the *test name*, but those expectations are assertion
+  messages, so a run in which every single mutation behaved correctly reported 26 of 27 unpinned;
+  it now reads the failure detail instead. And the narrow-screen assertion read
+  `grid-template-columns: 1fr`, which `1fr 1fr` also matches — the test was vouching for the
+  two-column case while claiming to check the one-column case. The trailing semicolon is what
+  separates them now. Restoring the files only in `finally` is a third trap, already noted above:
+  mutation N then runs against the file mutation 1 broke, which reads as a test that never pinned
+  anything when it was contamination. Every mutation here restores from a clean baseline first.
 - The casting beat used to play only the engine's own 取数 steps — two for the coins, three for
   numbers — so the speech ran out before the hexagram was even formed. It now follows with the four
   lines that come after, in order of importance: the upper trigram, lower trigram and resulting
@@ -1225,7 +1273,7 @@ to "打开灵签易占".
   number), four on the beat (all four lines present, the three important ones never squeezed, the
   closing line kept, the fixed height fitting 11 lines), and two on the timings (not through the
   budget, hold taken from the constant). Each implementation was broken on purpose to confirm the
-  matching test really went red; all 22 were caught, and the suite reports 201 passing after the
+  matching test really went red; all 22 were caught, and the suite reports 207 passing after the
   script restored the files. One trap turned up while writing the script: restoring only in
   `finally` means mutation N runs against the file mutation 1 already broke, so anchors go missing
   and the red counts climb — which reads as "the test never pinned it" when it was contamination.
@@ -1322,7 +1370,7 @@ mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear;
 twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
 each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-201 passing.
+207 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,
