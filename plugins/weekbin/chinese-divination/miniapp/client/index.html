@@ -21,6 +21,9 @@
         --gold: #8a6a24;
         --jade: #3f6b57;
         --shadow: 0 1px 2px #0000000d, 0 8px 24px #0000000a;
+        /* 顶栏实测高：18px 上内边距 + 标题行 + 12px + 分区条 + 12px 下内边距 + 1px 边。
+         * 解读页左栏要按它错开，两者不能各写各的。 */
+        --topbar-h: 132px;
         color-scheme: light;
       }
 
@@ -526,12 +529,13 @@
       }
 
       /* 推演日志：定高，免得最后一行还在打字、下面就换成结果，页面跳一下。
-       * 高度按最长的一种起卦（时辰起卦六步加首尾）留。 */
+       * 播报最多 CASTING_MAX_LINES + 1 行——收尾那句不受行数上限管，它要压轴。
+       * 每行 nowrap 固定行高，容器得留够 11 行，最后一句才不会挤到卦盘上。 */
       .casting-log {
-        width: min(320px, 100%);
-        min-height: 190px;
+        width: min(400px, 100%);
+        min-height: 320px;
         font-size: 17px;
-        line-height: 1.8;
+        line-height: 1.7;
         color: var(--text-muted);
         text-align: left;
       }
@@ -667,11 +671,30 @@
         gap: 22px;
       }
 
+      /* ---------- 顶栏 ----------
+         解读页右栏很长，标题与分区又只在最上头，滑下去就找不着自己在哪一栏了。
+         所以两者合成一条顶栏钉住：底色半透明加一点模糊，内容从底下透过去但不糊。 */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        /* 抵消 .app 的上内边距，让顶栏贴到视口顶边；左右也拉满，底色才是整条。 */
+        margin: -32px -32px 0;
+        padding: 18px 32px 12px;
+        background: color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: blur(14px) saturate(1.2);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        border-bottom: 1px solid var(--border);
+      }
+
       .app-header {
         display: flex;
-        align-items: flex-start;
+        align-items: baseline;
         justify-content: space-between;
-        gap: 16px;
+        gap: 12px 20px;
         flex-wrap: wrap;
       }
 
@@ -683,9 +706,11 @@
       }
 
       .app-header p {
-        margin: 4px 0 0;
+        margin: 0;
         font-size: 16px;
         color: var(--text-muted);
+        /* 副题贴在标题右边，两者算一行，顶栏因此矮一截 */
+        flex: 1 1 auto;
       }
 
       .ganzhi-strip {
@@ -879,6 +904,16 @@
       @media (max-width: 760px) {
         .reading {
           grid-template-columns: 1fr;
+        }
+      }
+
+      /* 右栏（事实、断语、八宫、四卦推导、消长环）比左栏长出一大截，
+         滑下去左栏就空一大片。钉住左栏，卦体始终在眼前。
+         只在宽且够高的视口上钉：窄屏本来就是单列，矮屏钉了会够不到自己的底。 */
+      @media (min-width: 761px) and (min-height: 900px) {
+        .reading > :first-child {
+          position: sticky;
+          top: calc(var(--topbar-h) + 20px);
         }
       }
 
@@ -1689,20 +1724,20 @@
   </head>
   <body>
     <div class="app">
-      <header class="app-header">
-        <div>
+      <div class="topbar">
+        <header class="app-header">
           <h1 class="serif">灵签易占</h1>
           <p>梅花易数起卦 · 六十四卦参详 · 干支历法速查</p>
-        </div>
-        <div class="ganzhi-strip" id="ganzhi-strip" aria-label="今日干支"></div>
-      </header>
+          <div class="ganzhi-strip" id="ganzhi-strip" aria-label="今日干支"></div>
+        </header>
 
-      <nav role="tablist" aria-label="功能分区">
-        <button role="tab" id="tab-cast" aria-controls="panel-cast" aria-selected="true">起卦</button>
-        <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">卦库</button>
-        <button role="tab" id="tab-almanac" aria-controls="panel-almanac" aria-selected="false">历法</button>
-        <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false">卦历</button>
-      </nav>
+        <nav role="tablist" aria-label="功能分区">
+          <button role="tab" id="tab-cast" aria-controls="panel-cast" aria-selected="true">起卦</button>
+          <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">卦库</button>
+          <button role="tab" id="tab-almanac" aria-controls="panel-almanac" aria-selected="false">历法</button>
+          <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false">卦历</button>
+        </nav>
+      </div>
 
       <main>
         <section role="tabpanel" id="panel-cast" aria-labelledby="tab-cast">
@@ -1923,26 +1958,78 @@
       ];
 
       const castingTimers = new Set();
-      const CASTING_LINE_MS = 120;
-      const CASTING_BUDGET_MS = 2900; // 三秒里留 100ms，末行打完还能喘口气
-      const CASTING_BASE_CHAR_MS = 20; // 选行按最快速度估，保证选出来的都放得下
-      const CASTING_CHAR_MIN = 20; // 再快也不至于像在刷屏
+      const CASTING_LINE_MS = 110;
+      const CASTING_BUDGET_MS = 4000; // 四秒出头。原先三秒只够播取数那几句，一卦推完就没话了
+      const CASTING_BASE_CHAR_MS = 18; // 选行按最快速度估，保证选出来的都放得下
+      const CASTING_CHAR_MIN = 18; // 再快也不至于像在刷屏
       const CASTING_CHAR_MAX = 55; // 再慢也不至于像在蹦字
+      const CASTING_MAX_LINES = 10; // 定高用：日志容器按这个行数留位，多了就截
+      const CASTING_HOLD_MS = 4400; // 整段停留。推演预算 4s 之外再留 400ms 给末行落定与切页
 
       const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-      /** 拼这次的推演行：一句引子 + 引擎算好的取数步骤 + 一句收尾。
-       *  字太多就从头截断，保证打得完。 */
-      function castingLines(reading) {
-        const lines = [pick(CASTING_OPENERS)];
-        let used = lines[0].length * CASTING_BASE_CHAR_MS + CASTING_LINE_MS;
-        for (const step of reading?.details ?? []) {
-          const cost = step.value.length * CASTING_BASE_CHAR_MS + CASTING_LINE_MS;
-          if (used + cost > CASTING_BUDGET_MS) break;
-          lines.push(step.value);
-          used += cost;
+      /**
+       * 取数之后的话。
+       *
+       * 原来只播引擎给的取数步骤：摇卦两步、数字起卦三步，推来推去就是那几个数，
+       * 一卦没成，观众已经看完了——这就是「内容太少」的意思。真正让人等的是
+       * 后面那一段：六爻怎么装、动爻往哪变、世应在哪、体用生克如何。
+       *
+       * 顺序按要紧程度排，后面截断时先丢不要紧的。每句都能核：用的都是
+       * reading 上已经算好的字段，没有一句是临时编的。
+       */
+      function castingAftermath(reading) {
+        const out = [];
+        const hex = reading?.hexagram;
+        const labelAt = (position) => reading?.lines?.[position - 1]?.label;
+
+        if (hex?.upper?.name && hex?.lower?.name) {
+          out.push(`上卦${hex.upper.name}、下卦${hex.lower.name}，得${hex.name}`);
         }
-        lines.push(pick(CASTING_CLOSERS)(reading?.hexagram?.name ?? ''));
+
+        const moving = (reading?.movingLines ?? []).map((line) => line.label).filter(Boolean);
+        if (moving.length && reading?.changed?.name) {
+          out.push(`${moving.join('、')}动，阴阳反转，变${reading.changed.name}`);
+        }
+
+        const jf = reading?.jingfang;
+        const shi = labelAt(jf?.shi);
+        const ying = labelAt(jf?.ying);
+        if (jf?.stage && shi && ying) {
+          out.push(`${jf.palaceName ?? ''}${jf.stage}卦，世在${shi}，应在${ying}`);
+        }
+
+        const st = reading?.structure;
+        if (st?.body?.name && st?.use?.name) {
+          out.push(`体卦${st.body.name}${st.body.element}，用卦${st.use.name}${st.use.element}`);
+        }
+        return out;
+      }
+
+      /** 拼这次的推演行：一句引子 + 引擎算好的取数步骤 + 成卦之后的几句 + 一句收尾。
+       *  字太多就从中段截断，保证打得完。 */
+      function castingLines(reading) {
+        const opener = pick(CASTING_OPENERS);
+        const closer = pick(CASTING_CLOSERS)(reading?.hexagram?.name ?? '');
+        const lines = [opener];
+        /* 收尾那句不进 push：它要压轴，不能因为行数满了就被截掉。可它的字数
+         * 得先占住预算——不算的话，字一多就把它挤出预算，实际时长顶掉推演末行，
+         * 而末行正是要压轴的那句。*/
+        let used = (opener.length + closer.length) * CASTING_BASE_CHAR_MS + CASTING_LINE_MS;
+        const push = (text) => {
+          const cost = text.length * CASTING_BASE_CHAR_MS + CASTING_LINE_MS;
+          if (lines.length >= CASTING_MAX_LINES || used + cost > CASTING_BUDGET_MS) return false;
+          lines.push(text);
+          used += cost;
+          return true;
+        };
+        for (const step of reading?.details ?? []) {
+          if (!push(step.value)) break;
+        }
+        for (const text of castingAftermath(reading)) {
+          if (!push(text)) break;
+        }
+        lines.push(closer);
         return lines;
       }
 
@@ -2052,8 +2139,9 @@
           // 取数结果到了才知道这卦算出什么，推演日志照着它现编，不是预先摆好的一段话。
           if (stage?.log?.isConnected) typeCasting(stage.log, castingLines(data.reading));
           if (stage?.hex?.isConnected) growCastingHex(stage.hex, data.reading);
-          // 留够三秒，让八卦环转满一圈、推演日志打完；直接跳结果就只是换了段文字。
-          await wait(reducedMotion() ? 0 : 3000);
+          // 留够一整段，让八卦环转满一圈、推演日志打完；直接跳结果就只是换了段文字。
+          // 时长取 CASTING_HOLD_MS，不在此处另写一个数——推演变长而停留没跟上，末行就被切掉。
+          await wait(reducedMotion() ? 0 : CASTING_HOLD_MS);
           stopCastingTyping();
           state.reading = data.reading;
           renderReading(data.reading);
@@ -3175,6 +3263,21 @@
         } catch (error) {
           el('ganzhi-strip').innerHTML = `<span class="pill">历法加载失败：${escapeHtml(error.message)}</span>`;
         }
+      }
+
+      /* 顶栏实测高度写回 --topbar-h。
+       * 左栏钉住时要按它错开，而顶栏会在窄宽度下换行变高（标题、副题、干支条
+       * 排不下就分两行）。写死一个数，换个宽度、换个字号就压住卦名——实测写回，
+       * 两个数就永远对得上。:root 里那个值只作首屏与无 ResizeObserver 时的兜底。*/
+      const topbarEl = document.querySelector('.topbar');
+      if (topbarEl && typeof ResizeObserver === 'function') {
+        const syncTopbarHeight = () => {
+          document.documentElement.style.setProperty('--topbar-h', `${Math.round(topbarEl.offsetHeight)}px`);
+        };
+        const topbarObserver = new ResizeObserver(syncTopbarHeight);
+        topbarObserver.observe(topbarEl);
+        syncTopbarHeight();
+        window.addEventListener('pagehide', () => topbarObserver.disconnect(), { once: true });
       }
 
       boot();

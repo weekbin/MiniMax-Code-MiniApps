@@ -1194,6 +1194,41 @@ to "打开灵签易占".
   and the canvas grew from 200 to 232 units square to make room for them. The ring's breathing
   animation dipped the current sector to 0.55 opacity, flickering the very bars it was pointing
   at out of legibility twice every 2.6 seconds; it now bottoms out at 0.8.
+- The reading page is two columns with the right one far longer than the left, so scrolling left a
+  large blank behind. The title and the four sections are now one pinned top bar — a translucent
+  blurred ground with a rule under it — and on a wide viewport with enough height the left column
+  is pinned and offset by the top bar's own height. That height was a number written into `:root`,
+  and measuring showed it was the 1340px value: narrow the content area to 700px and the title, the
+  subtitle and the ganzhi pills stop fitting on one line, the top bar grows to about 195px, and the
+  left column still offsets by 132px — which pushed the 天风姤 heading out from under the bar. The
+  height is now measured by a `ResizeObserver` and written back; `--topbar-h` is only the first-paint
+  fallback, and the two places no longer carry a number each. Narrowing the content area does not
+  stand in for a real narrow viewport: below the 760px breakpoint the page is still unchecked on a
+  real screen.
+- The casting beat used to play only the engine's own 取数 steps — two for the coins, three for
+  numbers — so the speech ran out before the hexagram was even formed. It now follows with the four
+  lines that come after, in order of importance: the upper trigram, lower trigram and resulting
+  hexagram, the moving lines and the changed hexagram, the palace with its 世 and 应, and the body
+  and use with their elements. All four methods produce all four, and every word comes from a field
+  the engine has already computed. When the budget runs short it is the body-and-use line that goes;
+  the other three may never be squeezed out. That budget had a hole in it once: the closing line's
+  characters were never counted, so on a wordier cast the real duration pushed past the budget and
+  the last line was cut off by the page change. The closing line reserves its share now, and the hold
+  takes its length from the constant `CASTING_HOLD_MS` (the 4s typing budget plus 400ms) instead of
+  a second number at the call site. The four methods measure 3904-4000ms of typing against a 4400ms
+  hold. The log is held at 320px, which fits the 11 lines the beat can reach (10 under the line cap
+  plus the closing one) — each is nowrap at a fixed line height, so a pixel short of that is a
+  missing pixel.
+- The fourteen assertions added for this round were each mutation-tested: six on the top bar
+  (pinned, blurred ground, rule, stacking, cancelled padding, wrapping the sections), five on the
+  left column (pinned, offset following the bar, viewport-bounded, height measured back, not a dead
+  number), four on the beat (all four lines present, the three important ones never squeezed, the
+  closing line kept, the fixed height fitting 11 lines), and two on the timings (not through the
+  budget, hold taken from the constant). Each implementation was broken on purpose to confirm the
+  matching test really went red; all 22 were caught, and the suite reports 201 passing after the
+  script restored the files. One trap turned up while writing the script: restoring only in
+  `finally` means mutation N runs against the file mutation 1 already broke, so anchors go missing
+  and the red counts climb — which reads as "the test never pinned it" when it was contamination.
 - The package's own tests (`node --test "tests/**/*.test.mjs"` from this directory) cover the
   hexagram table, the 错卦/综卦/互卦 derivations, the ganzhi anchors, the twelve offices, the
   建除 cycle, the nine-day period, the coin rules, the response timing table, each method's change
@@ -1287,7 +1322,7 @@ mark, and among the mark rules that take 朱砂 only `po` and `tomb` may appear;
 twelve day branches, twelve month branches and all sixty-four motion patterns, verifying what makes
 each of the four paths valid rather than merely whether it fired.
 The client tests read the source, since there is no DOM in the test runner.
-187 passing.
+201 passing.
 - 算法口径: the day pillar is computed from the Julian day number and matches the traditional
   almanac (2000-01-01 is 戊午). The month branch follows the nearest of the twelve 节, whose dates
   are the usual yearly approximations and can be off by a day. The year branch turns at 立春,

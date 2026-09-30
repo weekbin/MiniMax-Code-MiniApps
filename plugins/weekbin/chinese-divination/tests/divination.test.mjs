@@ -637,13 +637,14 @@ function loadCasting(client) {
   const code = [
     cut('const CASTING_OPENERS = [', '];'),
     cut('const CASTING_CLOSERS = [', '];'),
-    ...['CASTING_LINE_MS', 'CASTING_BUDGET_MS', 'CASTING_BASE_CHAR_MS', 'CASTING_CHAR_MIN', 'CASTING_CHAR_MAX']
+    ...['CASTING_LINE_MS', 'CASTING_BUDGET_MS', 'CASTING_BASE_CHAR_MS', 'CASTING_CHAR_MIN', 'CASTING_CHAR_MAX', 'CASTING_MAX_LINES', 'CASTING_HOLD_MS']
       .map((name) => cut(`const ${name} = `, ';')),
     cut('const pick = ', ';'),
+    cut('function castingAftermath(reading) {', '\n      }'),
     cut('function castingLines(reading) {', '\n      }'),
     cut('function castingSpeed(lines) {', '\n      }'),
   ].join('\n');
-  return new Function(`${code}\nreturn { castingLines, castingSpeed, CASTING_OPENERS, CASTING_CLOSERS };`)();
+  return new Function(`${code}\nreturn { castingLines, castingSpeed, castingAftermath, CASTING_MAX_LINES, CASTING_BUDGET_MS, CASTING_HOLD_MS, CASTING_OPENERS, CASTING_CLOSERS };`)();
 }
 
 const SAMPLES = () => [
@@ -685,23 +686,185 @@ test('首尾措辞各有多个候选，同卦重起也不至于一模一样', as
   assert.ok(CASTING_CLOSERS.length >= 3, `收尾只有 ${CASTING_CLOSERS.length} 个候选`);
 });
 
-test('四法起卦，日志都在三秒内打完', async () => {
+test('四法起卦，日志都在整段停留里打完', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
-  const { castingLines, castingSpeed } = loadCasting(client);
-  const budget = Number(/await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client)[1]);
+  const { castingLines, castingSpeed, CASTING_HOLD_MS, CASTING_BUDGET_MS } = loadCasting(client);
   const lineMs = Number(/const CASTING_LINE_MS = (\d+);/.exec(client)[1]);
+
+  // 停留时长只有一个来源，就是 CASTING_HOLD_MS。调用点若另写一个数，
+  // 推演一改长就切在末行上，而末行正是压轴那句。
+  assert.ok(
+    /await wait\(reducedMotion\(\) \? 0 : CASTING_HOLD_MS\);/.test(client),
+    '停留时长没有取 CASTING_HOLD_MS，调用点跟常量脱钩了',
+  );
 
   for (const [name, cast] of SAMPLES()) {
     const lines = castingLines(buildReading(cast));
     const chars = lines.reduce((sum, text) => sum + text.length, 0);
     const total = chars * castingSpeed(lines) + (lines.length - 1) * lineMs;
-    assert.ok(total <= budget, `${name} 要 ${total}ms，超过 ${budget}ms，末行会被砍`);
+    // 预算得真是上界。收尾那句的字数若不预留，实际时长会顶穿预算——
+    // 那句在停留余量之内时看不出毛病，可一旦调小余量就先砍掉它。
+    assert.ok(total <= CASTING_BUDGET_MS, `${name} 要 ${total}ms，顶穿了推演预算 ${CASTING_BUDGET_MS}ms`);
+    assert.ok(total <= CASTING_HOLD_MS, `${name} 要 ${total}ms，超过停留 ${CASTING_HOLD_MS}ms，末行会被砍`);
   }
 });
 
-test('八卦环在起卦那三秒里转得肉眼看得见', async () => {
+test('推演不止取数那几句，成卦之后的话也都播出来', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
-  const budget = /await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client);
+  const { castingLines, castingAftermath } = loadCasting(client);
+
+  for (const [name, cast] of SAMPLES()) {
+    const reading = buildReading(cast);
+    const aftermath = castingAftermath(reading);
+    // 四类都在：成卦、变卦、宫世应、体用。少一类就又回到「取完数就没话说了」。
+    assert.equal(aftermath.length, 4, `${name} 成卦之后只凑出 ${aftermath.length} 句：${aftermath.join(' / ')}`);
+
+    const lines = castingLines(reading);
+    // 造了不等于播了。更要紧的三句一条都不许被挤掉——它们排在体用句之前，
+    // 预算再紧也先丢体用句。哪句被挤掉本身就是要紧程度排错了。
+    for (const text of aftermath.slice(0, 3)) {
+      assert.ok(lines.includes(text), `${name}「${text}」被挤出了推演，顺序没按要紧程度排`);
+    }
+    // 收尾那句不受行数上限管，必播。
+    assert.ok(lines.length >= 5, `${name} 推演只有 ${lines.length} 行，收尾句没留住`);
+  }
+});
+
+test('成卦那几句各钉各的字段，改一个不会牵连别句', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const { castingAftermath } = loadCasting(client);
+  const base = buildReading(castByNumbers(17, 29));
+  const before = castingAftermath(base);
+  assert.equal(before.length, 4, `这一卦该有四句，实际 ${before.length} 句`);
+
+  // 每一个字段单开一条。合在一起改的话，名字一改整句就变了，
+  // 元素、爻位这些跟着改却没被验到——「体用句不报五行」那种变异就钻过去了。
+  const cases = [
+    ['成卦句的本卦名', 0, (r) => { r.hexagram.name = '本卦名改'; }],
+    ['成卦句的上卦', 0, (r) => { r.hexagram.upper.name = '上卦改'; }],
+    ['成卦句的下卦', 0, (r) => { r.hexagram.lower.name = '下卦改'; }],
+    ['变卦句的变卦名', 1, (r) => { r.changed.name = '变卦名改'; }],
+    ['变卦句的动爻', 1, (r) => { r.movingLines = [{ ...r.movingLines[0], label: '动爻改' }]; }],
+    ['宫世应句的宫', 2, (r) => { r.jingfang.palaceName = '宫名改'; }],
+    ['宫世应句的世次', 2, (r) => { r.jingfang.stage = '五世'; }],
+    ['宫世应句的世爻', 2, (r) => { r.lines[r.jingfang.shi - 1].label = '世爻改'; }],
+    ['宫世应句的应爻', 2, (r) => { r.lines[r.jingfang.ying - 1].label = '应爻改'; }],
+    ['体用句的体卦名', 3, (r) => { r.structure.body.name = '体名改'; }],
+    ['体用句的体卦五行', 3, (r) => { r.structure.body.element = '火'; }],
+    ['体用句的用卦名', 3, (r) => { r.structure.use.name = '用名改'; }],
+    ['体用句的用卦五行', 3, (r) => { r.structure.use.element = '土'; }],
+  ];
+
+  for (const [what, index, patch] of cases) {
+    // 必须深拷贝：buildReading 里的卦名、六亲都是共享常量表里的对象，
+    // 直接改会连底库一起改掉，后面几条用例与别处用例全被带歪。
+    const reading = structuredClone(buildReading(castByNumbers(17, 29)));
+    patch(reading);
+    const after = castingAftermath(reading);
+    assert.notEqual(after[index], before[index], `${what}没跟着 reading 变，说明这句是写死的`);
+  }
+});
+
+test('改一句的字段不牵连别句——四句各读各的', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const { castingAftermath } = loadCasting(client);
+  const before = castingAftermath(buildReading(castByNumbers(17, 29)));
+
+  // 只挑四句互不相干的字段。爻位是另一回事：应爻恰好又是动爻时，
+  // 变卦句与宫世应句读的就是同一份数据，两句一起变才对，不算串。
+  const isolated = [
+    ['本卦名', 0, (r) => { r.hexagram.name = '本卦名改'; }],
+    ['变卦名', 1, (r) => { r.changed.name = '变卦名改'; }],
+    ['宫名', 2, (r) => { r.jingfang.palaceName = '宫名改'; }],
+    ['体卦五行', 3, (r) => { r.structure.body.element = '火'; }],
+  ];
+
+  for (const [what, index, patch] of isolated) {
+    const reading = structuredClone(buildReading(castByNumbers(17, 29)));
+    patch(reading);
+    const after = castingAftermath(reading);
+    assert.notEqual(after[index], before[index], `${what}改了但对应那句没变，这条没验到`);
+    for (const other of [0, 1, 2, 3].filter((i) => i !== index)) {
+      assert.equal(after[other], before[other], `${what}改了，${before[other]}也跟着变了，两句串在一起了`);
+    }
+  }
+});
+
+test('推演日志定高留够播报的最大行数，收尾那句不会挤出去', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const { CASTING_MAX_LINES } = loadCasting(client);
+
+  const block = /\.casting-log \{([\s\S]*?)\}/.exec(client);
+  assert.ok(block, '找不到 .casting-log 的样式');
+  const minHeight = Number(/min-height: (\d+)px/.exec(block[1])?.[1]);
+  const fontSize = Number(/font-size: (\d+)px/.exec(block[1])?.[1]);
+  const lineHeight = Number(/line-height: ([\d.]+)/.exec(block[1])?.[1]);
+  assert.ok(minHeight && fontSize && lineHeight, `.casting-log 的 min-height / font-size / line-height 解析不出来`);
+
+  // 每行 nowrap，定的是固定行高。收尾那句不受行数上限管，要按 MAX_LINES + 1 留。
+  const need = (CASTING_MAX_LINES + 1) * fontSize * lineHeight;
+  assert.ok(
+    minHeight >= need,
+    `定高 ${minHeight}px 装不下 ${CASTING_MAX_LINES + 1} 行（需 ${need.toFixed(1)}px），最后一句会挤到卦盘上`,
+  );
+});
+
+test('标题与分区合成一条钉住的顶栏', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  const block = /\.topbar \{([\s\S]*?)\n      \}/.exec(client);
+  assert.ok(block, '找不到 .topbar 的样式');
+  const style = block[1];
+  assert.ok(/position: sticky/.test(style), '顶栏没钉在顶部');
+  assert.ok(/top: 0/.test(style), '顶栏没贴到视口顶边');
+  assert.ok(/z-index: \d+/.test(style), '顶栏没排层，滑下去会被内容盖住');
+  assert.ok(/backdrop-filter: blur/.test(style), '顶栏底色不透明，滑下去内容会硬生生撞上来');
+  assert.ok(/border-bottom: 1px solid/.test(style), '顶栏下缘没有分隔线');
+  // 底色要拉成整条，就得抵消 .app 的上内边距与左右内边距。
+  const margin = /margin: (-?\d+)px (-?\d+)px/.exec(style);
+  assert.ok(margin, '找不到顶栏的外边距');
+  assert.ok(Number(margin[1]) < 0 && Number(margin[2]) < 0, '顶栏没抵消 .app 的内边距，底色只在内容区那条窄带里');
+
+  const open = /<div class="topbar">([\s\S]*?)<\/div>\s*<main/.exec(client);
+  assert.ok(open, '顶栏没把标题与分区一起包住');
+  assert.ok(/<header[\s>]/.test(open[1]), '顶栏里没有 header');
+  assert.ok(/role="tablist"/.test(open[1]), '顶栏里没有功能分区');
+});
+
+test('解读页左栏钉住，错开量取顶栏高度而不是另写一个数', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+
+  const at = /@media \(min-width: (\d+)px\) and \(min-height: (\d+)px\)/.exec(client);
+  assert.ok(at, '解读页左栏没限定视口宽高，视口太矮时钉住会够不着自己的底');
+
+  const sticky = /\.reading > :first-child \{([\s\S]*?)\}/.exec(client);
+  assert.ok(sticky, '解读页左栏没钉住');
+  assert.ok(/position: sticky/.test(sticky[1]), '解读页左栏不是 sticky');
+  assert.ok(/top: calc\(var\(--topbar-h\)/.test(sticky[1]), '左栏的错开量没跟着顶栏高度走，顶栏一改高度就会压住内容');
+
+  // 顶栏高度只能有一个来源，否则顶栏一改高，左栏的错开量就成了另一个数。
+  // 只数定义，不数使用点（var(--topbar-h) 后面没有冒号）；
+  // 负向看着写，免得加一个 --topbar-h-sp 就绕过去。
+  const defined = client.match(/--topbar-h(?![\w-])\s*:/g) ?? [];
+  assert.equal(defined.length, 1, `--topbar-h 定义了 ${defined.length} 次`);
+
+  // :root 里那个数只是首屏兜底。顶栏在窄宽度下会换行变高——实测过：内容区
+  // 收到 700px 时标题与干支条分两行，顶栏从 132px 长到 195px 上下，
+  // 左栏仍按 132px 错开，卦名直接被压在顶栏底下。所以高度得实测写回。
+  const sync = /const syncTopbarHeight = \(\) => \{[\s\S]{0,300}?\n\s+\};/.exec(client);
+  assert.ok(sync, '没有把顶栏实测高度写回 --topbar-h 的那段');
+  assert.ok(/setProperty\('--topbar-h'/.test(sync[0]), '同步函数没有写回 --topbar-h');
+  assert.ok(/topbarEl\.offsetHeight/.test(sync[0]), '写回的不是实测高度');
+  assert.ok(
+    /new ResizeObserver\(syncTopbarHeight\)[\s\S]{0,120}?observe\(topbarEl\)/.test(client),
+    '没有用 ResizeObserver 盯住顶栏，宽度一变就又对不上了',
+  );
+  assert.ok(/pagehide[\s\S]{0,120}?topbarObserver\.disconnect\(\)/.test(client), '观察者没有断开');
+});
+
+test('八卦环在起卦那一拍里转得肉眼看得见', async () => {
+  const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
+  const budget = Number(/const CASTING_HOLD_MS = (\d+);/.exec(client)[1]);
   assert.ok(budget, '找不到起卦后的停留时长');
   const rings = [
     ['外环', /animation: baguaSpin (\d+)s/.exec(client)],
@@ -711,7 +874,7 @@ test('八卦环在起卦那三秒里转得肉眼看得见', async () => {
     assert.ok(hit, `找不到${name}的转速`);
     const period = Number(hit[1]);
     // 整段起卦就这么几秒，转速却按分钟算的，看着就等于没动
-    const deg = (Number(budget[1]) / 1000 / period) * 360;
+    const deg = (budget / 1000 / period) * 360;
     assert.ok(deg >= 30, `${name} ${period}s 一圈，停留期间只转 ${deg.toFixed(0)}°，等于没动`);
   }
 });
@@ -1164,8 +1327,10 @@ test('起卦那一拍留得够长，成卦盘能在等待之内长齐', async ()
   // 成卦盘分到的时间不能超过整段等待，否则推演还没画完就跳结果。
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
   const budget = Number(/const CASTING_BUDGET_MS = (\d+);/.exec(client)[1]);
-  const waitMs = Number(/await wait\(reducedMotion\(\) \? 0 : (\d+)\);/.exec(client)[1]);
+  const waitMs = Number(/const CASTING_HOLD_MS = (\d+);/.exec(client)[1]);
   assert.ok(waitMs >= budget, `等待 ${waitMs}ms 短于推演预算 ${budget}ms，画到一半就会被切掉`);
+  // 余量还得真能容下末行落定与切页，两者相等就是刚好卡在最后一帧上切走。
+  assert.ok(waitMs - budget >= 200, `等待 ${waitMs}ms 只比预算多 ${waitMs - budget}ms，末行来不及落定`);
   // 成卦盘取推演预算的一部分，再除以六爻：下界 × 6 仍须落在等待之内
   const step = /const stepMs = Math\.max\((\d+), Math\.floor\(\(CASTING_BUDGET_MS \* ([\d.]+)\) \/ order\.length\)\)/.exec(client);
   assert.ok(step, '找不到成卦盘每爻的间隔');
@@ -1173,7 +1338,7 @@ test('起卦那一拍留得够长，成卦盘能在等待之内长齐', async ()
   const share = Number(step[2]);
   assert.ok(minStep * 6 <= waitMs, `六爻按最小间隔 ${minStep}ms 排下来要 ${minStep * 6}ms，超过等待 ${waitMs}ms`);
   assert.ok(share <= 1, '成卦盘分到的时间占比不合法');
-  assert.ok(budget * share + budget <= waitMs + budget, '成卦盘与打字两段不应把等待撑爆');
+  assert.ok(budget * share <= waitMs, `成卦盘要画到 ${budget * share}ms，超过等待 ${waitMs}ms`);
 });
 
 test('四卦推导图把互、变、错、综的取法画出来', async () => {
