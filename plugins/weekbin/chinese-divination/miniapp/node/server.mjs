@@ -29,6 +29,86 @@ const MAX_BODY_BYTES = 64 * 1024;
 const MAX_NUMBER = 1_000_000_000;
 
 /**
+ * 允许的 Host / Origin 主机名。Host 给的 listen 恒为回环（docs/runtime.md），
+ * 这里再钉一道，是为堵 DNS rebinding：恶意页面把自有域名解析到 127.0.0.1 之后，
+ * 浏览器认为那是同源，Host 头就带着攻击者的域名打到这里。若不校验，
+ * `GET /api/divination/history` 里的卦题与批注会被别的网站读走。
+ * 只认回环，不认具体端口——端口由 Host 分配，这里猜不得也不该猜。
+ */
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '::1', '0:0:0:0:0:0:0:1']);
+
+/** 一个合法八位组：0-255，且不认前导零（Node 的 URL 解析同样不认）。 */
+const OCTET = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+const LOOPBACK_IPV4 = new RegExp(`^127\\.${OCTET}\\.${OCTET}\\.${OCTET}$`);
+
+/**
+ * @param {string} hostname
+ * @returns {boolean}
+ */
+export function isLoopbackHostname(hostname) {
+  const normalized = hostname.trim().toLowerCase();
+  if (LOOPBACK_HOSTNAMES.has(normalized)) return true;
+  // 127.0.0.0/8 整段都是回环。浏览器不会替攻击者页面发这种 Host，
+  // 所以放行整段不引入风险，却能覆盖 Host 绑到 127.0.0.2 之类的情况。
+  return LOOPBACK_IPV4.test(normalized);
+}
+
+/**
+ * 从 `Host: 127.0.0.1:41999` / `Host: [::1]:41999` 里取出主机名部分。
+ * 端口连同分隔符一起去掉；没有端口就是整串。
+ * @param {string} header
+ * @returns {string}
+ */
+export function hostnameFromHeader(header) {
+  const trimmed = header.trim();
+  // IPv6 必须带方括号，否则一串 ::1 会被按最后一个冒号切开
+  const bracketed = /^\[([^\]]*)\]/.exec(trimmed);
+  if (bracketed) return bracketed[1];
+  const colon = trimmed.lastIndexOf(':');
+  return colon === -1 ? trimmed : trimmed.slice(0, colon);
+}
+
+/**
+ * 这一请求的 Host / Origin 是不是本机自己发出来的。
+ *
+ * 两个头各堵一条路，少一条都留着口子：
+ * - Host 管 DNS rebinding。攻击者的域名解析到 127.0.0.1 之后，浏览器把它当同源，
+ *   Host 头带的就是攻击者域名，不看就会把卦历读出去。
+ * - Origin 管跨源简单请求。请求直接打到 127.0.0.1 时 Host 头是 legit 的，
+ *   挡不住；但浏览器会带上 `Origin: https://evil.example.com`，认这个才拦得住。
+ *
+ * 头不存在就放行：Host 的 MCP 客户端是 Node 程序，不发 Origin；
+ * HTTP/1.0 也不带 Host。缺头不是伪造的信号，据此拒绝只会打断正常调用。
+ * @param {string | undefined} hostHeader
+ * @param {string | undefined} originHeader
+ */
+export function isLocalRequest(hostHeader, originHeader) {
+  if (hostHeader !== undefined && !isLoopbackHostname(hostnameFromHeader(hostHeader))) return false;
+  if (originHeader === undefined) return true;
+  // Origin 的形态是 scheme://host[:port]
+  const originHost = /^[a-z][a-z0-9+.-]*:\/\/(\[[^\]]*\]|[^/:?#]+)/i.exec(originHeader);
+  if (!originHost) return false;
+  return isLoopbackHostname(hostnameFromHeader(originHost[1]));
+}
+
+/**
+ * 日志只报错误码，不报 error.message。
+ *
+ * Node 的 fs 报错会把完整绝对路径连同操作系统用户名写进 message：
+ * `EACCES: permission denied, open '/Users/<用户名>/…/readings.json'`。
+ * dataDir 的位置按契约是不透明的，那串路径不该跟着日志离开这个进程——
+ * 日志会被贴进 issue、被转进工单、被上传。错误码足够定位，不带路径。
+ * （EISDIR 是唯一被 Node 特殊处理、不带路径的码，不能拿它代表其余。）
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function describeError(error) {
+  if (!(error instanceof Error)) return 'unknown';
+  const code = /** @type {NodeJS.ErrnoException} */ (error).code;
+  return typeof code === 'string' ? code : error.name;
+}
+
+/**
  * 页面与 Node 服务之间的唯一数据通道。所有写操作都经由这里落到 dataDir。
  * @param {MiniAppContext} context
  * @returns {Promise<MiniAppLifecycle>}
@@ -39,7 +119,7 @@ export async function start(context) {
 
   const server = createServer((request, response) => {
     handle(request, response, clientEntry, store).catch((error) => {
-      context.logger.error(`divination.request.failed ${error instanceof Error ? error.message : 'unknown'}`);
+      context.logger.error(`divination.request.failed ${describeError(error)}`);
       sendJson(response, 500, { error: 'internal_error' });
     });
   });
@@ -73,6 +153,12 @@ async function handle(request, response, clientEntry, store) {
   const url = new URL(request.url ?? '/', 'http://miniapp.local');
   const path = url.pathname;
   const method = request.method ?? 'GET';
+
+  // 头不认本机就整个拒掉，且不回显它是什么：回显等于替攻击者确认服务存在。
+  if (!isLocalRequest(request.headers.host, request.headers.origin)) {
+    sendJson(response, 403, { error: 'forbidden' });
+    return;
+  }
 
   // MCP 端点：只在本机回环上提供 POST，Agent 通过它主动起卦。
   if (path === MCP_PATH) {

@@ -1218,6 +1218,17 @@ to "打开灵签易占".
 
 ## Tested environment
 
+- **Windows and Linux were never run.** Everything said about them below is static checking, not a
+  test run, and no claim here rests on having booted either one. What was checked: every path is
+  assembled with `node:path` (`join` normalises the forward slashes in `miniapp/client/index.html`
+  into backslashes on Windows, UNC paths included); no source file contains a hardcoded separator
+  or drive letter; there is no `__dirname` or `import.meta.url`, which in ESM are where
+  cross-platform path bugs usually come from; the three on-disk names (`readings.json`, its `.tmp`,
+  and its `.corrupt-<timestamp>`) are legal Windows names, free of reserved device names and
+  characters; the longest of them reaches 139 characters in the worst dataDir shape simulated,
+  well inside `MAX_PATH`; the two path literals in the source match the on-disk spelling
+  character for character, which macOS would have accepted even if they did not; and every text
+  file is UTF-8 with no BOM and no CRLF.
 - MiniMax Code 3.0.73 on macOS, Node 22. Installed from this directory, opened through the Agent,
   page rendered and all four tabs exercised.
 - The MCP endpoint's `initialize`, `tools/list`, `tools/call`, and error paths were exercised
@@ -1633,6 +1644,15 @@ The client tests read the source, since there is no DOM in the test runner.
   on the Host-assigned loopback address `context.listen` and accepts POST only.
 - Processes: none spawned. Coin tosses use `node:crypto.randomInt` inside the Node process.
 - Secrets: none are read or held. There are no credentials and no Host connector access.
+- Requests are accepted only when their `Host` header, and their `Origin` header when one is sent,
+  name a loopback host. Two headers, two holes: a site that points its own domain at `127.0.0.1`
+  (DNS rebinding) is stopped by `Host`, which then carries the attacker's name; a cross-origin
+  request aimed straight at the port is stopped by `Origin`, since `Host` is genuine there. A
+  missing header is not treated as forged, because the Host's MCP client is a Node program and
+  sends no `Origin`. A rejected request gets `403` and an echo of nothing.
+- Log messages carry the error code and never the error text. Node's file-system errors embed the
+  full absolute path, operating-system user name included, in `error.message`; `dataDir` is opaque
+  by contract and that path does not leave this process. Logs get pasted into issues and uploaded.
 
 ## Files
 

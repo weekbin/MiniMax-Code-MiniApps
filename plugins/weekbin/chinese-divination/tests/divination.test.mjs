@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   HEXAGRAM_LIST,
@@ -39,6 +41,13 @@ import { tuanText } from '../miniapp/node/tuan.mjs';
 import { TWELVE_MESSAGES, hexagramQi, monthQi } from '../miniapp/node/guaqi.mjs';
 import { detectTopic, godRelation, TOPIC_CLASSES } from '../miniapp/node/topics.mjs';
 import { generates, overcomes } from '../miniapp/node/divination.mjs';
+import {
+  start,
+  describeError,
+  hostnameFromHeader,
+  isLocalRequest,
+  isLoopbackHostname,
+} from '../miniapp/node/server.mjs';
 
 test('六十四卦齐全且唯一', () => {
   assert.equal(HEXAGRAM_LIST.length, 64);
@@ -5670,4 +5679,178 @@ test('自选项的框不占布局，环上标签也不许压在爻杠上', async
   const labelFar = R + Number(labelR[1]) + 11;
   assert.ok(labelFar <= w / 2,
     `最外的字伸到半径 ${labelFar.toFixed(1)}，超出画布半径 ${(w / 2).toFixed(1)}，会被裁掉`);
+});
+
+/* ---------- 进程边界：日志不记路径、Host/Origin 只认回环 ---------- */
+
+test('Host 头取主机名：去端口，IPv6 认方括号', () => {
+  assert.equal(hostnameFromHeader('127.0.0.1:41999'), '127.0.0.1');
+  assert.equal(hostnameFromHeader('localhost:8080'), 'localhost');
+  assert.equal(hostnameFromHeader('127.0.0.1'), '127.0.0.1', '不带端口时整串就是主机名');
+  // ::1 不带方括号时，一串冒号会被按最后一个切开，切出的是 "1" 不是 "::1"
+  assert.equal(hostnameFromHeader('[::1]:41999'), '::1');
+  assert.equal(hostnameFromHeader('[::1]'), '::1');
+  // 大小写不在这一层归一，hostnameFromHeader 只管切。归一在 isLoopbackHostname 里，
+  // 两边都走它，才不会有的入口归一、有的不归一。
+  assert.equal(hostnameFromHeader('EVIL.example.COM:80'), 'EVIL.example.COM', '这一层只切不归一');
+  assert.equal(isLoopbackHostname(hostnameFromHeader('LOCALHOST:41999')), true, '归一之后 localhost 仍算回环');
+});
+
+test('回环主机名：127/8、localhost、::1 算，别的都不算', () => {
+  // 这一层收的是「主机名」不是「Host 头」——带端口的串归 isLocalRequest 切完再送进来。
+  // 所以这里不喂 '127.0.0.1:1'：那不是主机名，判 false 是对的，喂进去只会把
+  // 「这一层不负责切端口」和「这一层不认回环」两件事搅在一起。
+  for (const ok of ['127.0.0.1', '127.1.2.3', 'localhost', '::1', '0:0:0:0:0:0:0:1', 'LOCALHOST', 'LocalHost']) {
+    assert.equal(isLoopbackHostname(ok), true, `${ok} 应当算回环`);
+  }
+  for (const bad of ['evil.example.com', '10.0.0.1', '192.168.1.5', '0.0.0.0', '128.0.0.1', '127.0.0.256', '127.0.0.01', '127.0.0', '127.0.0.1.1', '127.0.0.1:1', '']) {
+    assert.equal(isLoopbackHostname(bad), false, `${bad} 不该算回环`);
+  }
+});
+
+test('本机判定：Host 拦 DNS rebinding，Origin 拦跨源简单请求', () => {
+  // 正常：页面自己发的同源请求
+  assert.equal(isLocalRequest('127.0.0.1:41999', 'http://127.0.0.1:41999'), true, '同源请求该放行');
+  // 端口由 Host 分配，判定不能把它算进主机名，否则回环请求会被自己挡在门外
+  for (const host of ['127.0.0.1:41999', '127.0.0.1', 'localhost:80', '[::1]:41999', '127.5.5.5:1']) {
+    assert.equal(isLocalRequest(host, undefined), true, `回环 Host ${host} 应当放行`);
+  }
+  // Host 的 MCP 客户端是 Node 程序，不发 Origin
+  assert.equal(isLocalRequest('127.0.0.1:41999', undefined), true, '缺 Origin 不该当成伪造');
+  // HTTP/1.0 可能不带 Host
+  assert.equal(isLocalRequest(undefined, undefined), true, '缺 Host 不该当成伪造');
+  // DNS rebinding：攻击者域名解析到 127.0.0.1，Host 带的是他的域名
+  assert.equal(isLocalRequest('evil.example.com', undefined), false, '非回环 Host 必须挡住');
+  assert.equal(isLocalRequest('evil.example.com:41999', 'http://evil.example.com'), false, '带端口的非回环 Host 同样要挡');
+  // 跨源简单请求：请求直接打到 127.0.0.1，Host 是合法的，挡它的只有 Origin
+  assert.equal(isLocalRequest('127.0.0.1:41999', 'https://evil.example.com'), false, '跨源 Origin 必须挡住');
+  // 挡不住的那一类要说清楚：攻击者拿不到 Origin 头由别人代发
+  assert.equal(isLocalRequest('127.0.0.1:41999', 'not-a-url'), false, 'Origin 解析不出来时按拒绝处理');
+});
+
+test('日志只留错误码：Node 的 fs 报错带绝对路径，describeError 把它摘掉', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'divination-log-'));
+  try {
+    const real = await readFile(join(dir, 'absent.json'), 'utf8').then(() => null, (error) => error);
+    // 取证前提：先确认 Node 真的把绝对路径写进了 message。不认这一条，
+    // 下面那句「摘掉了路径」就是空断言——碰巧 Node 哪天不带了，测试照样绿。
+    assert.ok(
+      real instanceof Error && real.message.includes(dir),
+      `当前 Node ${process.version} 的 fs 报错已不带绝对路径，本测试的前提需重估：${real && real.message}`,
+    );
+    const described = describeError(real);
+    assert.equal(described, 'ENOENT', `只剩错误码才对，实到：${described}`);
+    assert.ok(!described.includes(dir), `describeError 仍带绝对路径：${described}`);
+    assert.ok(!described.includes('/'), `describeError 里不该有路径分隔符：${described}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('describeError 对没有 code 的错误退回 name，对非错误退回 unknown', () => {
+  assert.equal(describeError(new TypeError('x')), 'TypeError', '无 code 时用 name');
+  assert.equal(describeError('一段字符串'), 'unknown', '非 Error 不该被当成有诊断信息');
+  assert.equal(describeError(undefined), 'unknown', 'undefined 也一样');
+});
+
+/** 起一个真服务，返回打请求的函数与 dispose。Host 头要用 node:http 直发，fetch 不让设。 */
+async function withServer(run) {
+  const dir = await mkdtemp(join(tmpdir(), 'divination-http-'));
+  const logs = [];
+  const port = 42871;
+  const lifecycle = await start({
+    pluginRoot: fileURLToPath(new URL('..', import.meta.url)),
+    dataDir: dir,
+    listen: { host: '127.0.0.1', port },
+    logger: {
+      info: (m) => logs.push(m),
+      warn: (m) => logs.push(m),
+      error: (m) => logs.push(m),
+      debug: (m) => logs.push(m),
+    },
+    signal: new AbortController().signal,
+  });
+  const send = (path, headers = {}) => new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  try {
+    await run({ send, logs, dir });
+  } finally {
+    await lifecycle.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+test('非回环 Host 的请求整个被拒，且不回显自己是什么', async () => {
+  await withServer(async ({ send }) => {
+    const good = await send('/api/divination/bootstrap', { host: '127.0.0.1:42871' });
+    assert.equal(good.status, 200, '回环 Host 应当照常放行，否则页面会整个打不开');
+
+    const evil = await send('/api/divination/history', { host: 'evil.example.com' });
+    assert.equal(evil.status, 403, `DNS rebinding 的读卦历请求该被拒，实到 ${evil.status}`);
+    assert.ok(!evil.body.includes('evil.example.com'), `403 回包不该回显 Host：${evil.body}`);
+
+    const crossOrigin = await send('/api/divination/history', {
+      host: '127.0.0.1:42871',
+      origin: 'https://evil.example.com',
+    });
+    assert.equal(crossOrigin.status, 403, '跨源 Origin 应当被拒');
+  });
+});
+
+test('MCP 端点同样只认回环，Node 客户端不带 Origin 照样能用', async () => {
+  await withServer(async ({ send }) => {
+    const payload = JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'divination_almanac', arguments: {} },
+    });
+    const ok = await new Promise((resolve, reject) => {
+      const req = httpRequest({
+        host: '127.0.0.1', port: 42871, path: '/mcp/divination', method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) },
+      }, (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => resolve({ status: res.statusCode, body }));
+      });
+      req.on('error', reject);
+      req.end(payload);
+    });
+    assert.equal(ok.status, 200, `不带 Origin 的 MCP 调用该照常работать，实到 ${ok.status}`);
+    assert.ok(ok.body.includes('干支'), 'MCP 应当照常返回历法');
+
+    const evil = await new Promise((resolve, reject) => {
+      const req = httpRequest({
+        host: '127.0.0.1', port: 42871, path: '/mcp/divination', method: 'POST',
+        headers: { 'content-type': 'application/json', host: 'evil.example.com' },
+      }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode })); });
+      req.on('error', reject);
+      req.end(payload);
+    });
+    assert.equal(evil.status, 403, 'MCP 端点也得挡非回环 Host');
+  });
+});
+
+test('落盘失败时日志里没有 dataDir 路径', async () => {
+  await withServer(async ({ send, logs, dir }) => {
+    // 把 readings.json 换成目录，逼出 fs 报错（EISDIR/ENOENT 之外的真实分支）
+    await mkdir(join(dir, 'readings.json'), { recursive: true });
+    const res = await send('/api/divination/history');
+    assert.equal(res.status, 500, '读失败应当是 500');
+    assert.equal(res.body, '{"error":"internal_error"}', `回包不该带内部细节：${res.body}`);
+    const failures = logs.filter((line) => line.startsWith('divination.request.failed'));
+    assert.ok(failures.length > 0, '这次失败应当被记进日志');
+    for (const line of failures) {
+      assert.ok(!line.includes(dir), `日志带出了 dataDir 绝对路径：${line}`);
+      assert.ok(!line.includes(tmpdir()), `日志带出了系统临时目录：${line}`);
+    }
+  });
 });

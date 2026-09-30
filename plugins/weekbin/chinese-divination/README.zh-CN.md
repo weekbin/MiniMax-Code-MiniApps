@@ -1005,6 +1005,14 @@ README 的安装说明）。重启 MiniMax Code 后对 Agent 说「打开灵签�
 
 ## 测试环境
 
+- **Windows 与 Linux 从未真跑过。** 下面关于这两个平台的话都是静态核查，不是实测结果，也没有
+  哪一条结论建立在「跑起来看过」之上。已核查的是：路径一律用 `node:path` 拼（`join` 会把
+  `miniapp/client/index.html` 里的正斜杠在 Windows 上归一成反斜杠，UNC 路径也正确）；源码里没有
+  硬编码的分隔符或盘符；没有 `__dirname` / `import.meta.url`——ESM 里跨平台路径的毛病基本都出在
+  这两个上面；三个落盘文件名（`readings.json`、它的 `.tmp`、它的 `.corrupt-<时间戳>`）都是 Windows
+  合法名，不含保留设备名与保留字符；按最悲观的 dataDir 形态模拟，最长的那个到 139 字符，离
+  `MAX_PATH` 还远；源码里两处路径字面量与磁盘上的拼写逐字符一致——这一点 macOS 上就算对不上也照样
+  能跑，Linux 不会；全部文本文件 UTF-8，无 BOM，无 CRLF。
 - MiniMax Code 3.0.73，macOS，Node 22。从本目录安装，经 Agent 打开，页面正常渲染，四个分区
   均可操作。MCP 端点 `/mcp/divination` 的 `initialize`、`tools/list`、`tools/call` 与错误路径
   已在本地实测。
@@ -1225,6 +1233,12 @@ README 的安装说明）。重启 MiniMax Code 后对 Agent 说「打开灵签�
   调用任何模型 API。MCP 端点只监听 Host 指定的回环地址 `context.listen`，只接受 POST。
 - 子进程：不启动任何子进程。摇卦使用 Node 进程内的 `node:crypto.randomInt`。
 - 凭证：不读取、不持有任何凭证，未申请 Host Connector 访问。
+- 只有 `Host` 头指向回环、且带了 `Origin` 头时它也指向回环的请求才被受理。两个头各堵一条路：
+  把自有域名解析到 `127.0.0.1` 的站点（DNS rebinding）由 `Host` 挡下，那时它带的是攻击者的域名；
+  直接朝端口打过来的跨源请求由 `Origin` 挡下，那时 `Host` 反而是真的。缺头不当成伪造——Host 的
+  MCP 客户端是 Node 程序，不发 `Origin`。被拒的请求回 `403`，且不回显任何东西。
+- 日志只记错误码，不记错误文本。Node 的 fs 报错会把含操作系统用户名的完整绝对路径写进
+  `error.message`；dataDir 按契约是不透明的，那串路径不离开这个进程——日志会被贴进 issue、被上传。
 
 ## 文件
 
