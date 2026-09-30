@@ -140,6 +140,22 @@ export function detectTopic(question) {
 }
 
 /**
+ * 认出事类对应的类目。MCP 让 Agent 自己挑事类时就是拿这个键来查的——
+ * Agent 看得懂「这笔钱」是什么，认不出「财运」里那串关键词命中了哪一条。
+ * @param {unknown} key
+ * @returns {TopicClass | null}
+ */
+export function topicByKey(key) {
+  return typeof key === 'string' ? (TOPIC_CLASSES.find((topic) => topic.key === key) ?? null) : null;
+}
+
+/**
+ * 九个事类的键，供 MCP 把枚举列给 Agent 看。
+ * @type {readonly string[]}
+ */
+export const TOPIC_KEYS = Object.freeze(TOPIC_CLASSES.map((topic) => topic.key));
+
+/**
  * 类神与体卦的关系，用来提醒所问之事对求测者是生是克。
  * @param {string} godElement 类神五行
  * @param {string} bodyElement 体卦五行

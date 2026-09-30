@@ -19,6 +19,7 @@ import {
 import { HEXAGRAM_LIST, hexagramSymbol, invertedHexagram, mutualHexagram, oppositeHexagram } from '../hexagrams.mjs';
 import { almanac } from '../almanac.mjs';
 import { jingfang } from '../jingfang.mjs';
+import { TOPIC_KEYS } from '../topics.mjs';
 
 const SERVER_INFO = Object.freeze({ name: 'chinese-divination', version: '1.0.0' });
 
@@ -44,7 +45,17 @@ const QUESTION_PROPERTY = Object.freeze({
     type: 'string',
     maxLength: 120,
     description:
-      '所问何事，原话即可。会据此定事类与类神五行（财运取金、事业取火、感情取水、婚恋取木、疾病取土、房产车契取土、官讼取金、出行寻物取水、学业文书取木），只影响应期与取象，不改变卦体吉凶。认不出事类时按用卦算。',
+      '所问何事，原话即可。写了它，应期与取象才有着落——不写则一律退回用卦本分。',
+  },
+  topic: {
+    type: 'string',
+    enum: [...TOPIC_KEYS],
+    description:
+      '所问何事归哪一类，由你来定——你读过用户原话，比在本工具里拿关键词撞「他对我还有没有真心」'
+      + '这类问法可靠。财运=钱与买卖、事业功名=工作前程与升迁、感情=恋爱与暧昧、婚恋=结婚与配偶、'
+      + '疾病=病症与身体、学业文书=考试与证照、房产车契=房舍车契与搬迁、官讼是非=官司与纠纷、'
+      + '出行寻物=远行与丢东西。拿不准就省略，省略后本工具按关键词认，认不出就按用卦算。'
+      + '**只影响应期、用神与取象，不改变卦体吉凶**——同一个卦，问财与问婚，凶不会翻面。',
   },
 });
 
@@ -122,6 +133,25 @@ function toInteger(value, max) {
 }
 
 /**
+ * Agent 自报的事类。没给就给 null（后面退回关键词）；给了但不在九类里就是硬伤，
+ * 悄悄当没给会让 Agent 以为自己定过了，所以当场报错让它重挑。
+ * @param {unknown} value
+ * @param {readonly string[]} allowed
+ * @returns {string|null}
+ */
+function toTopicKey(value, allowed) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !allowed.includes(value)) {
+    throw new ToolError(
+      'INVALID_ARGUMENTS',
+      `未知的事类：${typeof value === 'string' ? value : typeof value}`,
+      `topic 只能是 ${allowed.join('、')} 这九个，拿不准就省略，省略后按关键词认。`,
+    );
+  }
+  return value;
+}
+
+/**
  * 把一卦压成给模型读的文本。给全量 JSON 没用，模型要的是能复述的句子。
  * @param {ReturnType<typeof buildReading>} reading
  */
@@ -129,7 +159,11 @@ function readingToText(reading) {
   const lines = reading.lines.map((line) => `${line.label} ${line.kind}`).join('、');
   const insights = reading.insights.map((item) => `【${item.title}】${item.text}`).join('\n');
   const basis = reading.details.map((item) => `${item.label} ${item.value}`).join('；');
-  const topic = reading.topic ? `所问事类：${reading.topic.label}，类神五行 ${reading.topic.element}。` : '所问未落到已知事类，应期按用卦推。';
+  // 事类是谁定的要说清楚：Agent 自己给的那一路，它自己负责；关键词撞出来的那一路
+  // 可能压根没撞上（表上的词没覆盖用户的说法），模型得知道自己站在哪条路上。
+  const topic = reading.topic
+    ? `所问事类：${reading.topic.label}（${reading.topicSource === 'explicit' ? '由 Agent 指定' : '按关键词认出'}），类神五行 ${reading.topic.element}。`
+    : '所问未落到已知事类，应期按用卦推。';
   // 抬头就给宫与世应：这是模型复述卦象时最常要用的两个身份，埋在断语里要它自己去找。
   const jf = reading.jingfang;
   const shiLine = jf.lines[jf.shi - 1];
@@ -238,7 +272,25 @@ function readingToText(reading) {
     `【宜】${reading.advice.suitable.join('、')}`,
     `【忌】${reading.advice.avoid.join('、')}`,
     `【起卦依据】${basis}`,
+    // 白话块放在最末，而不是塞在【吉凶】旁边：上面那些是给模型复述卦象用的，
+    // 这一段是给用户听的，位置就跟着「请照着这几行讲」走，不必混在术语里。
+    `【大白话】\n${plainBlock(reading)}`,
     `【提示】${DISCLAIMER}`,
+  ].filter(Boolean).join('\n');
+}
+
+/** 白话块各句。空的那句（没定事类时的取象）直接不占一行，不留空壳。 */
+function plainBlock(reading) {
+  const plain = reading.plain;
+  return [
+    plain.ask,
+    plain.topic,
+    plain.verdict,
+    plain.why,
+    plain.onTopic,
+    plain.timing,
+    plain.actions,
+    plain.caution,
   ].filter(Boolean).join('\n');
 }
 
@@ -246,20 +298,21 @@ function readingToText(reading) {
 function callTool(name, args) {
   if (name === 'divination_cast') {
     const question = clampText(args.question, 120);
+    const topic = toTopicKey(args.topic, TOPIC_KEYS);
     const method = typeof args.method === 'string' ? args.method : 'time';
     const now = new Date();
     /** @type {ReturnType<typeof buildReading>} */
     let reading;
     if (method === 'daily') {
-      reading = buildReading(castDaily(now), { question, now });
+      reading = buildReading(castDaily(now), { question, now, topic });
     } else if (method === 'numbers') {
       const upper = toInteger(args.upper, 1000000000);
       const lower = toInteger(args.lower, 1000000000);
-      reading = buildReading(castByNumbers(upper, lower), { question, now });
+      reading = buildReading(castByNumbers(upper, lower), { question, now, topic });
     } else if (method === 'coins') {
-      reading = buildReading(castByCoins(tossCoins()), { question, now });
+      reading = buildReading(castByCoins(tossCoins()), { question, now, topic });
     } else if (method === 'time') {
-      reading = buildReading(castByTime(now), { question, now });
+      reading = buildReading(castByTime(now), { question, now, topic });
     } else {
       throw new ToolError('INVALID_ARGUMENTS', `未知的起法：${method}`, 'method 只能是 time、daily、numbers 或 coins。');
     }
@@ -448,7 +501,9 @@ async function handleMessage(message) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
         instructions:
-          '起卦前先问清或直接采用用户的所问之事；问事决定事类与应期，不改变卦体吉凶。' +
+          '起卦前先问清或直接采用用户的所问之事，并用 topic 报出它属于哪一类——'
+          + '事类只改应期、用神与取象，不改卦体吉凶。'
+          + '结尾的【大白话】是给用户听的那一段，照着它讲，不要拿术语复述。' +
           '解读要连「所问」一起讲，不要只复述卦辞。' +
           '任何一次起卦的结果都要带上免责说明：卦象由传统占卜法推演，不构成建议、预测或决策依据。',
       },

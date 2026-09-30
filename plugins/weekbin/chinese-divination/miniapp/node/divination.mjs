@@ -29,7 +29,7 @@ import { monthQi, hexagramQi } from './guaqi.mjs';
 import { jingfang, pickUseGod, hiddenGod, flyingRelation, shiYingRelation, elementRelation,
   voidReading, vitality, sixGods, SIX_GOD_MEANING, RELATIVE_MEANING, transformRelation, jinTui,
   useGodCircle, dayClashReading, heCombineReading, punishReading, hexagramClash, fanfuReading } from './jingfang.mjs';
-import { detectTopic, godRelation, TOPIC_CLASSES } from './topics.mjs';
+import { detectTopic, godRelation, topicByKey, TOPIC_CLASSES } from './topics.mjs';
 
 const GENERATES = Object.freeze({ 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' });
 const OVERCOMES = Object.freeze({ 木: '土', 土: '水', 水: '火', 火: '金', 金: '木' });
@@ -74,6 +74,9 @@ export function overcomes(a, b) {
  * @property {object} structure 体用、五行、世应
  * @property {object} verdict 吉凶断语
  * @property {{ key: string, label: string, element: string, reason: string }|null} topic 认出事类时的类神
+ * @property {'explicit'|'detected'|null} topicSource 事类是谁定的：Agent 显式给的、关键词撞出来的，还是没定
+ * @property {string} [topicLine] 取象句。认不出事类时这个键不存在
+ * @property {{ ask: string, topic: string, verdict: string, why: string, onTopic: string, timing: string, actions: string, caution: string }} plain 白话结论块
  * @property {string} timing 应期
  * @property {{ title: string, text: string }[]} insights
  * @property {{ label: string, value: string }[]} details 起卦依据
@@ -410,6 +413,45 @@ function topicSentence(topic, relationKey, label) {
 }
 
 /**
+ * 旺衰在白话里说的是「你此刻有多少劲」，不是「五行在月令里排第几」。
+ * 断语里那五句（「体卦得令，所求之事根基稳」之类）是术语文，跟用户隔着一层。
+ */
+const VITALITY_PLAIN = Object.freeze({
+  旺: '你此刻最有力气',
+  相: '有人托着你，不算最强但站得住',
+  休: '你使不上劲，这一回得借外力',
+  囚: '你被局面困住，处境受制',
+  死: '你气力最弱，此时强推反而吃亏',
+});
+
+/** 白话结论块：把体用生克这套术语翻成「你、那件事、你此刻的劲」。 */
+function buildPlain({ question, topic, topicLine, verdict, body, use, timing, advice }) {
+  const flavour = RELATION_FLAVOUR[verdict.key] ?? '两者关系不上不下';
+  // 生克那一层与总分不一致时（体克用本是生克小吉，体卦逢死地总分落回「平」），
+  // 正好是用户最容易当成「算错了」的地方，白话里把这层差价讲明白。
+  // 整块里都不许出现「体卦／用卦／旺衰／类神／月令」——它们在断语正文里出现过，
+  // 搬进白话就等于没翻。校验在 tests 里，措辞改了那边会报红。
+  const adjust = verdict.relationVerdict !== verdict.label
+    ? `照两人之间的关系本该是${verdict.relationVerdict}，你这个月的状态把它拉到了「${verdict.label}」。`
+    : '';
+  return {
+    ask: question ? `你问的是「${question}」。` : '你没写具体问什么，我按起卦当时的时辰给你看这一卦。',
+    topic: topic
+      ? `我把它归到「${topic.label}」这一类——这一类以${topic.element}为事。`
+      : '你问的事不在那九类里，事类先空着，时间上按那件事本身算。',
+    verdict: `这一卦给的是「${verdict.label}」，${verdict.summary.split('：').slice(1).join('：') || '没有偏向'}。`,
+    // 这一句是整块里最要紧的翻译：体卦是你、用卦是那件事、旺衰是你此刻的劲。
+    why: `体卦${body.name}${body.element}是你，用卦${use.name}${use.element}是那件事——${flavour}；${VITALITY_PLAIN[verdict.vitality] ?? '你此刻的状态不上不下'}。${adjust}`,
+    onTopic: topicLine ?? '',
+    timing: timing
+      ? `时间上：${timing.wang}月或${timing.wang}日见端倪，到${timing.xiang}前后渐明。`
+      : '',
+    actions: `该做的是：${advice.suitable.join('、')}。别做的是：${advice.avoid.join('、')}。`,
+    caution: advice.caution,
+  };
+}
+
+/**
  * 组装完整卦象解读。
  * @param {{ method: string, summary: string, detail: {label: string, value: string}[], hexagram: any, positions: number[], sums: (number|null)[] }} cast
  * @param {{ question?: string, id?: string, now?: Date }} [options]
@@ -437,6 +479,16 @@ function judgeScore(score) {
   return { label: '平', summary: '平：待时' };
 }
 
+/**
+ * 推一卦。
+ * @param {any} cast 起卦四法的结果
+ * @param {object} [options]
+ * @param {string} [options.question] 所问何事原话，用于关键词认事类
+ * @param {Date} [options.now]
+ * @param {string} [options.topic] 事类键（九个之一）。给了就以它为准，不再看关键词；
+ *   给的键不在九类里则当作没给，退回关键词那条路。
+ * @returns {any} 一卦的全部解读
+ */
 export function buildReading(cast, options = {}) {
   const now = options.now ?? new Date();
   const question = (options.question ?? '').trim();
@@ -475,7 +527,15 @@ export function buildReading(cast, options = {}) {
 
   // 所问何事落到事类，事类取类神五行。类神只管应期与取象，不改吉凶——
   // 同一个卦问财与问婚，凶不会因此翻面，只是看的时辰和轻重不同。
-  const topic = detectTopic(question);
+  //
+  // 事类有两个来路。关键词那条是给页面用的：页面上只有一句「所问何事」，
+  // 没有能替你归纳的人。MCP 那条是给 Agent 用的——它本来就看得懂用户在说
+  // 什么，让它自己挑，比在这儿拿一串词去撞「他对我还有没有真心」这类问法
+  // 靠谱得多。**显式给的优先**：Agent 是在读过原话之后判断的，比关键词更
+  // 贴近用户真正问的那件事。认不出（没给、或给的键不在九类里）才退回关键词。
+  const explicitTopic = topicByKey(options.topic);
+  const topic = explicitTopic ?? detectTopic(question);
+  const topicSource = explicitTopic ? 'explicit' : (topic ? 'detected' : null);
   const god = topic ? godRelation(topic.element, body.element, generates, overcomes) : null;
   const timing = topic
     ? responseTiming(topic.element, `${topic.label}类神`)
@@ -706,6 +766,7 @@ export function buildReading(cast, options = {}) {
   }
 
   const advice = buildAdvice(verdict);
+  const topicLine = topic ? topicSentence(topic, verdict.key, verdict.label) : null;
 
   return {
     id: options.id ?? buildId(hexagram, positions, now),
@@ -849,12 +910,18 @@ export function buildReading(cast, options = {}) {
     verdict,
     // 取象句挂在 verdict 上而不是平铺一层：它跟吉凶是一件事的两半——吉凶是那一档，
     // 取象句是这一档落在所问之事上是什么话。拆开放，页面就得自己拼回去。
-    // 认不出事类时为 null，页面不摆这句，也不拿它凑数。
-    ...(topic ? { topicLine: topicSentence(topic, verdict.key, verdict.label) } : {}),
+    // 认不出事类时这个键压根不存在（不是 null），页面不摆这句，也不拿它凑数。
+    ...(topic ? { topicLine } : {}),
+    // 白话块：MCP 把它接在正文末尾，Agent 照着讲给用户听。每一句都从上面已算好的
+    // 字段来，不另起一套判断，也不替没定吉凶的东西表态。
+    plain: buildPlain({ question, topic, topicLine, verdict, body, use, timing, advice }),
     // 每一动爻变出来的那一爻：回头生克、进退神、化空化墓。断语正文与这里走同一份，
     // sentence 只进断语不进字段——那段话断语里已经整段说过了。
     transforms: transforms.map(({ sentence, ...rest }) => rest),
     topic: topic ? { key: topic.key, label: topic.label, element: topic.element, reason: topic.reason } : null,
+    // 事类是谁定的：Agent 显式给的、关键词撞出来的，还是压根没定。前两种差别说大不大——
+    // 关键词那一路会有「问的是感情，但原话里没一个词在表上」的漏判，Agent 显式给就绕开了。
+    topicSource,
     qi: monthLord
       ? {
         branch: monthBranch,

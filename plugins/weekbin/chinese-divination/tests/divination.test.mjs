@@ -1478,6 +1478,201 @@ test('写了所问何事，结论就落到那件事上；换问法只换取象�
   assert.equal(lucky.topicLine, mild.topicLine, '同为「顺」的一档却收了两句话');
 });
 
+test('Agent 自报的事类压过关键词，关键词那条路留作退路', () => {
+  const cast = castByNumbers(5, 2);
+  const now = new Date('2026-09-30T10:00:00+08:00');
+  const at = (question, topic) => buildReading(cast, { now, question, topic });
+
+  // 这句是关键词表接不住的——表上都是「感情」「恋爱」「前任」这类词，
+  // 「他对我还有没有真心」一个都不含。页面那条路只能认不出，Agent 读了原话能认。
+  const vague = '他对我还有没有真心';
+  assert.equal(detectTopic(vague), null, '这句本就该认不出事类，下面才验得了 Agent 那条路');
+  assert.equal(at(vague).topic, null, '没给 topic 时不该凭空认出一类');
+  assert.equal(at(vague).topicSource, null, '没定下事类却说定了一个');
+  assert.equal(at(vague).topicLine, undefined, '没定事类却给了取象句');
+
+  const told = at(vague, 'love');
+  // 下面几处都走 ?.：topic 为 null 时直接读 .key 会抛 TypeError，而 TypeError 不带
+  // 消息，按关键词判「这条断言钉住没有」的就永远对不上——报红得落在自己的消息上。
+  assert.equal(told.topic?.key, 'love', 'Agent 报了感情，事类却没落上去');
+  assert.equal(told.topic?.label, '感情', '事类落错了类');
+  assert.equal(told.topicSource, 'explicit', '明明是 Agent 给的，却说成关键词认出来的');
+  assert.match(told.topicLine, /这段关系/, '感情类的事没说成那段关系');
+
+  // 关键词那条路是退路不是主路：原话明明会撞出事业，Agent 报了财运就得听 Agent 的。
+  const job = '这工作该不该跳';
+  assert.equal(detectTopic(job).key, 'career', '这句本该撞出事业功名，下面才验得了显式优先');
+  const overridden = at(job, 'wealth');
+  assert.equal(overridden.topic?.key, 'wealth', 'Agent 报的事类被关键词盖回去了');
+  assert.equal(overridden.topicSource, 'explicit', '显式优先没生效');
+
+  // 给了个不存在的键：当作没给，退回关键词，而不是静悄悄地认成别的类。
+  const bogus = at(job, '不存在的类');
+  assert.equal(bogus.topic?.key, 'career', '认不出的键没退回关键词');
+  assert.equal(bogus.topicSource, 'detected', '退回关键词后来源仍说成 Agent 给的');
+
+  // 事类只改应期与取象，吉凶一个字都不许跟着动——这条是这个参数存在的底线。
+  for (const topic of [undefined, 'wealth', 'love', 'journey', 'dispute']) {
+    const one = at(job, topic);
+    assert.equal(one.verdict.label, at(job).verdict.label, `给了 topic=${topic} 把卦的吉凶改了`);
+    assert.equal(one.verdict.score, at(job).verdict.score, `给了 topic=${topic} 把总分改了`);
+    assert.equal(one.verdict.key, at(job).verdict.key, `给了 topic=${topic} 把体用生克改了`);
+  }
+
+  // 九类各认得出来，且都是真类——枚举漏一个键，Agent 按提示挑的那个就落空。
+  const keys = TOPIC_CLASSES.map((t) => t.key);
+  for (const key of keys) {
+    assert.equal(at('随便问问', key).topic?.key, key, `给了 topic=${key} 却没落到这一类`);
+  }
+  assert.equal(at('随便问问', '').topic, null, '空串也被当成了一个事类');
+  assert.equal(at('随便问问', 42).topic, null, '数字也被当成了一个事类');
+});
+
+test('白话块把体用旺衰翻成「你、那件事、你此刻的劲」', () => {
+  const cast = castByNumbers(5, 2);
+  const now = new Date('2026-09-30T10:00:00+08:00');
+  const reading = buildReading(cast, { now, question: '这工作该不该跳', topic: 'career' });
+  const plain = reading.plain;
+
+  // 术语那一层：体卦是你、用卦是那件事、旺衰是你此刻的劲。这三样是整个卦理里
+  // 最抽象的地方，白话块不改口径，只换说法——说漏一样，用户就得回去查词。
+  assert.match(plain.why, new RegExp(`体卦${reading.structure.body.name}${reading.structure.body.element}是你`), '白话没说清体卦是谁');
+  assert.match(plain.why, new RegExp(`用卦${reading.structure.use.name}${reading.structure.use.element}是那件事`), '白话没说清用卦是谁');
+  for (const bad of ['体卦', '用卦', '旺衰', '类神', '月令']) {
+    assert.ok(
+      !plain.why.replace(`体卦${reading.structure.body.name}${reading.structure.body.element}`, '')
+        .replace(`用卦${reading.structure.use.name}${reading.structure.use.element}`, '')
+        .includes(bad),
+      `白话里还留着术语「${bad}」没翻`,
+    );
+  }
+  // 上一条只查「术语没漏」，漏查了反面：把 ${verdict.vitality} 原样塞回去，
+  // 一个术语词都不带，检查照样全绿。旺衰译没译，得按这一卦实际落在哪一档去查。
+  const VITALITY_SAID = {
+    旺: '最有力气', 相: '有人托着', 休: '使不上劲', 囚: '受制', 死: '气力最弱',
+  };
+  assert.ok(
+    plain.why.includes(VITALITY_SAID[reading.verdict.vitality]),
+    `白话没把旺衰「${reading.verdict.vitality}」翻成人话：${plain.why}`,
+  );
+
+  assert.match(plain.ask, /这工作该不该跳/, '白话没把用户问的那句话接回来');
+  assert.match(plain.topic, /事业功名/, '白话没说清归的哪一类');
+  assert.ok(!plain.topic.includes('类神'), '白话里还留着术语「类神」没翻');
+  assert.equal(plain.verdict.includes(reading.verdict.label), true, '白话的结论里没有吉凶那一档');
+  assert.equal(plain.onTopic, reading.topicLine, '白话里的取象句与取象句本身对不上');
+  assert.match(plain.timing, /月/, '白话没说时间');
+  assert.match(plain.actions, /该做的是：/, '白话没给该做的');
+  assert.match(plain.actions, /别做的是：/, '白话没给别做的');
+  assert.equal(plain.caution, reading.advice.caution, '白话的提醒与宜忌那一份对不上');
+
+  // 没定事类时：取象那句整块不摆，不拿别的话凑；时间照旧给，问的那句话照样接回来。
+  const blank = buildReading(cast, { now, question: '明天的会顺利吗' }).plain;
+  assert.equal(blank.onTopic, '', '没定事类却硬给了一句取象');
+  assert.match(blank.topic, /按那件事本身算/, '没定事类时没说清按什么算');
+  assert.ok(blank.timing.length > 0, '没定事类就把时间也省了');
+  assert.match(blank.ask, /明天的会顺利吗/, '写了问题却没在白话里接回来');
+
+  // 压根没写问题时另一句：说清是按时辰看的，别让用户以为漏传了他的问事。
+  const noAsk = buildReading(cast, { now }).plain;
+  assert.equal(
+    noAsk.ask,
+    '你没写具体问什么，我按起卦当时的时辰给你看这一卦。',
+    '没写问题时白话没说明是按时辰看的',
+  );
+  assert.equal(noAsk.topic, '你问的事不在那九类里，事类先空着，时间上按那件事本身算。', '没写问题时说得像认不出事类');
+
+  // 生克那层与总分不一致时（体克用本是生克小吉，体卦逢死地总分落回「平」），
+  // 差价就在白话里讲开——用户最容易把这当成算错了。
+  const mismatched = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25]
+    .map((n) => buildReading(castByNumbers(n, 2), { now, question: '这工作该不该跳' }))
+    .find((r) => r.verdict.relationVerdict !== r.verdict.label);
+  assert.ok(mismatched, '扫了十二组上下卦还没撞出生克层与总分不一致的卦，这段没法验');
+  assert.ok(
+    mismatched.plain.why.includes(`照两人之间的关系本该是${mismatched.verdict.relationVerdict}`),
+    `生克层与总分差了一档，白话里却没讲开：${mismatched.plain.why}`,
+  );
+});
+
+test('MCP 让 Agent 自报事类，并在正文末尾补一段大白话', async () => {
+  const { handleMcpRequest } = await import('../miniapp/node/mcp/divination-http.mjs');
+  const call = async (method, params) => {
+    let raw = '';
+    await handleMcpRequest({
+      response: { writeHead() { return this; }, end(chunk) { raw += chunk; return this; } },
+      body: { jsonrpc: '2.0', id: 1, method, params },
+    });
+    return JSON.parse(raw).result;
+  };
+  const cast = (args) => call('tools/call', { name: 'divination_cast', arguments: args });
+
+  // 枚举得真列给 Agent 看：它得知道能挑哪九类，否则这个参数等于没有。
+  const listed = await call('tools/list', {});
+  const schema = listed.tools.find((t) => t.name === 'divination_cast').inputSchema;
+  const topicProp = schema.properties.topic;
+  assert.deepEqual(
+    topicProp.enum,
+    TOPIC_CLASSES.map((t) => t.key),
+    'topic 的枚举与九类事类对不上，Agent 按提示挑会挑空',
+  );
+  assert.equal(schema.properties.topic.type, 'string', 'topic 不是字符串');
+  assert.match(topicProp.description, /不改变卦体吉凶/, '参数说明没告诉 Agent 事类不改吉凶');
+  assert.match(topicProp.description, /省略/, '参数说明没告诉 Agent 拿不准可以省略');
+  assert.ok(
+    !schema.properties.question.description.includes('定事类'),
+    'question 的说明还写着由它定事类，与新加的 topic 参数自相矛盾',
+  );
+
+  // 关键词接不住的那句，Agent 报了类就落得上去。
+  const question = '他对我还有没有真心';
+  assert.equal(detectTopic(question), null, '这句本该认不出事类');
+  const told = await cast({ method: 'numbers', upper: 5, lower: 2, question, topic: 'love' });
+  const toldText = told.content[0].text;
+
+  // 结构先验：白话段接进去了、在正文末尾、在免责之前。放在内容断言前头——
+  // 白话整段没接的时候，内容那几条会先红，报出来的消息跟「没接进去」不是一回事。
+  assert.ok(toldText.includes('【大白话】'), '正文末尾没有大白话那一段');
+  assert.ok(toldText.includes('【起卦依据】'), '正文里没有起卦依据那一段');
+  assert.ok(
+    toldText.indexOf('【大白话】') > toldText.indexOf('【起卦依据】'),
+    '白话插在正文中间，用户读不到最后',
+  );
+  assert.ok(
+    toldText.indexOf('【提示】') > toldText.indexOf('【大白话】'),
+    '免责排在白话前头，顺序反了',
+  );
+
+  assert.equal(told.structuredContent.topic?.key, 'love', 'Agent 报的事类没进结构化结果');
+  assert.match(toldText, /由 Agent 指定/, '正文没说是谁定的事类');
+  assert.match(toldText, /这段关系/, '白话没说到那段关系上');
+
+  const guessed = await cast({ method: 'numbers', upper: 5, lower: 2, question: '这工作该不该跳' });
+  assert.equal(guessed.structuredContent.topic?.key, 'career', '不给 topic 时关键词那条路没兜住');
+  assert.match(guessed.content[0].text, /按关键词认出/, '正文没说清是关键词认出来的');
+
+  // 给了不存在的键：当场报错让 Agent 重挑，不能静悄悄当没给。
+  const bad = await cast({ method: 'numbers', upper: 5, lower: 2, question, topic: '财运' });
+  assert.equal(bad.isError, true, '给了不存在的键却照常起了一卦');
+  assert.match(bad.content[0].text, /未知的事类/, '报错没点名是事类不对');
+  assert.match(bad._meta.recovery, /省略/, '报错没告诉 Agent 拿不准可以省略');
+
+  // 白话段里一句空话都不许留：没定事类时那一句是空的，留下来就是一个空行。
+  const vague = await cast({ method: 'numbers', upper: 5, lower: 2, question: '明天的会顺利吗' });
+  const vaguePlain = vague.content[0].text.split('【大白话】')[1].split('【提示】')[0];
+  assert.ok(!vaguePlain.includes('\n\n'), '白话里留了空行，没定事类的那一句该整块不出现');
+  assert.ok(vaguePlain.trimStart().startsWith('你问的是'), '白话第一句没接上用户问的那句话');
+  assert.ok(!vaguePlain.includes('卦里说的就是'), '没定事类却摆了取象句');
+
+  const plainText = toldText.slice(toldText.indexOf('【大白话】'));
+  assert.match(plainText, new RegExp(question), '白话段里没有用户问的那句话');
+  assert.match(plainText, /是你/, '白话段里没把体卦翻成「你」');
+  assert.match(plainText, /是那件事/, '白话段里没把用卦翻成「那件事」');
+
+  // 提示语也得教模型照着白话讲，否则这段照样被它用术语复述掉。
+  const init = await call('initialize', {});
+  assert.match(init.instructions, /【大白话】/, 'initialize 的提示语没提大白话那段');
+});
+
 test('掷钱与成卦解卦互为反面：摇满六次就禁掷钱、开成卦解卦', async () => {
   const client = await readFile(new URL('../miniapp/client/index.html', import.meta.url), 'utf8');
 

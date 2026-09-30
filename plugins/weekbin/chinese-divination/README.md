@@ -131,8 +131,13 @@ You do **not** have to name a method — the Agent picks from your wording. To f
 「用时间起卦」「掷铜钱」「按今天的日子起」.
 
 **The one thing that matters: say what you are asking about.** The Agent puts your words into
-`question`, which is what decides the topic and the 应期. "Cast me a hexagram" with no subject
-still works, but no topic will be recognised and the timing falls back to the 用卦.
+`question` and works out the topic itself, then passes it as `topic`. "Cast me a hexagram" with
+no subject still works, but no topic is recognised and the timing falls back to the 用卦.
+
+That division is deliberate. On the page there is nobody to read your question, so a keyword
+table has to guess, and a phrasing like 「他对我还有没有真心」 matches nothing in it. In a
+conversation the Agent has just read the question in full — it can file that under 感情 without
+any keyword hitting. The keyword path stays as the fallback for when `topic` is omitted.
 
 #### The three tools, in detail
 
@@ -140,7 +145,8 @@ still works, but no topic will be recognised and the timing falls back to the �
 
 | Argument | Type | Meaning |
 | --- | --- | --- |
-| `question` | string, ≤120 chars | What you are asking. Sets the topic and the 应期, never the verdict |
+| `question` | string, ≤120 chars | What you are asking, in your own words |
+| `topic` | `wealth` / `career` / `love` / `marriage` / `health` / `study` / `property` / `dispute` / `journey` | Which of the nine classes it is. **The Agent's call**, not a keyword lookup — omit it when unsure and the keyword table takes over. Sets the 类神五行, the 用神 and the 应期; never the 吉凶. An unrecognised value is rejected rather than ignored, so the Agent finds out instead of assuming it landed |
 | `method` | `time` / `daily` / `numbers` / `coins` | Defaults to `time` |
 | `upper` / `lower` | integer 1–1e9 | Only for `numbers`: the upper and lower trigram numbers |
 
@@ -161,21 +167,56 @@ so a model never has to dig the answer back out of the prose. A real response:
 ```text
 【起法】数字起卦
 【所问】下个月要不要接这个offer
-所问事类：事业功名，类神五行 火。
-【卦名】山天大畜（第 26 卦，⚊⚋⚋⚊⚊⚊），上卦 艮土、下卦 乾金
-【变卦】火天大有（上卦 离、下卦 乾）
-【爻象】初爻 静爻、二爻 静爻、三爻 静爻、四爻 老阴、五爻 静爻、上爻 静爻
-【体用】体卦 艮土，用卦 乾金
-【京房】艮宫二世卦，属土；世爻二爻持官鬼，应爻五爻为兄弟
-【月令旺衰】当令 金，体 休、用 旺
-【吉凶】凶 —— 凶：宜守
+所问事类：事业功名（由 Agent 指定），类神五行 火。
+【卦名】火地晋（第 35 卦，⚊⚋⚊⚋⚋⚋），上卦 离火、下卦 坤土
+【变卦】天地否（上卦 乾、下卦 坤）；动爻去向 五爻化泄
+【爻象】初爻 静爻、二爻 静爻、三爻 静爻、四爻 静爻、五爻 老阴、上爻 静爻
+【体用】体卦 离火，用卦 坤土
+【京房】乾宫游魂卦，属金；世爻四爻持兄弟，应爻初爻为父母
+【卦体】本卦非六冲非六合
+【犯刑】月建与4爻酉自刑
+【月令旺衰】当令 金，体 囚、用 休
+【吉凶】大凶 —— 大凶：宜止
 【断语】
-【卦象总断】本卦山天大畜，利贞，不家食吉，利涉大川。…
-【所问之事】所问归「事业功名」，类神取火。…类神火生体卦土，所问之事对你有补益。
-【应期】事业功名类神属火，旺在巳午，相在辰戌丑未。…
-【体用关系】体卦土生用卦金，是我耗自己去成全对方。…
-(sixteen sections, then 宜/忌, the numbers used, and the disclaimer)
+【卦象总断】本卦火地晋，晋，康侯用锡马蕃庶，昼日三接。…
+【所问之事】所问归「事业功名」，类神取火。…类神火生体卦离火…
+（sixteen sections）
+【宜】守成，不宜扩张、先处理内务再对外、避开正面对抗
+【忌】正面强争、额外投入与加码、在对方主场行事
+【起卦依据】第一数 3 除 8 余 3 → 离卦；第二数 8 除 8 余 8 → 坤卦；动爻 11 除 6 余 5 → 五爻
+【大白话】
+你问的是「下个月要不要接这个offer」。
+我把它归到「事业功名」这一类——这一类以火为事。
+这一卦给的是「大凶」，宜止。
+体卦离火是你，用卦坤土是那件事——这件事要你往外掏；你被局面困住，处境受制。照两人之间的关系本该是凶，你这个月的状态把它拉到了「大凶」。
+问的是事业功名，卦里说的就是这份前程——这件事要你往外掏，这一卦落在它上面不顺。
+时间上：巳午月或巳午日见端倪，到辰戌丑未前后渐明。
+该做的是：守成，不宜扩张、先处理内务再对外、避开正面对抗。别做的是：正面强争、额外投入与加码、在对方主场行事。
+体用相制：局面不在你手上，宜守宜退，不宜正面强求。
+【提示】本结果由传统占卜法按规则推演……（免责声明全文）
 ```
+
+Read the top half and you have the apparatus; read the bottom half and you have the answer.
+
+**The last block is the one you are meant to read.** Everything above it is for the Agent to
+work from — 卦名, 纳支, 六亲, 用神, the whole apparatus. 【大白话】 at the very end, just before
+the disclaimer, is the same reading with the terminology taken out:
+
+- **体卦 is you, 用卦 is the matter at hand.** That is the one translation the page can never
+  make for you and the Agent never had to learn: a trigram called 体 is not your body, it is
+  whichever side holds the moving line, and that side is the querent.
+- **旺相休囚死 is how much force you have right now**, not a ranking of five elements. 旺 is
+  「你此刻最有力气」; 死 is 「你气力最弱，此时强推反而吃亏」.
+- **The 生克 relation becomes a sentence about who is doing what to whom** — 体生用 reads as
+  「这件事要你往外掏」, 用克体 as 「外头的力压着这件事」.
+- **Where the two layers disagree, it says so.** 体克用 is 小吉 on 生克 alone, but a 体卦 on
+  death ground drags the total down to 平; the plain block spells that difference out instead of
+  leaving the reader to think the arithmetic went wrong.
+- The topic sentence, the timing, the 宜/忌 and the caution ride along in the same register.
+
+Nothing in it is new judgement — every clause comes from a field the block above already
+settled, and it stays silent about anything the reading never decided. The Agent is told in
+`initialize` to relay that block rather than re-narrate the hexagram in technical language.
 
 **`divination_hexagram_lookup` — search the sixty-four**
 
@@ -1514,6 +1555,35 @@ The client tests read the source, since there is no DOM in the test runner.
   strength following the total score; and the progress bar's width and counter across 0–6. Each was
   broken in turn to confirm the matching test actually goes red — all 17 pinned, and 214 pass with 0
   fail after the script restores the baseline.
+- This round moved two decisions out of static analysis and into the model. `divination_cast` gained a
+  `topic` enum that the Agent fills in after reading the user's own words; the page still uses the
+  keyword table, because on a page there is nobody to read the question for you. Both paths were
+  checked: for 「他对我还有没有真心」 the keyword table catches nothing (`detectTopic` returns null and
+  the topic sentence is left off entirely), while `topic: love` puts the class, the topic sentence, the
+  用神 and the 应期 all where they belong; and for 「这工作该不该跳」, which the keywords *would* have
+  filed under 事业功名, an explicit `wealth` wins. A value outside the nine is rejected outright
+  (`INVALID_ARGUMENTS`, with "omit it if you are unsure") rather than ignored — silently ignoring it
+  leaves the Agent believing it landed. Across five topics the 吉凶 was checked item by item: `label`,
+  `score` and the 体用 relation do not move.
+- The plain block is that same apparatus with the terminology taken out, not a second opinion. 体卦
+  becomes 「你」, 用卦 becomes 「那件事」, and 旺相休囚死 becomes how much force you have right now —
+  the three most abstract things in the method. None of 「体卦 / 用卦 / 旺衰 / 类神 / 月令」 may appear
+  anywhere in it, checked one by one in the tests. Writing that assertion is what caught 「月令」 and
+  then 「旺衰」 slipping into my own copy; it took two passes to get clean. Where the 生克 layer and the
+  total disagree (体克用 is 小吉 on 生克 alone, but a 体卦 on death ground drags the total to 平), the
+  difference is spelled out rather than left for the reader to suspect a broken calculation. The sample
+  response in the README was generated by running the code, not written by hand.
+- Every new assertion this round went through mutation testing — all 26 pinned, and 217 pass with 0
+  fail after the script restores the baseline. The first run left eight unpinned, and six of those were
+  the tests being too soft rather than the mutations being clever: the 旺衰 check only asked whether a
+  term had *leaked* and never whether it had been *translated* (pasting the raw 旺 back in stayed
+  green); the blank-line check pointed at the wrong function; the ordering check passed with the other
+  line deleted, because `indexOf` on a missing string returns -1 and -1 is still less than -1; and two
+  places read `.topic.key` directly, which throws a TypeError when the topic is null — and a TypeError
+  carries no message, so a keyword-based "is it pinned" check can never match it. Optional chaining
+  fixed those two. The other two were faults in the mutations themselves: one left the file a syntax
+  error, so the run reported a SyntaxError instead of any assertion, and one edited the *main* block's
+  filter rather than `plainBlock`, which has nothing to do with what it claimed to break.
 
 ## Data & access
 
